@@ -3,17 +3,29 @@ import { randomUUID } from "node:crypto";
 import { attachDemoCards } from "../scripts/demoCards.js";
 import { seedDemo } from "../scripts/seed.js";
 import { config } from "./config.js";
+import { openDatabase, saveNow, startAutosave } from "./core/persist.js";
 import { handleInbound } from "./messaging/inbound.js";
 import { rememberInbound, startPolling, type InboundMessage } from "./messaging/photon.js";
 import { stripeWebhook } from "./payments/webhook.js";
 import { agentApi, agentApiInfo } from "./web/agentApi.js";
 import { webRoutes } from "./web/routes.js";
 
-if (config.demoSeed) {
+// Load saved data before anything else touches the store.
+const restored = config.databasePath ? openDatabase(config.databasePath) : false;
+if (config.databasePath) {
+  console.log(restored ? `Restored saved data from ${config.databasePath}` : `Saving data to ${config.databasePath}`);
+} else {
+  console.warn("DATABASE_PATH is not set: data lives in memory only and is lost on restart.");
+}
+
+// Don't overwrite a saved household with a fresh seed unless asked (DEMO_RESET=1).
+if (config.demoSeed && (!restored || config.demoReset)) {
   const h = seedDemo();
   console.log(`Seeded demo household ${h.id} (${h.members.map((m) => m.name).join(", ")})`);
   await attachDemoCards(h); // real sandbox cards for Sam and Jake when a Stripe test key is set
 }
+saveNow();
+startAutosave();
 
 const app = express();
 

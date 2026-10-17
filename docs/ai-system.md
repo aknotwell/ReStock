@@ -27,7 +27,7 @@ What the AI in Restock does, what data it uses, and what controls keep it safe. 
 - **Product catalog:** `data/catalog.json`. A curated demo dataset of household products with prices in integer cents, aliases, categories, and typical restock intervals. Products with a `group` are alternatives (e.g. bulk or fragrance-free) to the product with that id. The AI may only choose IDs from this dataset. **Names and prices always come from the dataset, never from the model.**
 - **Sent to the model:** the guarded text of one chat message, product IDs, and purchase dates. Member names are not sent by the intent parser.
 - **Never sent to the model:** card numbers (removed by the Luhn guard in `src/messaging/guard.ts` before the AI sees anything), phone numbers, payment data, Stripe IDs, or other households' data.
-- **Stored:** cart items, orders, shares, and debts (`src/core/store.ts`). We don't store message bodies, model prompts, or responses.
+- **Stored:** cart items, orders, shares, and debts (`src/core/store.ts`), saved to a SQLite file on the server (`src/core/persist.ts`) along with texted link tokens, reply routing (which chat to answer in), open "Which one?" questions, and the IDs of messages already handled. We don't store message bodies, model prompts, or responses, and a test checks the database file never contains message text.
 
 ## Human oversight and controls
 

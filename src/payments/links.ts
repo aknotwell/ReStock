@@ -1,5 +1,5 @@
 // Owner: Person 3. Secure links texted to members. Card data only ever touches Stripe's pages.
-import { randomBytes } from "node:crypto";
+import { randomInt } from "node:crypto";
 import { config } from "../config.js";
 import { findMember } from "../core/store.js";
 import type { Member } from "../types.js";
@@ -20,7 +20,7 @@ const cardLinkTokens = new Map<string, { memberId: string; expiresAt: number }>(
  */
 export async function createCardSetupLink(memberId: string, now = Date.now()): Promise<string> {
   if (!findMember(memberId)) throw new Error(`Unknown member ${memberId}`);
-  const token = randomBytes(16).toString("base64url");
+  const token = newLinkToken();
   cardLinkTokens.set(token, { memberId, expiresAt: now + CARD_LINK_TTL_MS });
   return `${config.publicBaseUrl}/c/${token}`;
 }
@@ -64,6 +64,16 @@ async function ensureStripeCustomer(member: Member): Promise<string> {
   // in the in-memory store, so setting the field saves it.
   member.stripeCustomerId = customer.id;
   return customer.id;
+}
+
+const TOKEN_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+/**
+ * 22 random letters and digits (~131 bits). No "-" or "_": those could form something like "-pm_x",
+ * which the outbound redact() filter would replace as a Stripe ID, breaking the link.
+ */
+function newLinkToken(): string {
+  return Array.from({ length: 22 }, () => TOKEN_CHARS[randomInt(TOKEN_CHARS.length)]).join("");
 }
 
 /** Test helper: forget every issued token. */

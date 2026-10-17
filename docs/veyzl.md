@@ -10,6 +10,8 @@ This is the evidence for the "Best Use of VEYZL" track: every VEYZL finding, and
 
 ## Running the API audit
 
+> **Step-by-step for teammates, with troubleshooting: [veyzl-runbook.md](veyzl-runbook.md).**
+
 VEYZL runs when a PR is opened, but its API audit sends test prompts to the **Backend URL** in VEYZL's settings. It doesn't build or run the PR. So the PR's code has to be running at that URL while the audit runs:
 
 1. Install the tunnel tool once: `brew install cloudflared`

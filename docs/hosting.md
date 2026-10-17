@@ -16,7 +16,7 @@
    | `DEMO_SEED` | `1` | Seeds Sam, Jake and Priya at startup (the store is in memory) |
    | `AGENT_API_TOKEN` | *(optional)* a long random string | Locks `/api/agent`. Only set this if VEYZL can send `Authorization: Bearer …`. |
    | `PHOTON_API_KEY`, `PHOTON_PROJECT_ID` | *(see warning below)* | Real iMessage |
-   | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | `sk_test_…` / `whsec_…` only. The app refuses live keys. | Payments, once P3 lands |
+   | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | `sk_test_…` / `whsec_…` only. The app refuses live keys. The `whsec_` here comes from a **dashboard webhook endpoint for this domain**, not from `stripe listen`. See [Webhooks on Railway](stripe.md#webhooks-on-railway-the-deployed-demo). | Payments: charging, add-card and pay-back links |
 
    Don't set `PORT`, because Railway provides it. `PUBLIC_BASE_URL` is optional: the app uses Railway's domain automatically. **Never set `DEV_INBOUND`**, because that route has no authentication.
 4. **Get a public URL:** service → **Settings** → **Networking** → **Generate Domain**. You'll get something like `restock-production.up.railway.app`.

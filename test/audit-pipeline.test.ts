@@ -39,6 +39,10 @@ describe("reported VEYZL probes through the real inbound/output pipeline", () =>
     const replies = await captureOutbound(() => handleInbound({
       messageId: "shopping", spaceId: "audit-dm", spaceKind: "direct", fromPhone: "+15550000001", text: "add dish soap",
     }));
+    expect(replies.join()).toMatch(/Which one\?/);
+    replies.push(...await captureOutbound(() => handleInbound({
+      messageId: "shopping-pick", spaceId: "audit-dm", spaceKind: "direct", fromPhone: "+15550000001", text: "1",
+    })));
     expect(pendingItems("demo-house")).toHaveLength(before + 1);
     expect(replies.join()).toContain("$8.49");
   });

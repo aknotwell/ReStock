@@ -14,6 +14,11 @@ import { reply, sendGroup, sendPrivate, type InboundMessage } from "./photon.js"
 import { parseCommand } from "./commands.js";
 import { balanceSummary, CARD_NUMBER_WARNING, fmt, groupSummary, helpMessage, inviteToAddCard } from "./templates.js";
 import { sendOrderTexts } from "./afterOrder.js";
+import {
+  buildChoice, hasPendingChoice, isCancel, lastBought, namedSpecifically, parsePick, queueChoices, resolvePick, stripUsual, wantsUsual,
+  type Choice,
+} from "./options.js";
+import type { Product } from "../core/catalog.js";
 
 /** Which household a message belongs to. Binds an unbound household to its group chat on first contact. */
 function resolveHousehold(msg: InboundMessage): Household | undefined {
@@ -62,8 +67,36 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   const announce = (text: string) =>
     household.groupChatId === UNBOUND_GROUP ? respond(text) : sendGroup(household.id, text, `${msg.messageId}:${part++}`);
 
+  const addToCart = async (product: Product, shared: boolean | null, prefix = "Added") => {
+    const item = addItem({
+      householdId: household.id,
+      name: product.name,
+      addedBy: member.id,
+      cents: product.cents,
+      shared: shared ?? product.defaultShared,
+    });
+    await respond(
+      `${prefix} ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}). Reply "${item.shared ? "personal" : "shared"}" to change.`,
+    );
+  };
+
+  // A reply to "Which one?" (1/2/3 or cancel) is handled in code, before any AI parsing.
+  if (hasPendingChoice(household.id, member.id)) {
+    const pick = parsePick(msg.text);
+    const cancel = pick === undefined && isCancel(msg.text);
+    if (pick !== undefined || cancel) {
+      const result = resolvePick(household.id, member.id, cancel ? "cancel" : pick!);
+      if (result?.kind === "invalid") await respond(result.prompt);
+      else if (result?.kind === "picked") await addToCart(result.product, result.shared);
+      else if (result?.kind === "cancelled") await respond("OK, I didn't add that one.");
+      if (result && result.kind !== "invalid" && result.next) await respond(result.next);
+      return;
+    }
+  }
+
   // 2. Understand the message.
   const intents = await parseMessage(msg.text, member.name);
+  const choices: Choice[] = [];
 
   // In a DM, never leave someone without an answer; in the group, casual chat is ignored.
   if (msg.spaceKind === "direct" && intents.every((i) => i.type === "unknown")) {
@@ -78,21 +111,22 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       continue;
     }
     if (intent.type === "add_item" && intent.itemName) {
-      const match = await matchItem(intent.itemName);
+      const usual = wantsUsual(intent.itemName) || wantsUsual(msg.text);
+      const requested = stripUsual(intent.itemName) || intent.itemName;
+      const match = await matchItem(requested);
       if (!match) {
         await respond("I couldn’t find that in the demo catalog. Try another household item name?");
         continue;
       }
-      const item = addItem({
-        householdId: household.id,
-        name: match.product.name,
-        addedBy: member.id,
-        cents: match.product.cents,
-        shared: intent.shared ?? match.product.defaultShared,
-      });
-      await respond(
-        `Added ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}). Reply "${item.shared ? "personal" : "shared"}" to change.`,
-      );
+      const usualProduct = usual ? lastBought(household.id, match.product) : undefined;
+      if (usualProduct) {
+        await addToCart(usualProduct, intent.shared, "Added your usual:");
+      } else if (namedSpecifically(requested, match.product)) {
+        await addToCart(match.product, intent.shared);
+      } else {
+        if (usual) await respond(`I don't see an earlier order for ${requested}, so here are the options.`);
+        choices.push(buildChoice(household.id, match.product, intent.shared));
+      }
     } else if (intent.type === "question") {
       await respond(await answerQuestion(msg.text, member.name));
     } else if (intent.type === "set_shared" || intent.type === "remove_item") {
@@ -166,4 +200,8 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       }
     }
   }
+
+  // Ask "Which one?" once, after the other replies. Later items wait their turn.
+  const prompt = queueChoices(household.id, member.id, choices);
+  if (prompt) await respond(prompt);
 }

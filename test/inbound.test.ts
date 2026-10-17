@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { seedDemo } from "../scripts/seed.js";
 import { db, getHousehold, pendingItems, UNBOUND_GROUP } from "../src/core/store.js";
 import { handleInbound } from "../src/messaging/inbound.js";
+import { clearPendingChoices } from "../src/messaging/options.js";
 import { rememberInbound, type InboundMessage } from "../src/messaging/photon.js";
 
 let n = 0;
@@ -26,6 +27,7 @@ describe("handleInbound", () => {
   let logs: string[];
   beforeEach(() => {
     seedDemo();
+    clearPendingChoices();
     logs = [];
     vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => void logs.push(a.join(" ")));
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -54,6 +56,9 @@ describe("handleInbound", () => {
   it("adds a catalog item with its catalog price and confirms it", async () => {
     const before = pendingItems("demo-house").length;
     await send(text(SAM, "add hand soap"));
+    expect(pendingItems("demo-house")).toHaveLength(before); // asks which one first
+    expect(logs.join("\n")).toMatch(/Which one\?\n1\. Hand soap refill, 50 oz: \$7\.99/);
+    await send(text(SAM, "1"));
     const items = pendingItems("demo-house");
     expect(items).toHaveLength(before + 1);
     expect(items.at(-1)).toMatchObject({ name: "Hand soap refill, 50 oz", cents: 799, addedBy: "sam" });

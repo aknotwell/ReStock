@@ -5,6 +5,7 @@ import { parseMessage } from "../ai/parseMessage.js";
 import { addItem, findHouseholdByGroupChat, findMemberByPhone, householdsForPhone, UNBOUND_GROUP } from "../core/store.js";
 import { OrderError, placeOrder } from "../core/orders.js";
 import { createCardSetupLink } from "../payments/links.js";
+import { OwnerCardRequiredError, ownerCardRequest } from "../payments/ownerGate.js";
 import type { Household } from "../types.js";
 import { checkInput } from "../safety/guardrails.js";
 import { reply, sendGroup, sendPrivate, type InboundMessage } from "./photon.js";
@@ -107,7 +108,15 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
         await announce(groupSummary(household, result));
         // TODO(P1): private receipts / "you owe" texts via sendPrivate + templates.ts
       } catch (err) {
-        if (err instanceof OrderError) await respond(err.message);
+        if (err instanceof OwnerCardRequiredError) {
+          // The add-card link goes only to the owner, privately. The group just hears why we stopped.
+          const gate = await ownerCardRequest(household);
+          if (gate.ownerId === member.id && msg.spaceKind === "direct" && gate.ownerText) await respond(gate.ownerText);
+          else {
+            await respond(gate.groupText);
+            if (gate.ownerId && gate.ownerText) await sendPrivate(gate.ownerId, gate.ownerText, `owner-gate:${msg.messageId}`);
+          }
+        } else if (err instanceof OrderError) await respond(err.message);
         else throw err;
       }
     }

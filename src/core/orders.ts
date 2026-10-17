@@ -3,15 +3,13 @@ import type { OrderResult, SplitRule } from "../types.js";
 import { db, getHousehold, newId, pendingItems } from "./store.js";
 import { computeShares } from "./split.js";
 import { chargeOrder } from "../payments/charges.js";
+import { assertOwnerCard } from "../payments/ownerGate.js";
 
 export class OrderError extends Error {}
 
 export async function placeOrder(householdId: string, rule: SplitRule = "smart"): Promise<OrderResult> {
   const household = getHousehold(householdId);
-  const owner = household.members.find((m) => m.id === household.ownerId);
-  if (!owner?.paymentMethodId) {
-    throw new OrderError("The budget owner needs to add a card before we can order.");
-  }
+  assertOwnerCard(household); // throws OwnerCardRequiredError (Person 3's gate)
 
   const items = pendingItems(householdId).filter((i) => !i.needsApproval);
   if (items.length === 0) throw new OrderError("The cart is empty.");

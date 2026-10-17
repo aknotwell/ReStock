@@ -1,4 +1,5 @@
 // Owner: Person 1. Pipeline: guard -> identify sender -> AI parse -> act -> reply.
+import { matchItem } from "../ai/matchItem.js";
 import { parseMessage } from "../ai/parseMessage.js";
 import { addItem, findHouseholdByGroupChat, findMemberByPhone } from "../core/store.js";
 import { OrderError, placeOrder } from "../core/orders.js";
@@ -29,12 +30,17 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   // 3. Act. TODO(P1): remove_item, set_shared, what_do_i_owe, approve
   for (const intent of intents) {
     if (intent.type === "add_item" && intent.itemName) {
+      const match = await matchItem(intent.itemName);
+      if (!match) {
+        await sendGroup(household.id, `I couldn't find "${intent.itemName}" in the store. Try another name?`);
+        continue;
+      }
       const item = addItem({
         householdId: household.id,
-        name: intent.itemName,
+        name: match.product.name,
         addedBy: member.id,
-        cents: 0, // TODO(P2): price from catalog
-        shared: intent.shared ?? true,
+        cents: match.product.cents,
+        shared: intent.shared ?? match.product.defaultShared,
       });
       await sendGroup(
         household.id,

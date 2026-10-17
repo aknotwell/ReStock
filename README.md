@@ -5,6 +5,7 @@ An AI agent in your household group chat that keeps shared supplies stocked and 
 - **What we're building and who owns what:** [PLAN.md](PLAN.md)
 - **Rules for humans and coding agents:** [AGENTS.md](AGENTS.md)
 - **How the AI works (system card):** [docs/ai-system.md](docs/ai-system.md)
+- **Stripe setup and testing payments:** [docs/stripe.md](docs/stripe.md)
 
 ## Quick start
 

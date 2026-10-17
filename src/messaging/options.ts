@@ -1,6 +1,7 @@
 // Owner: Person 1. "Add TP" -> three catalog options to pick from, or the household's usual if asked.
 // Prices and names always come from the catalog. The member picks; the AI never chooses for them.
 import { alternativesFor, getProductByName, groupOf, type Product } from "../core/catalog.js";
+import { registerState } from "../core/persist.js";
 import { db } from "../core/store.js";
 import { fmt } from "./templates.js";
 
@@ -11,6 +12,14 @@ export type Choice = { options: Product[]; shared: boolean | null; lastBoughtId?
 type Pending = { queue: Choice[]; expires: number };
 
 const pending = new Map<string, Pending>();
+// Open "Which one?" questions survive a restart; expired ones are dropped on load.
+registerState("option-picks", {
+  dump: () => [...pending],
+  load: (data) => {
+    pending.clear();
+    for (const [k, p] of data as [string, Pending][]) if (p.expires > Date.now()) pending.set(k, p);
+  },
+});
 const key = (householdId: string, memberId: string) => `${householdId}:${memberId}`;
 
 /** "the usual", "same as last time", "what we got before"... */

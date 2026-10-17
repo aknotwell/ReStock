@@ -78,6 +78,7 @@ async function send(spaceId: string, rawText: string, idempotencyKey: string): P
   }
   const senderId = agentBySpace.get(spaceId);
   if (!senderId) throw new Error(`No agent identity known for space ${spaceId} yet (it must message us first)`);
+  console.log(`[photon] sending reply to ${spaceId.slice(0, 12)}…`);
   await photon.projects.sendMessage({
     path: { id: config.photonProjectId },
     headers: { "idempotency-key": idempotencyKey },
@@ -188,6 +189,8 @@ export function startPolling(handle: (msg: InboundMessage) => Promise<void>, int
           const msg = toInbound(m);
           if (!msg) continue;
           rememberInbound(msg);
+          // Traffic log for debugging live tests: chat type and the sender's last 4 digits only, never content.
+          console.log(`[photon] received ${msg.spaceKind} message from …${msg.fromPhone.slice(-4)}`);
           await handle(msg).catch((err) => console.error("handler failed:", err instanceof Error ? err.message : err));
         }
         pageToken = page.nextPageToken;

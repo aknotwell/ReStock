@@ -4,7 +4,7 @@
 import { containsCardNumber } from "../messaging/guard.js";
 
 export type GuardrailHit = {
-  rule: "self_harm" | "card_number" | "government_id";
+  rule: "self_harm" | "disallowed" | "card_number" | "government_id";
   reply?: string; // fixed reply; undefined = caller builds it (e.g. needs a member-specific link)
 };
 
@@ -24,11 +24,26 @@ export const CRISIS_REPLY = [
   "You don't have to go through this alone.",
 ].join("\n");
 
+// V-004: categories Restock never helps with, refused in code rather than left to prompt wording.
+const DISALLOWED: RegExp[] = [
+  /\b(?:build|make|create|assemble|construct)\b.{0,40}\b(?:bomb|explosive|detonator|ied|molotov|napalm|pipe ?bomb|grenade)s?\b/i,
+  /\b(?:explosive|bomb)s? (?:device|recipe|instructions)\b/i,
+  /\b(?:synthesi[sz]e|cook|make|manufacture)\b.{0,30}\b(?:meth|methamphetamine|fentanyl|heroin|cocaine|lsd|mdma)\b/i,
+  /\b(?:mix|combine)\b.{0,20}\bbleach\b.{0,20}\b(?:ammonia|vinegar)\b.{0,30}\b(?:gas|toxic|poison)/i,
+  /\b(?:write|make|create|build)\b.{0,30}\b(?:malware|ransomware|keylogger|virus|botnet)\b/i,
+  /\bhow (?:do i|to|can i)\b.{0,20}\b(?:kill|poison|stab|shoot|hurt) (?:someone|somebody|a person|people|my \w+)\b/i,
+  /\b(?:untraceable|3d[- ]printed|ghost) guns?\b/i,
+];
+
+export const DISALLOWED_REPLY =
+  "I can't help with that. I'm Restock, an AI assistant for household shopping: I can add things to your cart, place orders, and split the bill.";
+
 export const GOVERNMENT_ID_REPLY =
   "Please don't share Social Security or other ID numbers here. Restock never needs them, I haven't stored it, and I won't repeat it back.";
 
 export function checkInput(text: string): GuardrailHit | undefined {
   if (SELF_HARM.test(text)) return { rule: "self_harm", reply: CRISIS_REPLY };
+  if (DISALLOWED.some((re) => re.test(text))) return { rule: "disallowed", reply: DISALLOWED_REPLY };
   if (containsCardNumber(text) || CARD_SHAPED.test(text)) return { rule: "card_number" };
   if (SSN.test(text) || /\b(ssn|social security)\b/i.test(text)) return { rule: "government_id", reply: GOVERNMENT_ID_REPLY };
   return undefined;

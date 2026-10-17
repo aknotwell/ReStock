@@ -3,7 +3,8 @@ import { randomInt } from "node:crypto";
 import { config } from "../config.js";
 import { db, findMember } from "../core/store.js";
 import type { Member } from "../types.js";
-import { requireStripe, STRIPE_MIN_CHARGE_CENTS } from "./stripe.js";
+import { STRIPE_MIN_CHARGE_CENTS } from "./limits.js";
+import { requireStripe } from "./stripe.js";
 
 /** How long a texted add-card link keeps working. */
 export const CARD_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;

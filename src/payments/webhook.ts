@@ -4,6 +4,8 @@ import type Stripe from "stripe";
 import { config } from "../config.js";
 import { markDebtPaid } from "../core/ledger.js";
 import { db, findMember } from "../core/store.js";
+import { sendPrivate } from "../messaging/photon.js";
+import { cardAdded } from "../messaging/templates.js";
 import { requireStripe } from "./stripe.js";
 
 export async function stripeWebhook(req: Request, res: Response): Promise<void> {
@@ -99,6 +101,8 @@ export async function saveCardFromSetupSession(
   if (typeof session.customer === "string") member.stripeCustomerId = session.customer;
   member.paymentMethodId = paymentMethod.id;
   member.cardLast4 = paymentMethod.card.last4;
-  // TODO(P1): text the member "Card added, ending {last4}" with sendPrivate.
+  await sendPrivate(member.id, cardAdded(member.cardLast4), `card-added:${setupIntentId}`).catch((err) =>
+    console.warn("card-added text failed:", err instanceof Error ? err.message : err),
+  );
   return "saved";
 }

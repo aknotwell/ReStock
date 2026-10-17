@@ -7,7 +7,8 @@ import type Stripe from "stripe";
 import { newId } from "../core/store.js";
 import type { Charge, ChargeResult, Debt, Household, Member, Order, Shares } from "../types.js";
 import { assertOwnerCard, findOwner } from "./ownerGate.js";
-import { requireStripe, STRIPE_MIN_CHARGE_CENTS } from "./stripe.js";
+import { STRIPE_MIN_CHARGE_CENTS } from "./limits.js";
+import { requireStripe } from "./stripe.js";
 
 // Shares under Stripe's minimum go on the owner's charge, with a Debt.
 export { STRIPE_MIN_CHARGE_CENTS };

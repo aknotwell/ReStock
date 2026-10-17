@@ -9,7 +9,7 @@ const fakeStripe = {
   checkout: { sessions: { create: vi.fn() } },
   setupIntents: { retrieve: vi.fn() },
 };
-vi.mock("../src/payments/stripe.js", () => ({ requireStripe: () => fakeStripe, STRIPE_MIN_CHARGE_CENTS: 50 }));
+vi.mock("../src/payments/stripe.js", () => ({ requireStripe: () => fakeStripe }));
 
 const { CARD_LINK_TTL_MS, createCardSetupLink, openCardSetupLink, resetCardLinks } = await import(
   "../src/payments/links.js"

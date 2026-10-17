@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 // computeShares is Person 2's and not built yet. Use PLAN.md's expected demo split.
 vi.mock("../src/core/split.js", () => ({ computeShares: () => ({ sam: 1565, jake: 4695, priya: 1015 }) }));
 const fakeStripe = { paymentIntents: { create: vi.fn(), capture: vi.fn(), cancel: vi.fn() }, refunds: { create: vi.fn() } };
-vi.mock("../src/payments/stripe.js", () => ({ requireStripe: () => fakeStripe, STRIPE_MIN_CHARGE_CENTS: 50 }));
+vi.mock("../src/payments/stripe.js", () => ({ requireStripe: () => fakeStripe }));
 
 const { seedDemo } = await import("../scripts/seed.js");
 const { db } = await import("../src/core/store.js");

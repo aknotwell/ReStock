@@ -18,7 +18,7 @@ const fakeStripe = {
     },
   },
 };
-vi.mock("../src/payments/stripe.js", () => ({ requireStripe: () => fakeStripe, STRIPE_MIN_CHARGE_CENTS: 50 }));
+vi.mock("../src/payments/stripe.js", () => ({ requireStripe: () => fakeStripe }));
 
 const { createPayBackLink, openPayBackLink, PAY_BACK_LINK_TTL_MS, resetPayBackLinks } = await import("../src/payments/links.js");
 const { markDebtPaidFromSession } = await import("../src/payments/webhook.js");

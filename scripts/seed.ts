@@ -7,7 +7,8 @@ export const DEMO_HOUSEHOLD_ID = "demo-house";
 export function seedDemo(): Household {
   resetStore();
 
-  // TODO(P3/P4): fill stripeCustomerId/paymentMethodId from Stripe test mode (test card 4242…).
+  // Placeholder card IDs keep this function fast and offline for tests. With DEMO_SEED=1 and a Stripe
+  // test key, the server swaps in real sandbox cards for Sam and Jake (scripts/demoCards.ts).
   const members: Member[] = [
     { id: "sam", name: "Sam", phone: process.env.DEMO_PHONE_SAM || "+15550000001", role: "owner", paymentMethodId: "pm_test_sam", cardLast4: "4242" },
     { id: "jake", name: "Jake", phone: process.env.DEMO_PHONE_JAKE || "+15550000002", role: "member", paymentMethodId: "pm_test_jake", cardLast4: "1881" },

@@ -1,10 +1,13 @@
 # Restock — Build Plan
 
 Source: the "Who pays for the household order" design note ([artifact](https://claude.ai/artifact/G5ejBnkYfSPQjuwNd81JrQ)).
+Rules, tracks, and engineering guardrails are in [AGENTS.md](AGENTS.md). Read it first.
+
+**Tracks:** Visa: Reimagine Shopping (title track) + Photon, VEYZL, and Best Startup Idea (side tracks).
 
 ## What we're building
 
-Restock is a household group chat for restocking supplies. Roommates add items by text, someone says "order now", and Restock places the order and splits the bill.
+Restock is an AI agent in a household's group chat (built on **Photon 2.0**) for restocking supplies. Roommates add items in plain language ("we're out of TP") and the AI turns that into cart items, someone says "order now", and Restock places the order and splits the bill.
 
 **Payment model (decided):** the budget owner's card is required. Everyone else's card is optional.
 
@@ -25,7 +28,7 @@ Even splits are done in **integer cents**. The remainder cents go one each to th
 
 **Hard rule:** card numbers never go in the chat or in a text. Cards are added only through Stripe. We store only Stripe references (customer ID, payment method ID, last 4).
 
-> Stack suggestions (change them if the team prefers something else): TypeScript/Node, Twilio for SMS, Stripe in test mode, SQLite or Postgres, and a small web server for the `/card` and `/pay` pages.
+> Stack suggestions (change them if the team prefers something else): TypeScript/Node, **Photon 2.0** for messaging (required for the Photon track), the Claude API for the AI layer, Stripe in test mode, SQLite or Postgres, and a small web server for the `/card` and `/pay` pages.
 
 ---
 
@@ -67,19 +70,25 @@ chargeOrder(order: Order, shares: Record<memberId, cents>): Promise<{ charges: C
 createCardSetupLink(memberId): Promise<url>
 createPayBackLink(debtId): Promise<url>
 // Person 1
+parseMessage(text, sender, household): Promise<Intent>   // LLM + fallback parser
 sendGroup(householdId, text): Promise<void>
 sendPrivate(memberId, text): Promise<void>
 ```
 
 ---
 
-## Person 1: Messaging and the chat bot
+## Person 1: Photon messaging and the AI agent
 
-You own everything that comes in or goes out as a text.
+You own everything that comes in or goes out as a message, and the generative AI that makes sense of it.
 
-- [ ] Set up the SMS provider (e.g. Twilio): the number, the inbound webhook, and group chat (MMS group or one thread per household).
+- [ ] Set up **Photon 2.0** (photon.co/beta): the agent's number, the inbound webhook, and the group thread on at least one channel (iMessage or SMS). This is required for the Photon track.
+- [ ] **AI layer** (`src/ai/`, using the Claude API with tool use or structured output):
+  - Intent parsing: "we're out of TP and dish soap" becomes two `add_item` intents. Also handle "order now", "make the chips personal", and "what do I owe?"
+  - Normalize items and suggest a price from a small demo catalog, and suggest shared vs personal. The reply always shows what the AI decided and how to change it.
+  - Restock suggestions (stretch): "You usually order paper towels every 2 weeks. Add them?"
+  - Validate against a schema, and fall back to the simple command parser if the LLM fails.
 - [ ] Implement `sendGroup` and `sendPrivate`.
-- [ ] Parse inbound commands:
+- [ ] Fallback command parser:
   - adding an item ("add dish soap", optionally with "personal" or "for me" to mark it personal)
   - `order now` triggers the checkout flow (call Person 2's `placeOrder`)
   - joining the household: an unknown number texting the group becomes a member with no card
@@ -92,7 +101,7 @@ You own everything that comes in or goes out as a text.
   - **Invite on join:** `Add a card so your share is paid automatically.` plus the card link
 - [ ] Payback reminder: re-text open debts after N hours (optional).
 
-**Done when:** texting the number can add items, "order now" kicks off checkout, and every text above arrives on the right phone.
+**Done when:** texting the Photon number in plain language can add items, "order now" kicks off checkout, and every text above arrives on the right phone.
 
 ---
 
@@ -141,9 +150,12 @@ You own every interaction with Stripe. Test mode only, with fake cards.
 
 ---
 
-## Person 4: Web pages, demo setup, and pitch
+## Person 4: Web pages, VEYZL, demo, and pitch
 
-You own what judges see outside the texts, and you make the demo run without a hitch.
+You own what judges see outside the texts, the VEYZL audit evidence, and you make the demo run without a hitch.
+
+- [ ] **Repo setup (first thing at 12:30 PM):** make the repo public, add `.gitignore` and `.env.example`, turn on branch protection on `main`, and connect **VEYZL** so it runs on every PR.
+- [ ] **VEYZL evidence log:** keep `docs/veyzl.md` with each finding, the PR link, and the fix. Aim for at least one real before/after (e.g. missing human confirmation before charging, PII in logs, unvalidated LLM output).
 
 - [ ] Simple branded landing pages for the `/card` and `/pay` redirects: success and cancel pages ("Card added. Your share will be paid automatically from the next order.", "Thanks, Sam has been paid back."). These are mobile-first, since they open from a text.
 - [ ] Optional household dashboard: items in the cart, who added each one, shared vs personal toggle, split rule picker, live per-person totals, and owes/owed. The design note's calculator is the reference UI.
@@ -170,7 +182,10 @@ You own what judges see outside the texts, and you make the demo run without a h
   4. Priya gets "you owe Sam" with a pay link.
   5. Priya taps the link and pays, and the debt is marked paid.
   6. The air fryer lands on Jake alone, which shows the split is smart.
-- [ ] Pitch slides and talking points for the **Visa track**: real split payments at checkout; Restock never stores card numbers (only Stripe tokens); the card-number guard in chat.
+- [ ] Pitch slides, covering the checklist in AGENTS.md:
+  - **Visa:** AI-native shopping in the group chat, real split payments at checkout, Restock never stores card numbers (only Stripe tokens), the card-number guard
+  - **VEYZL:** the before/after audit
+  - **Best Startup Idea:** users, viral loop, business model
 - [ ] End-to-end QA in the hour before the demo, with backup screenshots or a recording in case the SMS provider is slow.
 
 **Done when:** the seed script plus the demo script run cleanly end to end on real phones.
@@ -179,7 +194,8 @@ You own what judges see outside the texts, and you make the demo run without a h
 
 ## Dependencies and order of work
 
-1. **All four:** agree on the contracts. **Person 2** pushes the types and stub DB.
+0. **Before Sat 12:30 PM:** planning only. No code (DubHacks rule).
+1. **All four:** agree on the contracts. **Person 2** pushes the types and stub DB. **Person 4** connects VEYZL. From then on, all work goes through PRs.
 2. In parallel:
    - Person 1 builds messaging against stubbed `placeOrder`, `chargeOrder`, and links.
    - Person 2 builds the split engine and its tests.
@@ -189,3 +205,4 @@ You own what judges see outside the texts, and you make the demo run without a h
    - Person 2 wires `placeOrder`, which calls Person 3's `chargeOrder`, then Person 1's templates.
    - Person 3's webhooks call Person 2's ledger.
 4. **Person 4** runs the full demo. Everyone fixes what breaks.
+5. **Before Sun 10:00 AM:** all code is pushed, the repo is public, and Devpost is submitted with the repo link.

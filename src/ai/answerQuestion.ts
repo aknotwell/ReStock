@@ -2,6 +2,8 @@
 // No model-written factual prose or model-supplied citations are trusted.
 import { catalog } from "../core/catalog.js";
 import { checkInput, FABRICATION_REPLY } from "../safety/guardrails.js";
+import { isIdentityQuestion } from "../messaging/commands.js";
+import { helpMessage } from "../messaging/templates.js";
 
 export { FABRICATION_REPLY };
 export const UNSURE_REPLY = "I can't verify that from my reviewed sources, so I won't guess. I can help with household shopping and demo catalog prices.";
@@ -18,6 +20,7 @@ const FACTS = [{
 export async function answerQuestion(question: string, _senderName: string): Promise<string> {
   const hit = checkInput(question);
   if (hit) return hit.reply ?? "Please don't share card numbers in chat.";
+  if (isIdentityQuestion(question)) return helpMessage();
   const query = question.trim().replace(/[’]/g, "'");
   const fact = FACTS.find((entry) => entry.query.test(query));
   if (fact) return `${fact.answer} Source: ${fact.source}`;

@@ -7,7 +7,10 @@ function optional(name: string): string | undefined {
 
 export const config = {
   port: Number(process.env.PORT ?? 3000),
-  publicBaseUrl: process.env.PUBLIC_BASE_URL ?? "http://localhost:3000",
+  // Railway sets RAILWAY_PUBLIC_DOMAIN on deployed services; PUBLIC_BASE_URL overrides it.
+  publicBaseUrl:
+    process.env.PUBLIC_BASE_URL ??
+    (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "http://localhost:3000"),
   anthropicApiKey: optional("ANTHROPIC_API_KEY"),
   photonApiKey: optional("PHOTON_API_KEY"),
   photonProjectId: optional("PHOTON_PROJECT_ID"),

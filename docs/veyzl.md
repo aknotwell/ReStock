@@ -24,7 +24,12 @@ VEYZL runs when a PR is opened, but its API audit sends test prompts to the **Ba
 
 `/api/agent` runs the **same pipeline as real Photon texts** (`handleInbound`: guardrails → Claude → templates), but for an isolated sandbox household. The replies are returned in the HTTP response, not sent. The quick-tunnel URL changes every run, so update VEYZL each time. If `AGENT_API_TOKEN` is set, VEYZL must send `Authorization: Bearer <token>`.
 
- (keep all four true)
+## Automatic checks on every PR
+
+- **VEYZL Audit** (VEYZL's GitHub App): tests whatever is deployed at the Backend URL. Point it at the Railway deploy of `main` ([docs/hosting.md](hosting.md)).
+- **`veyzl-probes`** (our CI): replays every VEYZL probe through `POST /api/agent` against **the PR's own code**, so a guardrail regression fails before merge. The model-backed probe needs the `ANTHROPIC_API_KEY` repo secret.
+
+## What the judges want (keep all four true)
 
 - [ ] **A working AI project.** The agent parses messages with Claude (`src/ai/`) and acts on them live.
 - [ ] **A real VEYZL audit on the repo.** GitHub is connected, the VEYZL check runs on every PR, and its result is visible on the PR. VEYZL is a **required status check** on `main`, so a failing audit blocks the merge.

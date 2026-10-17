@@ -35,7 +35,7 @@ What the AI in Restock does, what data it uses, and what controls keep it safe. 
 2. **The money math is deterministic.** Shares are computed by `computeShares` in `src/core/split.ts`, in integer cents, never by the model.
 3. **Transparent results.** Every change the AI makes is echoed back, e.g. "Added Dish soap, 3 pack (shared, $8.49). Reply 'personal' to change." Users can correct or undo it with a text.
 4. **Output validation.** Every model response must match a Zod schema, and product IDs must exist in the catalog. Low-confidence matches, refusals, malformed output, and API errors all fall back to deterministic code.
-5. **AI disclosure.** The agent tells users it's an AI assistant (the "help" reply, `helpMessage` in `src/messaging/templates.ts`) and never poses as a household member.
+5. **AI disclosure.** The agent tells users it's an AI assistant (the "help" reply, `helpMessage` in `src/messaging/templates.ts`) and never poses as a household member. Identity questions ("are you a bot?", "is this a real person?", "who is this") are matched in code (`isIdentityQuestion` in `src/messaging/commands.ts`) and get the same reply with or without the LLM; `answerQuestion` checks them too in case the model labels one a question.
 6. **Prompt-injection resistance.** Parser output cannot authorize checkout or approval. The inbound handler independently requires the exact `order now` command from a household member before calling the order module.  The system prompts tell the model to ignore instructions inside chat messages, and the model has no tools that could act on them.
 7. **Deterministic guardrails before the model** (`src/safety/guardrails.ts`):
    - Self-harm gets a fixed crisis-resource reply.
@@ -55,7 +55,7 @@ What the AI in Restock does, what data it uses, and what controls keep it safe. 
 | The model misreads a message and adds the wrong item | Every addition is echoed back and can be changed with a reply. Nothing is bought until "order now". |
 | The model invents a product or price | Only catalog IDs are accepted, and the price comes from the catalog |
 | The model triggers an order on its own | `order_now` is acted on only when the message explicitly asks. Charging is deterministic code behind that command. |
-| A member pastes a card number | The Luhn guard drops the message before the AI or the database sees it, and the member gets a private secure link instead |
+| A member pastes a card number | The Luhn guard drops the message before the AI or the database sees it, and the member gets a private secure link instead. Digit groups may be split by any whitespace (tabs, newlines, repeated spaces), dots, slashes, underscores, or dashes, and a card followed by its expiry/CVC is still caught |
 | The LLM is unavailable during the demo | Every component has a deterministic fallback, covered by tests in `test/ai-fallbacks.test.ts` |
 | Unfair splits | Split rules are explicit and visible in the group summary, and covered by unit tests |
 

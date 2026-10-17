@@ -38,6 +38,19 @@ describe("handleInbound", () => {
     expect(logs.join("\n")).toMatch(/AI assistant/);
   });
 
+  it.each(["are you a real person?", "is this a bot?", "who is this", "are you an AI?"])("says it is an AI when asked %j", async (q) => {
+    await send(text(SAM, q));
+    expect(logs.join("\n")).toMatch(/I'm Restock, an AI assistant/);
+  });
+
+  it.each(["4242  4242  4242  4242", "4242.4242.4242.4242", "4242/4242/4242/4242", "4242\n4242\n4242\n4242"])(
+    "drops a card number written as %j", async (body) => {
+      const before = pendingItems("demo-house").length;
+      await send(text(SAM, `add chips ${body}`));
+      expect(pendingItems("demo-house")).toHaveLength(before);
+      expect(logs.join("\n")).not.toMatch(/4242/);
+    });
+
   it("adds a catalog item with its catalog price and confirms it", async () => {
     const before = pendingItems("demo-house").length;
     await send(text(SAM, "add hand soap"));

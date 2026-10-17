@@ -4,6 +4,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { ApiError, Photon } from "@photon-ai/api";
 import { config } from "../config.js";
 import { findMember, getHousehold } from "../core/store.js";
+import { redact } from "../safety/redact.js";
 
 /** Normalized inbound message, independent of Photon's wire format. */
 export type InboundMessage = {
@@ -41,7 +42,8 @@ export function rememberInbound(msg: InboundMessage): void {
   if (msg.spaceKind === "direct") dmByHandle.set(msg.fromPhone, msg.spaceId);
 }
 
-async function send(spaceId: string, text: string, idempotencyKey: string): Promise<void> {
+async function send(spaceId: string, rawText: string, idempotencyKey: string): Promise<void> {
+  const text = redact(rawText); // V-002: no personal data or secrets leave the service
   const captured = capture.getStore();
   if (captured) {
     captured.push(text);
@@ -73,7 +75,8 @@ export async function sendGroup(householdId: string, text: string, key: string =
  * Private text to one member. Uses their DM space if they've texted the agent directly;
  * otherwise asks them in the group to DM the agent (shared lines can't start new chats).
  */
-export async function sendPrivate(memberId: string, text: string, key: string = crypto.randomUUID()): Promise<void> {
+export async function sendPrivate(memberId: string, rawText: string, key: string = crypto.randomUUID()): Promise<void> {
+  const text = redact(rawText); // V-002
   const captured = capture.getStore();
   if (captured) {
     captured.push(text);

@@ -1,4 +1,4 @@
-// Owner: Person 2. Remove `.skip` once computeShares is implemented — these must pass before merging it.
+// Owner: Person 2. Expected cents for the demo household (PLAN.md) and remainder handling.
 import { describe, expect, it } from "vitest";
 import { computeShares } from "../src/core/split.js";
 import { pendingItems } from "../src/core/store.js";
@@ -7,7 +7,7 @@ import type { Item, Member } from "../src/types.js";
 
 const sum = (s: Record<string, number>) => Object.values(s).reduce((a, b) => a + b, 0);
 
-describe.skip("computeShares", () => {
+describe("computeShares", () => {
   const demo = () => {
     const h = seedDemo();
     return { members: h.members, items: pendingItems(DEMO_HOUSEHOLD_ID) };
@@ -48,5 +48,23 @@ describe.skip("computeShares", () => {
     const members: Member[] = ["a", "b", "c"].map((id) => ({ id, name: id, phone: id, role: "member" }));
     const items: Item[] = [{ id: "x", householdId: "h", name: "x", addedBy: "a", cents: 1000, shared: true, status: "pending" }];
     expect(computeShares(items, members, "even")).toEqual({ a: 334, b: 333, c: 333 });
+  });
+});
+
+describe("computeShares edge cases", () => {
+  const people: Member[] = ["a", "b"].map((id) => ({ id, name: id, phone: id, role: "member" }));
+  const item = (over: Partial<Item>): Item => ({ id: "i", householdId: "h", name: "x", addedBy: "a", cents: 100, shared: true, status: "pending", ...over });
+
+  it("splits an item from someone no longer in the household evenly instead of dropping it", () => {
+    expect(computeShares([item({ addedBy: "gone", shared: false })], people, "smart")).toEqual({ a: 50, b: 50 });
+  });
+
+  it("rejects non-integer or negative prices", () => {
+    expect(() => computeShares([item({ cents: 9.99 })], people, "even")).toThrow(/whole cents/);
+    expect(() => computeShares([item({ cents: -1 })], people, "even")).toThrow(/whole cents/);
+  });
+
+  it("an empty cart gives everyone zero", () => {
+    expect(computeShares([], people, "smart")).toEqual({ a: 0, b: 0 });
   });
 });

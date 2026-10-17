@@ -28,5 +28,5 @@
 
 - **Only one environment should poll Photon.** If both Railway and a laptop have `PHOTON_API_KEY`, both will answer every text. Put the Photon keys on Railway for the demo, and leave them out of local `.env` files, or use a separate Photon project for local development.
 - **VEYZL audits what's deployed, which is `main`.** A PR's own code is checked by our CI job `veyzl-probes`, which replays the same probes against `POST /api/agent` on every push. To audit a PR's code with VEYZL itself before merging, use `npm run audit:tunnel` on that branch (see [docs/veyzl.md](veyzl.md)).
-- **Data resets on every deploy and restart** (in-memory store). `DEMO_SEED=1` brings the demo household back.
+- **Data resets on every deploy and restart** (in-memory store). `DEMO_SEED=1` brings the demo household back, and with `STRIPE_SECRET_KEY` set it also gives Sam and Jake their sandbox cards again (see [docs/stripe.md](stripe.md#demo-household-cards)).
 - **GitHub secret for CI:** add `ANTHROPIC_API_KEY` under repo **Settings → Secrets and variables → Actions → New repository secret**, so the `veyzl-probes` job also runs the model-backed probe. Without it, that probe is skipped and the other 9 still run.

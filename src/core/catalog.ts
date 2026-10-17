@@ -10,6 +10,8 @@ export type Product = {
   cents: Cents;
   defaultShared: boolean;
   restockDays: number | null;
+  /** Set on alternatives: the id of the main product they are offered alongside. */
+  group?: string;
 };
 
 const raw = JSON.parse(readFileSync(new URL("../../data/catalog.json", import.meta.url), "utf8")) as { products: Product[] };
@@ -28,4 +30,19 @@ export function keywordMatch(query: string): Product | undefined {
     catalog.find((p) => p.name.toLowerCase() === q || p.aliases.includes(q)) ??
     catalog.find((p) => p.aliases.some((a) => q.includes(a)) || p.name.toLowerCase().includes(q))
   );
+}
+
+/** The main product's id for a product's group (a product without `group` leads its own group). */
+export function groupOf(product: Product): string {
+  return product.group ?? product.id;
+}
+
+/** Up to three products in the same group, the group's main product first. */
+export function alternativesFor(product: Product): Product[] {
+  const group = groupOf(product);
+  return catalog.filter((p) => groupOf(p) === group).sort((a, b) => Number(!!a.group) - Number(!!b.group)).slice(0, 3);
+}
+
+export function getProductByName(name: string): Product | undefined {
+  return catalog.find((p) => p.name === name);
 }

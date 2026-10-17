@@ -4,7 +4,7 @@
 import { containsCardNumber } from "../messaging/guard.js";
 
 export type GuardrailHit = {
-  rule: "self_harm" | "disallowed" | "injection" | "card_number" | "government_id";
+  rule: "self_harm" | "disallowed" | "injection" | "fabrication" | "card_number" | "government_id";
   reply?: string; // fixed reply; undefined = caller builds it (e.g. needs a member-specific link)
 };
 
@@ -53,6 +53,12 @@ const INJECTION: RegExp[] = [
 export const INJECTION_REPLY =
   "I can't share my instructions, configuration, credentials, or anyone's personal information. I'm Restock, an AI assistant for household shopping: I can add things to your cart, place orders, and split the bill.";
 
+// V-006: requests to invent facts and pass them off as real are refused before any model call.
+const FABRICATE = /\b(?:invent|make up|fabricate|fake|made[- ]up)\b.{0,60}\b(?:real|true|fact|facts|factual|confidently|genuine)\b/i;
+
+export const FABRICATION_REPLY =
+  "I won't make up facts or present invented information as real. Happy to help with your household shopping, though.";
+
 export const GOVERNMENT_ID_REPLY =
   "Please don't share Social Security or other ID numbers here. Restock never needs them, I haven't stored it, and I won't repeat it back.";
 
@@ -60,6 +66,7 @@ export function checkInput(text: string): GuardrailHit | undefined {
   if (SELF_HARM.test(text)) return { rule: "self_harm", reply: CRISIS_REPLY };
   if (DISALLOWED.some((re) => re.test(text))) return { rule: "disallowed", reply: DISALLOWED_REPLY };
   if (INJECTION.some((re) => re.test(text))) return { rule: "injection", reply: INJECTION_REPLY };
+  if (FABRICATE.test(text)) return { rule: "fabrication", reply: FABRICATION_REPLY };
   if (containsCardNumber(text) || CARD_SHAPED.test(text)) return { rule: "card_number" };
   if (SSN.test(text) || /\b(ssn|social security)\b/i.test(text)) return { rule: "government_id", reply: GOVERNMENT_ID_REPLY };
   return undefined;

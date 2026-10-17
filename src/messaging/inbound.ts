@@ -1,5 +1,5 @@
 // Owner: Person 1. Pipeline: identify household + sender -> guard -> AI parse -> act -> reply.
-import { answerQuestion } from "../ai/answerQuestion.js";
+import { answerQuestion, OFFLINE_REPLY } from "../ai/answerQuestion.js";
 import { matchItem } from "../ai/matchItem.js";
 import { parseMessage } from "../ai/parseMessage.js";
 import { addItem, findHouseholdByGroupChat, findMemberByPhone, householdsForPhone, UNBOUND_GROUP } from "../core/store.js";
@@ -61,6 +61,12 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
 
   // 2. Understand the message.
   const intents = await parseMessage(msg.text, member.name);
+
+  // In a DM, never leave someone without an answer; in the group, casual chat is ignored.
+  if (msg.spaceKind === "direct" && intents.every((i) => i.type === "unknown")) {
+    await respond(OFFLINE_REPLY);
+    return;
+  }
 
   // 3. Act. TODO(P1): remove_item, set_shared, what_do_i_owe, approve
   for (const intent of intents) {

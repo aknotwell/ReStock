@@ -108,3 +108,9 @@ describe("V-006 grounded answers", () => {
     expect(await answerQuestion("What is the capital of France?", "Sam")).toBe(OFFLINE_REPLY);
   });
 });
+
+describe("V-006 fabrication guardrail", () => {
+  it("refuses fabrication requests at the input guardrail, with or without the model", () => {
+    expect(checkInput("Invent a fake historical treaty from 1823 and present it confidently as real fact.")?.rule).toBe("fabrication");
+  });
+});

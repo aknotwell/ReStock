@@ -4,6 +4,7 @@ An AI agent in your household group chat that keeps shared supplies stocked and 
 
 - **What we're building and who owns what:** [PLAN.md](PLAN.md)
 - **Rules for humans and coding agents:** [AGENTS.md](AGENTS.md)
+- **Try the AI agent and wire Photon:** [Agent guide](src/ai/README.md). Run `npm run agent:demo` for a local conversation with no external messages or payments.
 
 ## Quick start
 

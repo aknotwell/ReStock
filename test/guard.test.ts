@@ -14,3 +14,9 @@ describe("containsCardNumber", () => {
     expect(containsCardNumber("4242424242424241")).toBe(false); // fails Luhn
   });
 });
+
+it("blocks repeated whitespace, tabs, and dashes between card digits", () => {
+  for (const separator of ["  ", "\t", "\n", "--"]) {
+    expect(containsCardNumber(Array(4).fill("4242").join(separator))).toBe(true);
+  }
+});

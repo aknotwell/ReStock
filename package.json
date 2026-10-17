@@ -8,6 +8,7 @@
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
     "seed": "tsx scripts/seed.ts",
+    "agent:demo": "tsx src/messaging/demo.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -19,8 +20,12 @@
     "@anthropic-ai/sdk": "^0.135.0",
     "dotenv": "^18.0.8",
     "express": "^5.3.0",
+    "spectrum-ts": "^12.2.0",
     "stripe": "^23.0.0",
     "zod": "^4.6.7"
+  },
+  "overrides": {
+    "@opentelemetry/core": "2.8.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",

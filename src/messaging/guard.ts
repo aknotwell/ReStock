@@ -17,10 +17,10 @@ function luhnValid(digits: string): boolean {
 
 /** True if the text contains something that looks like a payment card number. */
 export function containsCardNumber(text: string): boolean {
-  // Runs of digits possibly separated by single spaces or dashes.
-  const candidates = text.match(/\d(?:[ -]?\d){12,18}/g) ?? [];
+  // Accept repeated whitespace/dashes too, so formatting cannot bypass the guard.
+  const candidates = text.match(/\d(?:[\s-]*\d){12,18}/g) ?? [];
   return candidates.some((c) => {
-    const digits = c.replace(/[ -]/g, "");
+    const digits = c.replace(/[\s-]/g, "");
     return digits.length >= 13 && digits.length <= 19 && luhnValid(digits);
   });
 }

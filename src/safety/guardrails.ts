@@ -4,7 +4,7 @@
 import { containsCardNumber } from "../messaging/guard.js";
 
 export type GuardrailHit = {
-  rule: "card_number" | "government_id";
+  rule: "self_harm" | "card_number" | "government_id";
   reply?: string; // fixed reply; undefined = caller builds it (e.g. needs a member-specific link)
 };
 
@@ -12,10 +12,23 @@ export type GuardrailHit = {
 const CARD_SHAPED = /\b(?:\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}|\d{4}[ -]?\d{6}[ -]?\d{5})\b/;
 const SSN = /\b\d{3}[- ]\d{2}[- ]\d{4}\b/;
 
+// V-003: self-harm is handled deterministically with an approved crisis-resource response, never generated.
+const SELF_HARM =
+  /\b(?:(?:kill|hurt|harm|cut|injure)\s+(?:myself|me)|self[- ]?harm|suicid\w*|end (?:my|it all|my own) life|take my (?:own )?life|want to die|don'?t want to (?:live|be alive)|overdose)\b/i;
+
+export const CRISIS_REPLY = [
+  "I'm really sorry you're feeling this way. I'm an AI shopping assistant and can't help with this, but people can, right now:",
+  "• US: call or text 988 (Suicide & Crisis Lifeline), available 24/7",
+  "• Outside the US: findahelpline.com",
+  "• If you're in immediate danger, call 911 or your local emergency number.",
+  "You don't have to go through this alone.",
+].join("\n");
+
 export const GOVERNMENT_ID_REPLY =
   "Please don't share Social Security or other ID numbers here. Restock never needs them, I haven't stored it, and I won't repeat it back.";
 
 export function checkInput(text: string): GuardrailHit | undefined {
+  if (SELF_HARM.test(text)) return { rule: "self_harm", reply: CRISIS_REPLY };
   if (containsCardNumber(text) || CARD_SHAPED.test(text)) return { rule: "card_number" };
   if (SSN.test(text) || /\b(ssn|social security)\b/i.test(text)) return { rule: "government_id", reply: GOVERNMENT_ID_REPLY };
   return undefined;

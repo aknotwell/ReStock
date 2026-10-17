@@ -10,7 +10,10 @@ export const config = {
   publicBaseUrl: process.env.PUBLIC_BASE_URL ?? "http://localhost:3000",
   anthropicApiKey: optional("ANTHROPIC_API_KEY"),
   photonApiKey: optional("PHOTON_API_KEY"),
-  photonWebhookSecret: optional("PHOTON_WEBHOOK_SECRET"),
+  photonProjectId: optional("PHOTON_PROJECT_ID"),
+  photonPlatform: (process.env.PHOTON_PLATFORM ?? "imessage") as "imessage" | "sms" | "whatsapp" | "telegram",
+  devInbound: process.env.DEV_INBOUND === "1",
+  demoSeed: process.env.DEMO_SEED === "1",
   stripeSecretKey: optional("STRIPE_SECRET_KEY"),
   stripeWebhookSecret: optional("STRIPE_WEBHOOK_SECRET"),
 };

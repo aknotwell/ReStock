@@ -11,4 +11,7 @@
 
 ## VEYZL
 
-<!-- If VEYZL flagged anything: the finding, the fix commit, and add it to docs/veyzl.md -->
+<!-- Did the VEYZL check flag anything on this PR? -->
+- [ ] VEYZL passed with no findings
+- [ ] VEYZL flagged findings. Each one is fixed in its own commit ending with a `VEYZL: V-###` trailer and logged in `docs/veyzl.md`:
+  - `V-###`: <finding> → <what changed>

@@ -68,11 +68,40 @@ That's 3 sponsored side tracks, which is the maximum. Don't add another one with
 
 - **No direct pushes to `main`** once the code starts. Do all work on a branch (`p1/photon-webhook`, `p3/stripe-setup`, …) and open a PR so the **VEYZL check runs**.
 - Keep PRs small and frequent, and merge them often. Don't sit on a big branch overnight.
-- When VEYZL flags something, fix it **in a follow-up commit on the same PR**, and say in the PR description what was flagged and what changed. These before/after PRs are the evidence the VEYZL prize asks for, so don't squash them away.
+- When VEYZL flags something, follow **Tracking VEYZL-driven changes** below. These before/after PRs are the evidence the VEYZL prize asks for.
+- **Merge PRs with "Create a merge commit"**, not squash or rebase, so the before/after commits stay in `main`'s history.
 - Write commit messages in the imperative mood that say what changed ("Add Luhn guard to inbound messages").
 - Pull and rebase often. If you touch the shared types file, tell the team.
 
+## Tracking VEYZL-driven changes (required, for humans and agents)
+
+The VEYZL prize needs a working AI project, a real VEYZL audit whose result is visible on our PRs, proof that the findings **changed what we shipped** (a screenshot of a passing check doesn't count), and a short demo of one issue → fix → why it matters. Every change made because of a VEYZL finding gets tracked in three places: the log, the commit, and the PR. CI (`veyzl-log` job) fails the PR if a tagged commit isn't logged.
+
+When the VEYZL check flags something on a PR:
+
+1. **Don't fix it silently, and don't amend or force-push.** The flagged commit is the "before". Leave it in the history.
+2. **Claim a finding ID.** Take the next free `V-###` from [docs/veyzl.md](docs/veyzl.md) (V-001, V-002, …).
+3. **Fix it in a new commit on the same PR**, with a trailer as the last line of the commit message:
+   ```
+   Require owner confirmation before charging
+
+   VEYZL: V-003
+   ```
+   Use one trailer per finding the commit addresses. Only tag commits that exist **because of** a VEYZL finding.
+4. **Log it in the same PR.** Add a row to the index and a full entry in `docs/veyzl.md` using the template there: the control, **the link to the failing check run**, what VEYZL said, the before and after commits, what changed, and why it matters.
+5. **Mention it in the PR description** under the "VEYZL" heading, e.g. `V-003: fixed missing human confirmation (NIST AI RMF …)`.
+6. Don't merge until the VEYZL check passes. It's a required status check on `main` (Person 4 sets this up in branch protection).
+7. If a finding is a false positive or we're accepting the risk, still log it, with status `accepted` and the reason. Don't tag any commit for it.
+
+Before pushing, check the log locally with `npm run veyzl:check`. To list every VEYZL-driven change for the demo or the pitch, run `npm run veyzl:log`, or:
+
+```bash
+git log --grep "^VEYZL: " --format="%h %s%n  %(trailers:key=VEYZL,valueonly,separator=%x2C )"
+```
+
 ## Instructions for AI agents specifically
+
+- **If a VEYZL check fails or a VEYZL comment shows up on your PR, follow "Tracking VEYZL-driven changes" exactly.** Tag the commit, log it in `docs/veyzl.md`, and update the PR description. Never fix a VEYZL finding without logging it.
 
 - Stay within the **owner's area** in PLAN.md (Person 1–4) for the task you're given. If you need a change in another area, write a stub or a TODO and say so. Don't rewrite a teammate's module.
 - Don't add new tracks, big features, or new infrastructure that isn't in PLAN.md without asking.

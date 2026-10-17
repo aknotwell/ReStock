@@ -21,6 +21,8 @@ npm run seed           # demo household (Sam, Jake, Priya)
 npm run audit:tunnel   # expose /api/agent over HTTPS for a VEYZL audit (see docs/veyzl.md)
 ```
 
+Open `http://localhost:3000/dashboard` for a read-only preview of the household chat, cart, split options, and monthly budget. Ordering still requires an explicit `order now` message in the group chat.
+
 ## Layout
 
 | Path | Owner | What |

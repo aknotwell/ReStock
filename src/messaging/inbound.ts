@@ -5,7 +5,7 @@ import { OrderError, placeOrder } from "../core/orders.js";
 import { createCardSetupLink } from "../payments/links.js";
 import { containsCardNumber } from "./guard.js";
 import { sendGroup, sendPrivate, type InboundMessage } from "./photon.js";
-import { cardNumberWarning, fmt, groupSummary } from "./templates.js";
+import { cardNumberWarning, fmt, groupSummary, helpMessage } from "./templates.js";
 
 export async function handleInbound(msg: InboundMessage): Promise<void> {
   const household = findHouseholdByGroupChat(msg.groupChatId);
@@ -26,7 +26,7 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   // 2. Understand the message.
   const intents = await parseMessage(msg.text, member.name);
 
-  // 3. Act. TODO(P1): remove_item, set_shared, what_do_i_owe, approve, help
+  // 3. Act. TODO(P1): remove_item, set_shared, what_do_i_owe, approve
   for (const intent of intents) {
     if (intent.type === "add_item" && intent.itemName) {
       const item = addItem({
@@ -40,6 +40,8 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
         household.id,
         `Added ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}). Reply "${item.shared ? "personal" : "shared"}" to change.`,
       );
+    } else if (intent.type === "help") {
+      await sendGroup(household.id, helpMessage());
     } else if (intent.type === "order_now") {
       try {
         const result = await placeOrder(household.id);

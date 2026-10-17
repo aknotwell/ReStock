@@ -40,7 +40,7 @@ Use two terminals:
 npm run dev
 
 # Terminal 2: forward Stripe events to our webhook route
-stripe listen --events checkout.session.completed --forward-to localhost:3000/webhooks/stripe
+stripe listen --events checkout.session.completed,checkout.session.async_payment_succeeded --forward-to localhost:3000/webhooks/stripe
 ```
 
 Newer Stripe CLI versions refuse to start unless `--events` names the events to forward. Add more names, separated by commas, when we handle more events.
@@ -120,15 +120,15 @@ Each payments PR adds its steps here.
 | Add-card link (`createCardSetupLink`) | Built | See **Add-card link** below. Unit tests: `npx vitest run test/card-setup.test.ts` |
 | Owner card gate | Built | `npx vitest run test/owner-gate.test.ts`. It runs "order now" through the real message pipeline with Sam's card removed. Expect: the group gets "Sam needs to add a card before I can order. Sam, I've texted you a secure link.", Sam alone gets the `/c/` link, and no order is created. If Sam texts "order now" directly, he gets the link once, in that chat. The demo seed gives Sam a card, so the gate stays out of the way on the demo path. |
 | Charging an order (`chargeOrder`) | Built | See **Charging an order** below. Unit tests: `npx vitest run test/charge-order.test.ts` |
-| Pay-back link (`createPayBackLink`) | Not built yet | |
-| Short URLs (`/c/:token`, `/p/:token`) | `/c` built, `/p` not yet | `/c/:token` is tested with the add-card link. A made-up token like `/c/abc` shows "This add-card link has expired" (404). |
+| Pay-back link (`createPayBackLink`) | Built | See **Pay-back link** below. Unit tests: `npx vitest run test/pay-back.test.ts` |
+| Short URLs (`/c/:token`, `/p/:token`) | Built | Tested with the add-card and pay-back links. A made-up token like `/c/abc` or `/p/abc` shows "This … link has expired" (404). |
 
 ### Add-card link
 
 How it works: `createCardSetupLink` makes a short link with a random token (`/c/Xk3...`) and doesn't call Stripe yet. When someone taps it, the server creates their Stripe Customer if they don't have one, creates a fresh Checkout session in `setup` mode, and redirects to it. When they finish, Stripe sends `checkout.session.completed`. Our webhook asks Stripe which card was saved and stores only `paymentMethodId` and `cardLast4` on the member.
 
 1. Stop `npm run dev` if it's running. Start the server with the demo household loaded: `npx tsx scripts/try-card-link.ts priya`. It prints an add-card link for Priya, who has no card in the demo.
-2. In a second terminal, run `stripe listen --events checkout.session.completed --forward-to localhost:3000/webhooks/stripe`.
+2. In a second terminal, run `stripe listen --events checkout.session.completed,checkout.session.async_payment_succeeded --forward-to localhost:3000/webhooks/stripe`.
 3. Open the printed link in your browser. You should land on a Stripe page with a **Sandbox** badge and a **Save** button. No amount is shown, because nothing is charged.
 4. Enter test card `4242 4242 4242 4242`, any future expiry, any CVC, and any ZIP. Uncheck "Save with Link". Click **Save**.
 5. You should land on our "Card added" page.
@@ -166,3 +166,25 @@ Expected results for the demo order ($72.75, smart split: Sam $15.65, Jake $46.9
 | Sam's card declines | Jake $46.95 **canceled** (hold released, $0 taken). Sam $25.80 incomplete. The order isn't placed, and the group gets "Sam's card didn't go through… Nobody was charged." |
 
 The "incomplete" entries are attempts that were declined. No money moved, and they don't need cleaning up.
+
+### Pay-back link
+
+How it works: `createPayBackLink(debtId)` makes a short `/p/<token>` link and doesn't call Stripe yet. When the debtor taps it, the server creates a Stripe Checkout **payment** page for exactly the debt amount and redirects there.
+
+- **Can't be paid twice.** Every tap for the same debt, even from a newer link, reuses the same Stripe page while it's open, and a Stripe page can only be paid once. If that page expires (after 24 hours), the next tap makes a fresh one.
+- **Already paid.** If the debt is already paid, or Stripe says the page was paid and our webhook just hasn't arrived yet, the link goes straight to our "Thanks!" page.
+- **Webhook.** When they pay, Stripe sends `checkout.session.completed`. We check that it's paid and that the amount matches the debt, then mark the debt paid with `markDebtPaid`. Bank payments offered through Link clear days later and arrive as `checkout.session.async_payment_succeeded`, which is handled the same way.
+- **Debts under $0.50** can't go through Stripe. The link shows a short page asking them to settle it with the owner directly.
+- **Where the money goes:** into our Stripe account, not the owner's bank. Sending it on to the owner needs Stripe Connect, which PLAN.md lists as a stretch goal. For the hackathon we record the debt as paid.
+
+Steps:
+
+1. Stop `npm run dev` if it's running. Run `npx tsx scripts/try-pay-back-link.ts`. It loads the demo household, adds the demo debt (Priya owes Sam $10.15), and prints a pay-back link.
+2. In a second terminal, run `stripe listen --events checkout.session.completed,checkout.session.async_payment_succeeded --forward-to localhost:3000/webhooks/stripe`.
+3. Open the link. You should land on a Stripe **Sandbox** page showing **$10.15**.
+4. Open the link again in another tab. It should be the same page (same `cs_test_...` in the address bar).
+5. Pay with `4242 4242 4242 4242`, any future expiry, any CVC, and any ZIP. Uncheck "Save with Link". You should land on our "Thanks!" page.
+6. Terminal 2 shows `checkout.session.completed` `[200]`, and Terminal 1 prints `debt demo-debt-priya: paid`.
+7. Open the link once more. It goes straight to "Thanks!" without a new Stripe page.
+
+If step 6 shows nothing in Terminal 2, the CLI missed the event (we saw this happen once). Run `stripe events list --limit 5`, find the `checkout.session.completed` event, and run `stripe events resend evt_...`. Resending is also how to check retries: you get another `[200]` and the debt stays paid.

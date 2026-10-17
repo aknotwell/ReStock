@@ -9,6 +9,8 @@
     "start": "tsx src/server.ts",
     "seed": "tsx scripts/seed.ts",
     "typecheck": "tsc --noEmit",
+    "veyzl:check": "scripts/check-veyzl-log.sh",
+    "veyzl:log": "git log --grep \"^VEYZL: \" --format=\"%h %s  [%(trailers:key=VEYZL,valueonly,separator=%x2C )]\"",
     "test": "vitest run",
     "test:watch": "vitest"
   },

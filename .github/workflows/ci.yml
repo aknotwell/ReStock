@@ -15,3 +15,14 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+
+  veyzl-log:
+    # Every commit tagged `VEYZL: V-###` must be logged in docs/veyzl.md (AGENTS.md).
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - run: scripts/check-veyzl-log.sh origin/${{ github.base_ref }}

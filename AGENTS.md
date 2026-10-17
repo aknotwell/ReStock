@@ -73,6 +73,7 @@ That's 3 sponsored side tracks, which is the maximum. Don't add another one with
 - **Merge PRs with "Create a merge commit"**, not squash or rebase, so the before/after commits stay in `main`'s history.
 - Write commit messages in the imperative mood that say what changed ("Add Luhn guard to inbound messages").
 - Pull and rebase often. If you touch the shared types file, tell the team.
+- **Auto-sync:** Claude Code hooks (`.claude/settings.json`) run `scripts/sync-main.sh` at session start and before each prompt (at most once a minute). It fetches origin and fast-forwards local `main` when that's safe. It never touches a feature branch or uncommitted work. Agents: start new work from the fresh `main` (`git switch -c <branch> origin/main`), and if the hook reports your branch is behind, ask before rebasing.
 
 ## Tracking VEYZL-driven changes (required, for humans and agents)
 

@@ -69,6 +69,23 @@ Type these only into Stripe's own hosted pages, never into the chat or our code.
 
 Full list: [docs.stripe.com/testing](https://docs.stripe.com/testing).
 
+## Demo household cards
+
+With `DEMO_SEED=1` and a `sk_test_` key, the server gives the seeded Sam and Jake **real cards in our Stripe sandbox** at startup (`scripts/demoCards.ts`), so "order now" on the demo household really charges, in test mode. Priya stays card-less on purpose.
+
+| Member | Stripe test card | Shows as |
+|---|---|---|
+| Sam (owner) | `pm_card_visa` | Visa ending 4242 |
+| Jake | `pm_card_visa_debit` | Visa ending **5556**. PLAN.md says 1881, but Stripe has no built-in test card ending 1881. |
+| Priya | none | No card, so her share goes on Sam's card with a debt |
+
+- The startup log shows `Demo cards: Sam ending 4242, Jake ending 5556 (Stripe sandbox)`.
+- **Restarts reuse the same customers and cards.** They're found by fixed non-routable emails, `sam@demo.restock.invalid` and `jake@demo.restock.invalid`.
+- **Without a Stripe key, or if Stripe is unreachable,** the server still starts and keeps placeholder cards. "order now" then replies "Sam, please add your card again…".
+- `seedDemo()` itself is unchanged and stays offline, so tests don't call Stripe.
+
+To try the full demo without Photon: start the server with `DEMO_SEED=1 DEV_INBOUND=1 npm run dev` (local only, never on a public deploy). Then run `curl -X POST localhost:3000/dev/inbound -H 'content-type: application/json' -d '{"fromPhone":"+15550000002","text":"order now","spaceId":"dev-group"}'`. The server log shows the group summary, both receipts, and Priya's "you owe" text, and the Stripe dashboard shows Jake $46.95 and Sam $25.80.
+
 ## Feature test steps
 
 Each payments PR adds its steps here.

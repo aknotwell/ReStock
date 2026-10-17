@@ -11,8 +11,6 @@ const fakeStripe = {
   refunds: { create: vi.fn() },
 };
 vi.mock("../src/payments/stripe.js", () => ({ requireStripe: () => fakeStripe }));
-// computeShares is Person 2's and not built yet. Use PLAN.md's expected smart split; remove this once it lands.
-vi.mock("../src/core/split.js", () => ({ computeShares: () => ({ sam: 1565, jake: 4695, priya: 1015 }) }));
 
 const { seedDemo } = await import("../scripts/seed.js");
 const { db, pendingItems } = await import("../src/core/store.js");

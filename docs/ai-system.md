@@ -20,6 +20,7 @@ What the AI in Restock does, what data it uses, and what controls keep it safe. 
 | Intent parsing | `src/ai/parseMessage.ts`, prompt in `src/ai/prompt.ts` | One chat message and the sender's first name | Intents: `add_item`, `remove_item`, `set_shared`, `order_now`, `what_do_i_owe`, `approve`, `help`, `unknown` | Command parser (`src/messaging/commands.ts`) |
 | Product matching | `src/ai/matchItem.ts` | The requested item text | A `productId` from the catalog, plus a confidence level | Keyword and alias match (`src/core/catalog.ts`) |
 | Restock suggestions | `src/ai/suggestRestock.ts` | Purchase history (product IDs and dates), the current cart, today's date | Up to 3 catalog products, each with a one-line reason | Restock-interval rule (`dueByInterval`) |
+| General questions | `src/ai/answerQuestion.ts` | One question, wrapped as untrusted data | `answer`, `unsure` or `refuse`; the answer is re-checked by the guardrails | A fixed in-scope reply |
 
 ## Data
 
@@ -36,7 +37,15 @@ What the AI in Restock does, what data it uses, and what controls keep it safe. 
 4. **Output validation.** Every model response must match a Zod schema, and product IDs must exist in the catalog. Low-confidence matches, refusals, malformed output, and API errors all fall back to deterministic code.
 5. **AI disclosure.** The agent tells users it's an AI assistant (the "help" reply, `helpMessage` in `src/messaging/templates.ts`) and never poses as a household member.
 6. **Prompt-injection resistance.** The system prompts tell the model to ignore instructions inside chat messages, and the model has no tools that could act on them.
-7. **Sensitive data protection.** The card-number guard runs before the AI, and adding a card happens only on Stripe-hosted pages, in test mode.
+7. **Deterministic guardrails before the model** (`src/safety/guardrails.ts`):
+   - Self-harm gets a fixed crisis-resource reply.
+   - Disallowed content (weapons, drugs, malware, violence) gets a fixed refusal.
+   - Prompt injection and data-exfiltration attempts get a fixed refusal.
+   - Fabrication requests get a fixed refusal.
+   - SSNs and card-shaped numbers get a fixed refusal and are never echoed.
+8. **Output redaction** (`src/safety/redact.ts`): every outbound text is stripped of emails, phone numbers, IDs, card numbers, and API keys.
+9. **Audit endpoint** (`POST /api/agent`): runs the real pipeline for a sandbox household so VEYZL can test it. Optionally protected with a bearer token (`AGENT_API_TOKEN`).
+10. **Sensitive data protection.** The card-number guard runs before the AI, and adding a card happens only on Stripe-hosted pages, in test mode.
 
 ## Known risks and mitigations
 

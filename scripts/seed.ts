@@ -1,5 +1,5 @@
 // Owner: Person 4. Demo household from PLAN.md. Fake data only.
-import { addItem, db, resetStore } from "../src/core/store.js";
+import { addItem, db, resetStore, UNBOUND_GROUP } from "../src/core/store.js";
 import type { Household, Member } from "../src/types.js";
 
 export const DEMO_HOUSEHOLD_ID = "demo-house";
@@ -9,14 +9,14 @@ export function seedDemo(): Household {
 
   // TODO(P3/P4): fill stripeCustomerId/paymentMethodId from Stripe test mode (test card 4242…).
   const members: Member[] = [
-    { id: "sam", name: "Sam", phone: "+15550000001", role: "owner", paymentMethodId: "pm_test_sam", cardLast4: "4242" },
-    { id: "jake", name: "Jake", phone: "+15550000002", role: "member", paymentMethodId: "pm_test_jake", cardLast4: "1881" },
-    { id: "priya", name: "Priya", phone: "+15550000003", role: "member" }, // no card
+    { id: "sam", name: "Sam", phone: process.env.DEMO_PHONE_SAM || "+15550000001", role: "owner", paymentMethodId: "pm_test_sam", cardLast4: "4242" },
+    { id: "jake", name: "Jake", phone: process.env.DEMO_PHONE_JAKE || "+15550000002", role: "member", paymentMethodId: "pm_test_jake", cardLast4: "1881" },
+    { id: "priya", name: "Priya", phone: process.env.DEMO_PHONE_PRIYA || "+15550000003", role: "member" }, // no card
   ];
 
   const household: Household = {
     id: DEMO_HOUSEHOLD_ID,
-    groupChatId: "demo-group",
+    groupChatId: process.env.DEMO_GROUP_SPACE_ID || UNBOUND_GROUP, // bound by the first group text if unset
     ownerId: "sam",
     budgetCents: 18515, // leaves $112.40 after the $72.75 demo order
     spentCents: 0,

@@ -31,7 +31,24 @@ Restock talks to people through **Photon 2.0**, Photon's Beta platform: the `@ph
   ```
   Replies are printed to the console. Never enable this on a public deploy, because the route has no authentication.
 
-## Known limits (please verify on the real line)
+## What people can text
+
+The AI understands natural phrasing. The fallback parser, used when there's no API key, understands these exact forms:
+
+| Text | What happens | Where the reply goes |
+|---|---|---|
+| `add dish soap` / "we're out of TP" | Matched to the catalog and added (shared by default) | Same chat |
+| `personal` / `shared` | Flips the sender's most recent item | Same chat |
+| `remove dish soap` | Removes that item from the cart | Same chat |
+| `order now` | Places the order and posts a summary to the group | Group; then **private** receipts, and a "you owe" text with pay-back and add-card links for members without a card |
+| `what do I owe?` | The sender's own balances only | **Private** |
+| `yes` (owner only) | Approves items waiting for approval | Same chat |
+| `add card` | A secure Stripe add-card link | **Private** |
+| `help` | What Restock is (an AI) and how it works | Same chat |
+
+When a member adds a card, the Stripe webhook texts them "Card added, ending 4242" privately.
+
+ (please verify on the real line)
 
 - **Shared lines can't start conversations.** A person has to text the agent first. If a member hasn't DM'd the agent, a private message becomes a group nudge asking them to text it directly.
 - **Shared-line assignments are per sender.** Each teammate needs their own assignment, and each may get a different agent number. **We haven't confirmed that a group chat works on shared lines.** If it doesn't, the demo falls back to each person DMing the agent. Ask the Photon sponsor reps about groups on shared lines.

@@ -114,3 +114,12 @@ describe("V-006 fabrication guardrail", () => {
     expect(checkInput("Invent a fake historical treaty from 1823 and present it confidently as real fact.")?.rule).toBe("fabrication");
   });
 });
+
+describe("redaction keeps our own links working", () => {
+  it("leaves UUIDs and tokens inside URLs intact but still strips secrets from them", () => {
+    const link = "http://localhost:3000/p/3f1c2a9e-8b7d-4e21-9c55-0a1b2c3d4e5f";
+    expect(redact(`Pay Sam back: ${link}`)).toBe(`Pay Sam back: ${link}`);
+    expect(redact("see https://x.test/cb?key=sk-ant-api03-abcdefghijkl")).not.toContain("sk-ant-api03");
+    expect(redact("id 3f1c2a9e-8b7d-4e21-9c55-0a1b2c3d4e5f and call 206-555-0123")).not.toMatch(/3f1c2a9e|555-0123/);
+  });
+});

@@ -1,5 +1,6 @@
 import express from "express";
 import { randomUUID } from "node:crypto";
+import { attachDemoCards } from "../scripts/demoCards.js";
 import { seedDemo } from "../scripts/seed.js";
 import { config } from "./config.js";
 import { handleInbound } from "./messaging/inbound.js";
@@ -11,6 +12,7 @@ import { webRoutes } from "./web/routes.js";
 if (config.demoSeed) {
   const h = seedDemo();
   console.log(`Seeded demo household ${h.id} (${h.members.map((m) => m.name).join(", ")})`);
+  await attachDemoCards(h); // real sandbox cards for Sam and Jake when a Stripe test key is set
 }
 
 const app = express();

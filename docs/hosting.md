@@ -14,6 +14,7 @@
    |---|---|---|
    | `ANTHROPIC_API_KEY` | Your Claude key. Ideally a **separate** key with its own spend limit, so you can revoke it after the event. | AI parsing and answers (the VEYZL "Paris" probe) |
    | `DEMO_SEED` | `1` | Seeds Sam, Jake and Priya at startup (the store is in memory) |
+   | `DEMO_MEMBERS` | *(optional)* the real demo household as JSON, replacing Sam/Jake/Priya. See [photon.md](photon.md#demo-household). | Live demo with your own phones |
    | `AGENT_API_TOKEN` | *(optional)* a long random string | Locks `/api/agent`. Only set this if VEYZL can send `Authorization: Bearer …`. |
    | `PHOTON_API_KEY`, `PHOTON_PROJECT_ID` | *(see warning below)* | Real iMessage |
    | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | `sk_test_…` / `whsec_…` only. The app refuses live keys. The `whsec_` here comes from a **dashboard webhook endpoint for this domain**, not from `stripe listen`. See [Webhooks on Railway](stripe.md#webhooks-on-railway-the-deployed-demo). | Payments: charging, add-card and pay-back links |

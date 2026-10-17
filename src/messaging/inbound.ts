@@ -5,7 +5,7 @@ import { addItem, findHouseholdByGroupChat, findMemberByPhone, householdsForPhon
 import { OrderError, placeOrder } from "../core/orders.js";
 import { createCardSetupLink } from "../payments/links.js";
 import type { Household } from "../types.js";
-import { containsCardNumber } from "./guard.js";
+import { checkInput } from "../safety/guardrails.js";
 import { reply, sendGroup, sendPrivate, type InboundMessage } from "./photon.js";
 import { cardNumberWarning, fmt, groupSummary, helpMessage } from "./templates.js";
 
@@ -30,8 +30,13 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   let part = 0;
   const respond = (text: string) => reply(msg, text, part++);
 
-  // 1. Card-number guard runs before anything else sees the text — even for unknown senders.
-  if (containsCardNumber(msg.text)) {
+  // 1. Guardrails run before anything else sees the text — even for unknown senders.
+  const hit = checkInput(msg.text);
+  if (hit?.reply) {
+    await respond(hit.reply);
+    return;
+  }
+  if (hit?.rule === "card_number") {
     const household = resolveHousehold(msg);
     const member = household && findMemberByPhone(household, msg.fromPhone);
     const link = member ? await createCardSetupLink(member.id) : undefined;

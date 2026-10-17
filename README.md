@@ -6,6 +6,7 @@ An AI agent in your household group chat that keeps shared supplies stocked and 
 - **Rules for humans and coding agents:** [AGENTS.md](AGENTS.md)
 - **How the AI works (system card):** [docs/ai-system.md](docs/ai-system.md)
 - **Photon 2.0 messaging setup:** [docs/photon.md](docs/photon.md)
+- **Run a VEYZL audit (step-by-step, anyone on the team):** [docs/veyzl-runbook.md](docs/veyzl-runbook.md)
 - **Hosting (Railway, stable URL for VEYZL/Photon/Stripe):** [docs/hosting.md](docs/hosting.md)
 - **Stripe setup and testing payments:** [docs/stripe.md](docs/stripe.md)
 

@@ -57,6 +57,31 @@ stripe trigger checkout.session.completed
 
 Terminal 2 should show the events with `[200]` next to them. A `[400]` means the signing secret in `.env` doesn't match your CLI login. Redo step 3 and restart `npm run dev`.
 
+## Webhooks on Railway (the deployed demo)
+
+`stripe listen` only forwards events to **your laptop**. The deployed server on Railway needs its own webhook endpoint in the Stripe dashboard, or two features silently stop halfway on the live demo:
+
+- **Add-card link:** the person sees "Card added", but the card is never saved on their member.
+- **Pay-back link:** Priya's payment succeeds in Stripe, but her debt stays **open** in Restock.
+
+"order now" and the charges themselves work without webhooks, because `chargeOrder` waits for Stripe's answer directly.
+
+**Set it up once (a human does this in the dashboard):**
+
+1. **Find the Railway domain.** In Railway, open the Restock project → the service → **Settings** → **Networking** → **Public Networking**. It looks like `something.up.railway.app`, and it's also the **Backend URL** set in VEYZL. Check it by opening `https://<domain>/health`, which should show `{"ok":true}`.
+2. **Add the endpoint.** In the Stripe dashboard, make sure you're in the **same sandbox** as Railway's `STRIPE_SECRET_KEY` (check the account name in the top-left). Then go to **Developers → Webhooks → Add endpoint** (newer dashboards: **Workbench → Webhooks → Create an event destination**, choosing "Your account" and "Webhook endpoint").
+   - **Endpoint URL:** `https://<domain>/webhooks/stripe`
+   - **Events:** `checkout.session.completed` and `checkout.session.async_payment_succeeded`. Only these two, since the server ignores everything else.
+3. **Copy this endpoint's signing secret.** On the endpoint's page, click **Reveal** under "Signing secret". It starts with `whsec_`, but it is **not** the secret from `stripe listen --print-secret`. Each endpoint has its own.
+4. **Put it on Railway.** Go to service → **Variables** → set `STRIPE_WEBHOOK_SECRET` to that value, and make sure `STRIPE_SECRET_KEY` is the `sk_test_` key from the same sandbox. Railway redeploys automatically. Don't paste the secret into chat, code, or a PR.
+
+**Check that it works:**
+
+1. On the endpoint's page in Stripe, click **Send test event** and choose `checkout.session.completed`. The delivery should show **200**. Our server ignores test events that don't belong to a real member or debt, but it still verifies the signature and answers 200. A **400** means the secret on Railway doesn't match this endpoint, so redo steps 3–4.
+2. **The real check:** on the deployed demo, open a pay-back link from a "you owe" text and pay with `4242 4242 4242 4242`. The endpoint's page should list `checkout.session.completed` with **200**, and texting "what do I owe?" as Priya should no longer show the debt.
+
+**Keep your local setup separate.** Your laptop keeps using the `stripe listen` secret in your own `.env`, and Railway uses the endpoint's secret. Both can point at the same sandbox at the same time: the dashboard endpoint delivers to Railway, and `stripe listen` delivers to your laptop. Stripe sends each event to both, and each server only acts on members and debts it knows about.
+
 ## Test cards
 
 Type these only into Stripe's own hosted pages, never into the chat or our code. Any future expiry date, any 3-digit CVC, and any ZIP work.

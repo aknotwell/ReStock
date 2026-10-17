@@ -40,8 +40,12 @@ Use two terminals:
 npm run dev
 
 # Terminal 2: forward Stripe events to our webhook route
-stripe listen --forward-to localhost:3000/webhooks/stripe
+stripe listen --events checkout.session.completed --forward-to localhost:3000/webhooks/stripe
 ```
+
+Newer Stripe CLI versions refuse to start unless `--events` names the events to forward. Add more names, separated by commas, when we handle more events.
+
+If `npm run dev` crashes with `EADDRINUSE`, or the server prints "listening" but your changes don't seem to take effect, an old server is still holding port 3000. Close the old terminal, or end the stray `node` process in Task Manager.
 
 Check that Terminal 2 says `Ready!` and that `http://localhost:3000/health` returns `{"ok":true}`.
 
@@ -71,8 +75,23 @@ Each payments PR adds its steps here.
 
 | Feature | Status | How to test |
 |---|---|---|
-| Add-card link (`createCardSetupLink`) | Not built yet | |
+| Add-card link (`createCardSetupLink`) | Built | See **Add-card link** below. Unit tests: `npx vitest run test/card-setup.test.ts` |
 | Owner card gate | Not built yet | |
 | Charging an order (`chargeOrder`) | Not built yet | |
 | Pay-back link (`createPayBackLink`) | Not built yet | |
-| Short URLs (`/c/:token`, `/p/:token`) | Not built yet | |
+| Short URLs (`/c/:token`, `/p/:token`) | `/c` built, `/p` not yet | `/c/:token` is tested with the add-card link. A made-up token like `/c/abc` shows "This add-card link has expired" (404). |
+
+### Add-card link
+
+How it works: `createCardSetupLink` makes a short link with a random token (`/c/Xk3...`) and doesn't call Stripe yet. When someone taps it, the server creates their Stripe Customer if they don't have one, creates a fresh Checkout session in `setup` mode, and redirects to it. When they finish, Stripe sends `checkout.session.completed`. Our webhook asks Stripe which card was saved and stores only `paymentMethodId` and `cardLast4` on the member.
+
+1. Stop `npm run dev` if it's running. Start the server with the demo household loaded: `npx tsx scripts/try-card-link.ts priya`. It prints an add-card link for Priya, who has no card in the demo.
+2. In a second terminal, run `stripe listen --events checkout.session.completed --forward-to localhost:3000/webhooks/stripe`.
+3. Open the printed link in your browser. You should land on a Stripe page with a **Sandbox** badge and a **Save** button. No amount is shown, because nothing is charged.
+4. Enter test card `4242 4242 4242 4242`, any future expiry, any CVC, and any ZIP. Uncheck "Save with Link". Click **Save**.
+5. You should land on our "Card added" page.
+6. Terminal 2 shows `checkout.session.completed` with `[200]`. Terminal 1 prints `priya: paymentMethodId=pm_... cardLast4=4242`.
+7. Retry safety: copy the `evt_...` ID from Terminal 2 and run `stripe events resend evt_...`. You should get another `[200]`, and the member's card stays the same.
+8. In the Stripe dashboard (sandbox), **Customers** shows "Priya" with a Visa ending 4242.
+
+If step 6 shows `[400]`, your `STRIPE_WEBHOOK_SECRET` doesn't match `stripe listen --print-secret`. Redo setup step 3, then restart the server. Links only last until the server restarts, because tokens are kept in memory for now.

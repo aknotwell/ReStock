@@ -11,7 +11,7 @@ import type { Household } from "../types.js";
 import { checkInput } from "../safety/guardrails.js";
 import { reply, sendGroup, sendPrivate, type InboundMessage } from "./photon.js";
 import { parseCommand } from "./commands.js";
-import { cardNumberWarning, fmt, groupSummary, helpMessage } from "./templates.js";
+import { CARD_NUMBER_WARNING, fmt, groupSummary, helpMessage, inviteToAddCard } from "./templates.js";
 
 /** Which household a message belongs to. Binds an unbound household to its group chat on first contact. */
 function resolveHousehold(msg: InboundMessage): Household | undefined {
@@ -43,10 +43,8 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   if (hit?.rule === "card_number") {
     const household = resolveHousehold(msg);
     const member = household && findMemberByPhone(household, msg.fromPhone);
-    const link = member ? await createCardSetupLink(member.id) : undefined;
-    const warning = cardNumberWarning(link ?? "ask your household's budget owner for an invite link");
-    if (msg.spaceKind === "direct" || !member) await respond(warning);
-    else await sendPrivate(member.id, warning, `card-guard:${msg.messageId}`);
+    if (msg.spaceKind === "direct" || !member) await respond(CARD_NUMBER_WARNING);
+    else await sendPrivate(member.id, CARD_NUMBER_WARNING, `card-guard:${msg.messageId}`);
     return;
   }
 
@@ -95,6 +93,11 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       );
     } else if (intent.type === "question") {
       await respond(await answerQuestion(msg.text, member.name));
+    } else if (intent.type === "add_card") {
+      // The secure Stripe link goes only to the member, privately, and only when they ask for it.
+      const invite = inviteToAddCard(await createCardSetupLink(member.id));
+      if (msg.spaceKind === "direct") await respond(invite);
+      else await sendPrivate(member.id, invite, `add-card:${msg.messageId}`);
     } else if (intent.type === "help") {
       await respond(helpMessage());
     } else if (intent.type === "order_now") {

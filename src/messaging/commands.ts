@@ -10,6 +10,7 @@ export function parseCommand(text: string): Intent[] {
   if (t === "yes" || t === "approve" || t === "approved") return [{ type: "approve", ...none }];
   if (/what do i owe|my balance/.test(t)) return [{ type: "what_do_i_owe", ...none }];
   if (t === "help") return [{ type: "help", ...none }];
+  if (/^(add|update|set up) (a |my )?card$/.test(t)) return [{ type: "add_card", ...none }];
 
   const add = /^add\s+(.+?)(\s+(personal|for me))?$/.exec(t);
   if (add?.[1]) {

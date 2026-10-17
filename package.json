@@ -17,7 +17,7 @@
     "test:watch": "vitest"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",

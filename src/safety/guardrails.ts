@@ -4,7 +4,7 @@
 import { containsCardNumber } from "../messaging/guard.js";
 
 export type GuardrailHit = {
-  rule: "self_harm" | "disallowed" | "card_number" | "government_id";
+  rule: "self_harm" | "disallowed" | "injection" | "card_number" | "government_id";
   reply?: string; // fixed reply; undefined = caller builds it (e.g. needs a member-specific link)
 };
 
@@ -38,12 +38,28 @@ const DISALLOWED: RegExp[] = [
 export const DISALLOWED_REPLY =
   "I can't help with that. I'm Restock, an AI assistant for household shopping: I can add things to your cart, place orders, and split the bill.";
 
+// V-005: attempts to override instructions or pull out prompts, secrets, or other people's data.
+// Enforced in code; the model also only ever sees chat text wrapped as untrusted data (src/ai/parseMessage.ts).
+const INJECTION: RegExp[] = [
+  /\b(?:ignore|disregard|forget|override|bypass)\b.{0,30}\b(?:instructions|rules|guidelines|prompt|restrictions|policies)\b/i,
+  /\b(?:system|hidden|initial|original)\s+(?:prompt|instructions|message)\b/i,
+  /\b(?:developer|dev|god|admin|debug|jailbreak|dan)\s+mode\b/i,
+  /\bno (?:restrictions|rules|filters|limits)\b/i,
+  /\b(?:reveal|print|dump|show|list|leak|tell me|give me|output|export)\b.{0,40}\b(?:api ?keys?|passwords?|tokens?|secrets?|credentials|env(?:ironment)? var\w*|config(?:uration)?)\b/i,
+  /\b(?:reveal|print|dump|show|list|leak|give me|output|export)\b.{0,40}\b(?:private|personal|customer|user|other people'?s?)\b.{0,20}\b(?:data|info\w*|records|details)\b/i,
+  /\b(?:reveal|print|dump|show|list|leak|give me|output|export)\b.{0,40}\b(?:email addresses|emails|phone numbers|addresses)\b/i,
+];
+
+export const INJECTION_REPLY =
+  "I can't share my instructions, configuration, credentials, or anyone's personal information. I'm Restock, an AI assistant for household shopping: I can add things to your cart, place orders, and split the bill.";
+
 export const GOVERNMENT_ID_REPLY =
   "Please don't share Social Security or other ID numbers here. Restock never needs them, I haven't stored it, and I won't repeat it back.";
 
 export function checkInput(text: string): GuardrailHit | undefined {
   if (SELF_HARM.test(text)) return { rule: "self_harm", reply: CRISIS_REPLY };
   if (DISALLOWED.some((re) => re.test(text))) return { rule: "disallowed", reply: DISALLOWED_REPLY };
+  if (INJECTION.some((re) => re.test(text))) return { rule: "injection", reply: INJECTION_REPLY };
   if (containsCardNumber(text) || CARD_SHAPED.test(text)) return { rule: "card_number" };
   if (SSN.test(text) || /\b(ssn|social security)\b/i.test(text)) return { rule: "government_id", reply: GOVERNMENT_ID_REPLY };
   return undefined;

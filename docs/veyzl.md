@@ -8,7 +8,12 @@ This is the evidence for the "Best Use of VEYZL" track: every VEYZL finding, and
 - Every commit that fixes a finding ends with the trailer `VEYZL: V-###`.
 - CI fails a PR whose tagged commits aren't logged here.
 
-## What the judges want (keep all four true)
+## Automatic checks on every PR
+
+- **VEYZL Audit** (VEYZL's GitHub App): tests whatever is deployed at the Backend URL. Point it at the Railway deploy of `main` ([docs/hosting.md](hosting.md)).
+- **`veyzl-probes`** (our CI): replays every VEYZL probe through `POST /api/agent` against **the PR's own code**, so a guardrail regression fails before merge. The model-backed probe needs the `ANTHROPIC_API_KEY` repo secret.
+
+ (keep all four true)
 
 - [ ] **A working AI project.** The agent parses messages with Claude (`src/ai/`) and acts on them live.
 - [ ] **A real VEYZL audit on the repo.** GitHub is connected, the VEYZL check runs on every PR, and its result is visible on the PR. VEYZL is a **required status check** on `main`, so a failing audit blocks the merge.

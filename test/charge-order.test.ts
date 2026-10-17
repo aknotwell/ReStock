@@ -27,7 +27,7 @@ const fakeStripe = {
   },
   refunds: { create: vi.fn(async () => ({ id: "re_1" })) },
 };
-vi.mock("../src/payments/stripe.js", () => ({ requireStripe: () => fakeStripe }));
+vi.mock("../src/payments/stripe.js", () => ({ requireStripe: () => fakeStripe, STRIPE_MIN_CHARGE_CENTS: 50 }));
 
 const { chargeOrder, ChargeFailedError, STRIPE_MIN_CHARGE_CENTS } = await import("../src/payments/charges.js");
 

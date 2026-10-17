@@ -2,7 +2,10 @@
 import Stripe from "stripe";
 import { config } from "../config.js";
 
-export const stripe = config.stripeSecretKey ? new Stripe(config.stripeSecretKey) : undefined;
+/** Stripe won't charge less than $0.50 USD. */
+export const STRIPE_MIN_CHARGE_CENTS = 50;
+
+export const stripe =config.stripeSecretKey ? new Stripe(config.stripeSecretKey) : undefined;
 
 export function requireStripe(): Stripe {
   if (!stripe) throw new Error("STRIPE_SECRET_KEY (sk_test_...) is not set");

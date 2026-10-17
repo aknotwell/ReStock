@@ -7,10 +7,10 @@ import type Stripe from "stripe";
 import { newId } from "../core/store.js";
 import type { Charge, ChargeResult, Debt, Household, Member, Order, Shares } from "../types.js";
 import { assertOwnerCard, findOwner } from "./ownerGate.js";
-import { requireStripe } from "./stripe.js";
+import { requireStripe, STRIPE_MIN_CHARGE_CENTS } from "./stripe.js";
 
-/** Stripe won't charge less than $0.50 USD. Smaller shares go on the owner's charge, with a Debt. */
-export const STRIPE_MIN_CHARGE_CENTS = 50;
+// Shares under Stripe's minimum go on the owner's charge, with a Debt.
+export { STRIPE_MIN_CHARGE_CENTS };
 
 /** The order was not placed and nobody was charged. The message is safe to text to the group. */
 export class ChargeFailedError extends Error {

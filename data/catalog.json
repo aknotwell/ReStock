@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "description": "Demo product catalog for Restock. Prices in integer cents. Fake merchant data for the hackathon demo.",
+  "products": [
+    { "id": "tp-12", "name": "Toilet paper, 12 rolls", "aliases": ["tp", "toilet paper", "loo roll"], "category": "paper", "cents": 1199, "defaultShared": true, "restockDays": 14 },
+    { "id": "pt-6", "name": "Paper towels, 6 rolls", "aliases": ["paper towels", "towels"], "category": "paper", "cents": 999, "defaultShared": true, "restockDays": 14 },
+    { "id": "dish-3", "name": "Dish soap, 3 pack", "aliases": ["dish soap", "dishwashing liquid", "soap"], "category": "cleaning", "cents": 849, "defaultShared": true, "restockDays": 21 },
+    { "id": "dw-pods", "name": "Dishwasher pods, 40 ct", "aliases": ["dishwasher pods", "dishwasher tabs"], "category": "cleaning", "cents": 1299, "defaultShared": true, "restockDays": 30 },
+    { "id": "laundry", "name": "Laundry detergent, 64 loads", "aliases": ["laundry detergent", "detergent", "tide"], "category": "cleaning", "cents": 1499, "defaultShared": true, "restockDays": 30 },
+    { "id": "trash-bags", "name": "Trash bags, 13 gal, 45 ct", "aliases": ["trash bags", "garbage bags", "bin bags"], "category": "cleaning", "cents": 1099, "defaultShared": true, "restockDays": 30 },
+    { "id": "sponges", "name": "Sponges, 6 pack", "aliases": ["sponges", "sponge"], "category": "cleaning", "cents": 549, "defaultShared": true, "restockDays": 21 },
+    { "id": "hand-soap", "name": "Hand soap refill, 50 oz", "aliases": ["hand soap", "hand wash"], "category": "cleaning", "cents": 799, "defaultShared": true, "restockDays": 30 },
+    { "id": "coffee", "name": "Ground coffee, 24 oz", "aliases": ["coffee", "coffee beans"], "category": "pantry", "cents": 1299, "defaultShared": true, "restockDays": 14 },
+    { "id": "eggs", "name": "Eggs, 18 ct", "aliases": ["eggs"], "category": "grocery", "cents": 549, "defaultShared": true, "restockDays": 7 },
+    { "id": "oat-milk", "name": "Oat milk", "aliases": ["oat milk", "oatly"], "category": "grocery", "cents": 549, "defaultShared": false, "restockDays": 7 },
+    { "id": "chips", "name": "Tortilla chips", "aliases": ["chips", "tortilla chips"], "category": "snacks", "cents": 479, "defaultShared": false, "restockDays": 7 },
+    { "id": "air-fryer", "name": "Air fryer", "aliases": ["air fryer"], "category": "appliance", "cents": 3200, "defaultShared": false, "restockDays": null }
+  ]
+}

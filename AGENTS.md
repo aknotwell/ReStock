@@ -55,6 +55,7 @@ That's 3 sponsored side tracks, which is the maximum. Don't add another one with
 - Users can always correct the AI. Anything it did can be undone with a text.
 - The agent says it's an AI assistant when asked, and never pretends to be a household member.
 - Keep the system prompt and the tool definitions in version control (`src/ai/`) so the VEYZL audit can see what the agent does.
+- Keep [docs/ai-system.md](docs/ai-system.md) (the AI system card) current. Any PR that adds or changes an AI component, the data it sees, or a safety control updates it in the same PR.
 - If the LLM call fails or returns malformed output, fall back to the simple command parser (`add …`, `order now`). The demo must keep working without the LLM.
 
 ### Code

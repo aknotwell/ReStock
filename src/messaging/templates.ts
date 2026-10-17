@@ -31,6 +31,14 @@ export function youOwe(owner: Member, share: Cents, payLink: string, cardLink: s
   return `Your share of this week's order is ${fmt(share)}. ${owner.name}'s card covered it.\nPay ${owner.name} back: ${payLink}\nOr add a card so it's paid automatically next time: ${cardLink}`;
 }
 
+export function helpMessage(): string {
+  return [
+    "I'm Restock, an AI assistant for this household. I'm not a person.",
+    "Text what you need (\"we're out of TP\") and I'll add it to the cart. Say \"personal\" if it's just for you.",
+    "Nothing is charged until someone texts \"order now\". I never ask for card numbers in chat.",
+  ].join("\n");
+}
+
 export function inviteToAddCard(cardLink: string): string {
   return `Add a card so your share is paid automatically: ${cardLink}`;
 }

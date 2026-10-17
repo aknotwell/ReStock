@@ -14,6 +14,7 @@ export const config = {
   photonPlatform: (process.env.PHOTON_PLATFORM ?? "imessage") as "imessage" | "sms" | "whatsapp" | "telegram",
   devInbound: process.env.DEV_INBOUND === "1",
   demoSeed: process.env.DEMO_SEED === "1",
+  agentApiToken: optional("AGENT_API_TOKEN"),
   stripeSecretKey: optional("STRIPE_SECRET_KEY"),
   stripeWebhookSecret: optional("STRIPE_WEBHOOK_SECRET"),
 };

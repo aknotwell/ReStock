@@ -1,5 +1,6 @@
 // Owner: Person 1. Photon 2.0 transport (Beta platform, @photon-ai/api, https://photon.codes/docs/beta).
 // Without PHOTON_API_KEY + PHOTON_PROJECT_ID it runs in console mode: sends are printed, nothing is received.
+import { AsyncLocalStorage } from "node:async_hooks";
 import { ApiError, Photon } from "@photon-ai/api";
 import { config } from "../config.js";
 import { findMember, getHousehold } from "../core/store.js";
@@ -25,12 +26,27 @@ export const photonEnabled = () => photon !== undefined;
 const agentBySpace = new Map<string, string>();
 const dmByHandle = new Map<string, string>();
 
+// When set, outbound texts are collected here instead of sent (used by POST /api/agent).
+const capture = new AsyncLocalStorage<string[]>();
+
+/** Run `fn` and return every text it would have sent, without sending anything. */
+export async function captureOutbound(fn: () => Promise<void>): Promise<string[]> {
+  const out: string[] = [];
+  await capture.run(out, fn);
+  return out;
+}
+
 export function rememberInbound(msg: InboundMessage): void {
   if (msg.agentUserId) agentBySpace.set(msg.spaceId, msg.agentUserId);
   if (msg.spaceKind === "direct") dmByHandle.set(msg.fromPhone, msg.spaceId);
 }
 
 async function send(spaceId: string, text: string, idempotencyKey: string): Promise<void> {
+  const captured = capture.getStore();
+  if (captured) {
+    captured.push(text);
+    return;
+  }
   if (!photon || !config.photonProjectId) {
     console.log(`[photon:console → ${spaceId}]\n${text}\n`);
     return;
@@ -58,6 +74,11 @@ export async function sendGroup(householdId: string, text: string, key: string =
  * otherwise asks them in the group to DM the agent (shared lines can't start new chats).
  */
 export async function sendPrivate(memberId: string, text: string, key: string = crypto.randomUUID()): Promise<void> {
+  const captured = capture.getStore();
+  if (captured) {
+    captured.push(text);
+    return;
+  }
   const found = findMember(memberId);
   if (!found) throw new Error(`Unknown member ${memberId}`);
   const dm = dmByHandle.get(found.member.phone);

@@ -5,6 +5,7 @@ import { config } from "./config.js";
 import { handleInbound } from "./messaging/inbound.js";
 import { rememberInbound, startPolling, type InboundMessage } from "./messaging/photon.js";
 import { stripeWebhook } from "./payments/webhook.js";
+import { agentApi } from "./web/agentApi.js";
 import { webRoutes } from "./web/routes.js";
 
 if (config.demoSeed) {
@@ -41,6 +42,8 @@ if (config.devInbound) {
   });
   console.warn("DEV_INBOUND=1: POST /dev/inbound is enabled. Never enable this on a public deploy.");
 }
+
+app.post("/api/agent", agentApi);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 app.use(webRoutes);

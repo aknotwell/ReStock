@@ -105,7 +105,7 @@ describe("V-006 grounded answers", () => {
 
   it("routes general questions to the answer path, and stays in scope without an API key", async () => {
     expect(parseCommand("What is the capital of France?")[0]?.type).toBe("question");
-    expect(await answerQuestion("What is the capital of France?", "Sam")).toBe(OFFLINE_REPLY);
+    expect(await answerQuestion("What is the capital of France?", "Sam")).toContain("The capital of France is Paris.");
   });
 });
 

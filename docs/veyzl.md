@@ -8,12 +8,28 @@ This is the evidence for the "Best Use of VEYZL" track: every VEYZL finding, and
 - Every commit that fixes a finding ends with the trailer `VEYZL: V-###`.
 - CI fails a PR whose tagged commits aren't logged here.
 
+## Running the API audit
+
+VEYZL runs when a PR is opened, but its API audit sends test prompts to the **Backend URL** in VEYZL's settings. It doesn't build or run the PR. So the PR's code has to be running at that URL while the audit runs:
+
+1. Install the tunnel tool once: `brew install cloudflared`
+2. Check out the PR branch you want audited, and make sure `.env` has `ANTHROPIC_API_KEY`. Without it, the "capital of France" probe fails.
+3. Run `npm run audit:tunnel`. This:
+   - starts the server with `DEV_INBOUND=0`
+   - opens a public HTTPS tunnel
+   - checks that `POST /api/agent` refuses a prompt-injection probe through the tunnel
+   - prints the URL
+4. In VEYZL, paste the printed URL as the Backend URL, then re-run the audit on the PR. Keep the script running until the audit finishes.
+5. Copy the passing check-run link into the matching entries below.
+
+`/api/agent` runs the **same pipeline as real Photon texts** (`handleInbound`: guardrails → Claude → templates), but for an isolated sandbox household. The replies are returned in the HTTP response, not sent. The quick-tunnel URL changes every run, so update VEYZL each time. If `AGENT_API_TOKEN` is set, VEYZL must send `Authorization: Bearer <token>`.
+
 ## Automatic checks on every PR
 
 - **VEYZL Audit** (VEYZL's GitHub App): tests whatever is deployed at the Backend URL. Point it at the Railway deploy of `main` ([docs/hosting.md](hosting.md)).
 - **`veyzl-probes`** (our CI): replays every VEYZL probe through `POST /api/agent` against **the PR's own code**, so a guardrail regression fails before merge. The model-backed probe needs the `ANTHROPIC_API_KEY` repo secret.
 
- (keep all four true)
+## What the judges want (keep all four true)
 
 - [ ] **A working AI project.** The agent parses messages with Claude (`src/ai/`) and acts on them live.
 - [ ] **A real VEYZL audit on the repo.** GitHub is connected, the VEYZL check runs on every PR, and its result is visible on the PR. VEYZL is a **required status check** on `main`, so a failing audit blocks the merge.
@@ -30,6 +46,8 @@ This is the evidence for the "Best Use of VEYZL" track: every VEYZL finding, and
 | V-004 | fixed | EU AI Act Art. 15; OECD AI Principles | Explosive-device instructions not refused | [#5](https://github.com/aknotwell/ReStock/pull/5) | [audit](https://veyzl.ai/projects/6471593c-23cd-44c5-a627-63b6ec9f57c5/audits?audit=4abb5b90-9423-41bd-9803-4ce8ebb50bb5&report=issues) | 12c163e |
 | V-005 | fixed | EU AI Act Art. 15; SAIF; GDPR Art. 5 | Prompt injection, secret and data exfiltration not refused | [#5](https://github.com/aknotwell/ReStock/pull/5) | [audit](https://veyzl.ai/projects/6471593c-23cd-44c5-a627-63b6ec9f57c5/audits?audit=4abb5b90-9423-41bd-9803-4ce8ebb50bb5&report=issues) | e61a756 |
 | V-006 | fixed | EU AI Act Art. 15; NIST AI RMF MEASURE | No factual answer; fabrication not refused | [#5](https://github.com/aknotwell/ReStock/pull/5) | [audit](https://veyzl.ai/projects/6471593c-23cd-44c5-a627-63b6ec9f57c5/audits?audit=4abb5b90-9423-41bd-9803-4ce8ebb50bb5&report=issues) | b055e9f, b61dd8b |
+
+| V-007 | implemented; audit pending | Reported safety, privacy, injection, factual accuracy and hallucination metrics | Enforce command authorization and source-backed output; extend privacy controls | [#11](https://github.com/aknotwell/ReStock/pull/11) | [PR #6 failed check](https://github.com/aknotwell/ReStock/pull/6/checks?check_run_id=117499134983) | `382f6bd` |
 
 ## Entries
 
@@ -141,3 +159,17 @@ Pick the best `Demo-worthy: yes` entry and fill this in before judging. It shoul
 4. **Proof:** the passing re-run on the same PR, and the merge that was blocked until it passed.
 
 Likely candidates in Restock: charging without explicit human confirmation, unvalidated LLM output changing the cart, card numbers or phone numbers reaching the LLM or logs, and the agent not saying it's an AI.
+
+### V-007: Enforce boundaries after the reported eight-metric failure
+
+- **Status:** implemented; remote audit pending, not claimed passing.
+- **Found:** 2026-10-17, user supplied the eight-metric report from PR #6.
+- **Control:** the supplied summary reports disallowed content, injection, factual accuracy, self-harm, secret leakage, data exfiltration, hallucinations, and PII leakage; it does not identify framework control IDs.
+- **Check run:** [failing PR #6 check](https://github.com/aknotwell/ReStock/pull/6/checks?check_run_id=117499134983). Passing rerun: pending.
+- **Before:** `65cbed0` is the original failed PR head. This follow-up starts from `a67a714` on main, retaining the team's V-001–V-006 fixes rather than duplicating their catalog, Photon transport, or safety modules. Main still accepted model-issued checkout intents and uncited model-written factual answers.
+- **After:** `382f6bd` in [PR #11](https://github.com/aknotwell/ReStock/pull/11). Model checkout/approval intents are discarded; the inbound handler independently requires a member's exact `order now` command. Model responses are schema-validated again, item text is moderated, provider errors are logged without payloads, member names are omitted from parser context, and additional identifiers/secrets are filtered before model calls and outbound sends. Existing self-harm/disallowed-content fixed responses are retained and exercised through the real pipeline.
+- **Grounding:** general answers now use reviewed source-backed facts or exact demo catalog records, with citations generated in code; unsupported questions abstain. Restock reasons come from deterministic interval calculations instead of model prose. The reviewed fact source is the [EU France country profile](https://european-union.europa.eu/principles-countries-history/eu-countries/france_en), checked 2026-10-17. No arbitrary model citation is trusted.
+- **Why it matters:** a model cannot authorize spending, invent facts in replies, or forward credential-shaped text through these paths. These controls are bounded; regex moderation cannot guarantee detection of all harmful or obfuscated inputs.
+- **Validation:** 62 tests passed; six pre-existing split tests skipped. Type-check passed. All ten report probes exercised through the real HTTP endpoint with no external sends. Checkout authorization/handoff tested with a mocked order service; real payments remain outside this verification.
+- **PR workflow:** the user explicitly requested another PR, overriding the usual same-PR rule. PR #6 and its failed head remain intact as before evidence.
+- **Demo-worthy:** yes: force a malicious model to emit checkout for an unrelated message, then show that the order service is never called.

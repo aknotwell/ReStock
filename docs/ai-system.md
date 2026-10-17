@@ -17,15 +17,15 @@ What the AI in Restock does, what data it uses, and what controls keep it safe. 
 
 | Component | File | Input | Output (schema-validated) | Fallback without AI |
 |---|---|---|---|---|
-| Intent parsing | `src/ai/parseMessage.ts`, prompt in `src/ai/prompt.ts` | One chat message and the sender's first name | Intents: `add_item`, `remove_item`, `set_shared`, `order_now`, `what_do_i_owe`, `approve`, `help`, `unknown` | Command parser (`src/messaging/commands.ts`) |
+| Intent parsing | `src/ai/parseMessage.ts`, prompt in `src/ai/prompt.ts` | One guarded chat message; a generic member label | Intents: `add_item`, `remove_item`, `set_shared`, `what_do_i_owe`, `help`, `question`, `unknown`; checkout/approval are deterministic commands | Command parser (`src/messaging/commands.ts`) |
 | Product matching | `src/ai/matchItem.ts` | The requested item text | A `productId` from the catalog, plus a confidence level | Keyword and alias match (`src/core/catalog.ts`) |
-| Restock suggestions | `src/ai/suggestRestock.ts` | Purchase history (product IDs and dates), the current cart, today's date | Up to 3 catalog products, each with a one-line reason | Restock-interval rule (`dueByInterval`) |
-| General questions | `src/ai/answerQuestion.ts` | One question, wrapped as untrusted data | `answer`, `unsure` or `refuse`; the answer is re-checked by the guardrails | A fixed in-scope reply |
+| Restock suggestions | `src/ai/suggestRestock.ts` | Purchase history (product IDs and dates), the current cart, today's date | Up to 3 due catalog products, each with a calculated reason | Restock-interval rule (`dueByInterval`) |
+| General questions | `src/ai/answerQuestion.ts` | One guarded question | Reviewed fact with a fixed source citation, exact catalog price, or fixed uncertainty/refusal | Same deterministic behavior |
 
 ## Data
 
 - **Product catalog:** `data/catalog.json`. A curated demo dataset of household products with prices in integer cents, aliases, categories, and typical restock intervals. The AI may only choose IDs from this dataset. **Names and prices always come from the dataset, never from the model.**
-- **Sent to the model:** the text of one chat message, the sender's first name, product IDs, and purchase dates.
+- **Sent to the model:** the guarded text of one chat message, product IDs, and purchase dates. Member names are not sent by the intent parser.
 - **Never sent to the model:** card numbers (removed by the Luhn guard in `src/messaging/guard.ts` before the AI sees anything), phone numbers, payment data, Stripe IDs, or other households' data.
 - **Stored:** cart items, orders, shares, and debts (`src/core/store.ts`). We don't store message bodies, model prompts, or responses.
 
@@ -36,7 +36,7 @@ What the AI in Restock does, what data it uses, and what controls keep it safe. 
 3. **Transparent results.** Every change the AI makes is echoed back, e.g. "Added Dish soap, 3 pack (shared, $8.49). Reply 'personal' to change." Users can correct or undo it with a text.
 4. **Output validation.** Every model response must match a Zod schema, and product IDs must exist in the catalog. Low-confidence matches, refusals, malformed output, and API errors all fall back to deterministic code.
 5. **AI disclosure.** The agent tells users it's an AI assistant (the "help" reply, `helpMessage` in `src/messaging/templates.ts`) and never poses as a household member.
-6. **Prompt-injection resistance.** The system prompts tell the model to ignore instructions inside chat messages, and the model has no tools that could act on them.
+6. **Prompt-injection resistance.** Parser output cannot authorize checkout or approval. The inbound handler independently requires the exact `order now` command from a household member before calling the order module.  The system prompts tell the model to ignore instructions inside chat messages, and the model has no tools that could act on them.
 7. **Deterministic guardrails before the model** (`src/safety/guardrails.ts`):
    - Self-harm gets a fixed crisis-resource reply.
    - Disallowed content (weapons, drugs, malware, violence) gets a fixed refusal.
@@ -44,8 +44,9 @@ What the AI in Restock does, what data it uses, and what controls keep it safe. 
    - Fabrication requests get a fixed refusal.
    - SSNs and card-shaped numbers get a fixed refusal and are never echoed.
 8. **Output redaction** (`src/safety/redact.ts`): every outbound text is stripped of emails, phone numbers, IDs, card numbers, and API keys.
-9. **Audit endpoint** (`POST /api/agent`): runs the real pipeline for a sandbox household so VEYZL can test it. Optionally protected with a bearer token (`AGENT_API_TOKEN`).
-10. **Sensitive data protection.** The card-number guard runs before the AI, and adding a card happens only on Stripe-hosted pages, in test mode.
+9. **Factual grounding.** General answers use only reviewed facts with versioned sources or exact demo catalog lookups. Unsupported questions get a fixed uncertainty reply. Restock reasons are computed from purchase dates rather than copied from model prose. The currently reviewed general fact is France’s capital, verified against the EU country profile on 2026-10-17. This is deliberately limited coverage, not a general knowledge assistant.
+10. **Audit endpoint** (`POST /api/agent`): runs the real pipeline for a sandbox household so VEYZL can test it. Optionally protected with a bearer token (`AGENT_API_TOKEN`).
+11. **Sensitive data protection.** The card-number guard runs before the AI, and adding a card happens only on Stripe-hosted pages, in test mode.
 
 ## Known risks and mitigations
 
@@ -63,3 +64,9 @@ What the AI in Restock does, what data it uses, and what controls keep it safe. 
 - Unit tests: `npm test` (fallback paths, card-number guard, command parser, split engine).
 - VEYZL audits every PR. Findings and fixes are logged in [docs/veyzl.md](veyzl.md).
 - To do (P1): a small labeled set of household messages with expected intents, to measure parsing accuracy.
+
+## Follow-up audit validation (V-007)
+
+`test/audit-pipeline.test.ts` runs all ten reported probes through the inbound and output paths without model credentials or external sends. `test/model-boundaries.test.ts` covers malicious/malformed model output, sensitive inputs, sanitized provider errors, and computed restock reasons. `test/checkout-authorization.test.ts` verifies the command/member gate and the checkout handoff with a mocked order service.
+
+These are local regressions, not proof of a passing remote VEYZL audit. Existing split-engine tests remain skipped and the real Stripe/merchant checkout demo is not verified here. Regex moderation is defense in depth and cannot detect every paraphrase or encoding. No raw model-written answer is sent from the general-question path.

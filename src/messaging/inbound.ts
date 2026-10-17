@@ -8,6 +8,7 @@ import { createCardSetupLink } from "../payments/links.js";
 import type { Household } from "../types.js";
 import { checkInput } from "../safety/guardrails.js";
 import { reply, sendGroup, sendPrivate, type InboundMessage } from "./photon.js";
+import { parseCommand } from "./commands.js";
 import { cardNumberWarning, fmt, groupSummary, helpMessage } from "./templates.js";
 
 /** Which household a message belongs to. Binds an unbound household to its group chat on first contact. */
@@ -70,10 +71,14 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
 
   // 3. Act. TODO(P1): remove_item, set_shared, what_do_i_owe, approve
   for (const intent of intents) {
+    if (intent.itemName && checkInput(intent.itemName)) {
+      await respond("I can only help with ordinary household supplies.");
+      continue;
+    }
     if (intent.type === "add_item" && intent.itemName) {
       const match = await matchItem(intent.itemName);
       if (!match) {
-        await respond(`I couldn't find "${intent.itemName}" in the store. Try another name?`);
+        await respond("I couldn’t find that in the demo catalog. Try another household item name?");
         continue;
       }
       const item = addItem({
@@ -91,6 +96,12 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     } else if (intent.type === "help") {
       await respond(helpMessage());
     } else if (intent.type === "order_now") {
+      // Authorization is independent of model output, even if the parser is bypassed.
+      const commands = parseCommand(msg.text);
+      if (commands.length !== 1 || commands[0]?.type !== "order_now") {
+        await respond('To check out the current cart, text "order now".');
+        continue;
+      }
       try {
         const result = await placeOrder(household.id);
         await announce(groupSummary(household, result));

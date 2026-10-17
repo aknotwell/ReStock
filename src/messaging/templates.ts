@@ -46,4 +46,4 @@ export function inviteToAddCard(cardLink: string): string {
 // V-008: the refusal is fixed text. It never carries a link or token, so a reply to a message that
 // contained card data can't itself leak an identifier. The secure link is sent only on request ("add card").
 export const CARD_NUMBER_WARNING =
-  "Please don't send card numbers in chat. I've ignored that message and didn't store or repeat it. To add a card safely, text \"add card\" and I'll send you a private, secure link.";
+  "I can't confirm, store, or repeat card numbers, so I've ignored that message. Please don't send card details in chat. To add a card safely, text \"add card\" and I'll send you a private, secure link.";

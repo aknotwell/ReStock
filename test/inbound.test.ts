@@ -52,7 +52,7 @@ describe("handleInbound", () => {
     await send(text(SAM, "add 4242 4242 4242 4242", "direct", "pho_spc_dm_sam"));
     expect(db.items.size).toBe(before);
     const out = logs.join("\n");
-    expect(out).toMatch(/don't send card numbers/);
+    expect(out).toMatch(/I can't confirm, store, or repeat card numbers/);
     expect(out).not.toMatch(/4242 4242/);
   });
 
@@ -77,6 +77,7 @@ describe("V-008 card links only on request", () => {
     vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => void logs.push(a.join(" ")));
     await send(text(SAM, "my card is 4532 1234 5678 9010", "direct", "pho_spc_dm_sam_v8"));
     const out = logs.join("\n");
+    expect(out).toMatch(/I can't confirm, store, or repeat card numbers/);
     expect(out).toMatch(/text "add card"/);
     expect(out).not.toMatch(/https?:\/\/|\/c\/|4532/);
   });

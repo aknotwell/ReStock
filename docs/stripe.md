@@ -77,7 +77,7 @@ Each payments PR adds its steps here.
 |---|---|---|
 | Add-card link (`createCardSetupLink`) | Built | See **Add-card link** below. Unit tests: `npx vitest run test/card-setup.test.ts` |
 | Owner card gate | Built | `npx vitest run test/owner-gate.test.ts`. It runs "order now" through the real message pipeline with Sam's card removed. Expect: the group gets "Sam needs to add a card before I can order. Sam, I've texted you a secure link.", Sam alone gets the `/c/` link, and no order is created. If Sam texts "order now" directly, he gets the link once, in that chat. The demo seed gives Sam a card, so the gate stays out of the way on the demo path. |
-| Charging an order (`chargeOrder`) | Not built yet | |
+| Charging an order (`chargeOrder`) | Built | See **Charging an order** below. Unit tests: `npx vitest run test/charge-order.test.ts` |
 | Pay-back link (`createPayBackLink`) | Not built yet | |
 | Short URLs (`/c/:token`, `/p/:token`) | `/c` built, `/p` not yet | `/c/:token` is tested with the add-card link. A made-up token like `/c/abc` shows "This add-card link has expired" (404). |
 
@@ -95,3 +95,32 @@ How it works: `createCardSetupLink` makes a short link with a random token (`/c/
 8. In the Stripe dashboard (sandbox), **Customers** shows "Priya" with a Visa ending 4242.
 
 If step 6 shows `[400]`, your `STRIPE_WEBHOOK_SECRET` doesn't match `stripe listen --print-secret`. Redo setup step 3, then restart the server. Links only last until the server restarts, because tokens are kept in memory for now.
+
+### Charging an order
+
+How it works, in two steps, so nobody is charged for an order that doesn't go through:
+
+1. **Hold.** Each member with a card gets a hold for their share on their own card. A hold is like a hotel hold: the money is set aside but not taken. Then the owner gets one hold for their own share **plus** the shares of anyone their card is covering:
+   - members with no card
+   - members whose card was declined or needs 3D Secure (they aren't there to approve it)
+   - shares under $0.50, which is Stripe's minimum charge
+2. **Capture.** Only when every hold succeeded do we take the money. If the owner's card fails, or Stripe can't be reached, every hold is released and nobody pays.
+
+Everyone the owner covered gets a `Debt` (member → owner), which the pay-back link will settle. Each Stripe request uses an idempotency key built from the order and the member (`restock-hold-<orderId>-<memberId>`), so retrying the same order never charges twice.
+
+Test cards for this, saved to a Customer through Stripe's test PaymentMethods (never type card numbers into our code):
+
+| PaymentMethod | Card | What happens |
+|---|---|---|
+| `pm_card_visa` | 4242 4242 4242 4242 | Charges succeed |
+| `pm_card_chargeCustomerFail` | 4000 0000 0000 0341 | Saves fine, but every charge is declined. Use it to test falling back to the owner's card. |
+
+Expected results for the demo order ($72.75, smart split: Sam $15.65, Jake $46.95, Priya $10.15). Check them in the dashboard under **Payments**:
+
+| Scenario | Stripe dashboard |
+|---|---|
+| Everyone's card works | Jake **$46.95 succeeded**. Sam **$25.80 succeeded** ($15.65 + Priya's $10.15). Priya owes Sam $10.15. |
+| Jake's card declines | Jake $46.95 **incomplete** (never charged). Sam **$72.75 succeeded**. Jake owes Sam $46.95, Priya owes Sam $10.15. |
+| Sam's card declines | Jake $46.95 **canceled** (hold released, $0 taken). Sam $25.80 incomplete. The order isn't placed, and the group gets "Sam's card didn't go through… Nobody was charged." |
+
+The "incomplete" entries are attempts that were declined. No money moved, and they don't need cleaning up.

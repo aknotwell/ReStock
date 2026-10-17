@@ -2,16 +2,18 @@
 import { answerQuestion, OFFLINE_REPLY } from "../ai/answerQuestion.js";
 import { matchItem } from "../ai/matchItem.js";
 import { parseMessage } from "../ai/parseMessage.js";
-import { addItem, findHouseholdByGroupChat, findMemberByPhone, householdsForPhone, UNBOUND_GROUP } from "../core/store.js";
+import { addItem, db, findHouseholdByGroupChat, findMemberByPhone, householdsForPhone, pendingItems, UNBOUND_GROUP } from "../core/store.js";
+import { openDebtsFor, owedTo } from "../core/ledger.js";
 import { OrderError, placeOrder } from "../core/orders.js";
 import { createCardSetupLink } from "../payments/links.js";
 import { ChargeFailedError } from "../payments/charges.js";
 import { OwnerCardRequiredError, ownerCardRequest } from "../payments/ownerGate.js";
-import type { Household } from "../types.js";
+import type { Debt, Household } from "../types.js";
 import { checkInput } from "../safety/guardrails.js";
 import { reply, sendGroup, sendPrivate, type InboundMessage } from "./photon.js";
 import { parseCommand } from "./commands.js";
-import { CARD_NUMBER_WARNING, fmt, groupSummary, helpMessage, inviteToAddCard } from "./templates.js";
+import { balanceSummary, CARD_NUMBER_WARNING, fmt, groupSummary, helpMessage, inviteToAddCard } from "./templates.js";
+import { sendOrderTexts } from "./afterOrder.js";
 
 /** Which household a message belongs to. Binds an unbound household to its group chat on first contact. */
 function resolveHousehold(msg: InboundMessage): Household | undefined {
@@ -69,7 +71,7 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     return;
   }
 
-  // 3. Act. TODO(P1): remove_item, set_shared, what_do_i_owe, approve
+  // 3. Act.
   for (const intent of intents) {
     if (intent.itemName && checkInput(intent.itemName)) {
       await respond("I can only help with ordinary household supplies.");
@@ -93,6 +95,45 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       );
     } else if (intent.type === "question") {
       await respond(await answerQuestion(msg.text, member.name));
+    } else if (intent.type === "set_shared" || intent.type === "remove_item") {
+      // Which item? A named one, else the sender's most recent addition.
+      const named = intent.itemName?.toLowerCase();
+      const item = named
+        ? pendingItems(household.id).find((i) => i.name.toLowerCase().includes(named))
+        : pendingItems(household.id).filter((i) => i.addedBy === member.id).at(-1);
+      if (!item) {
+        await respond(named ? `I couldn't find "${intent.itemName}" in the cart.` : "There's nothing of yours in the cart to change.");
+      } else if (intent.type === "remove_item") {
+        db.items.delete(item.id);
+        await respond(`Removed ${item.name} from the cart.`);
+      } else {
+        item.shared = intent.shared ?? !item.shared;
+        await respond(`${item.name} is now ${item.shared ? "shared (split with everyone)" : `personal (just ${member.name})`}.`);
+      }
+    } else if (intent.type === "what_do_i_owe") {
+      // Only the sender's own balances, and only sent to them.
+      const nameOf = (id: string) => household.members.find((m) => m.id === id)?.name ?? "someone";
+      const total = (debts: Debt[], key: "creditorId" | "debtorId") => {
+        const by = new Map<string, number>();
+        for (const d of debts) by.set(d[key], (by.get(d[key]) ?? 0) + d.cents);
+        return [...by];
+      };
+      const text = balanceSummary(
+        total(openDebtsFor(member.id), "creditorId").map(([id, cents]) => ({ to: nameOf(id), cents })),
+        total(owedTo(member.id), "debtorId").map(([id, cents]) => ({ from: nameOf(id), cents })),
+      );
+      if (msg.spaceKind === "direct") await respond(text);
+      else await sendPrivate(member.id, text, `balance:${msg.messageId}`);
+    } else if (intent.type === "approve") {
+      const waiting = pendingItems(household.id).filter((i) => i.needsApproval);
+      if (member.id !== household.ownerId) {
+        if (waiting.length) await respond("Only the budget owner can approve that.");
+      } else if (waiting.length === 0) {
+        await respond("Nothing is waiting for approval.");
+      } else {
+        for (const i of waiting) i.needsApproval = false;
+        await respond(`Approved: ${waiting.map((i) => i.name).join(", ")}. They'll be in the next order.`);
+      }
     } else if (intent.type === "add_card") {
       // The secure Stripe link goes only to the member, privately, and only when they ask for it.
       const invite = inviteToAddCard(await createCardSetupLink(member.id));
@@ -110,7 +151,7 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       try {
         const result = await placeOrder(household.id);
         await announce(groupSummary(household, result));
-        // TODO(P1): private receipts / "you owe" texts via sendPrivate + templates.ts
+        await sendOrderTexts(household, result);
       } catch (err) {
         if (err instanceof OwnerCardRequiredError) {
           // The add-card link goes only to the owner, privately. The group just hears why we stopped.

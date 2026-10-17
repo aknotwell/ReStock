@@ -1,4 +1,5 @@
 // Owner: Person 1. Pipeline: identify household + sender -> guard -> AI parse -> act -> reply.
+import { answerQuestion } from "../ai/answerQuestion.js";
 import { matchItem } from "../ai/matchItem.js";
 import { parseMessage } from "../ai/parseMessage.js";
 import { addItem, findHouseholdByGroupChat, findMemberByPhone, householdsForPhone, UNBOUND_GROUP } from "../core/store.js";
@@ -79,6 +80,8 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       await respond(
         `Added ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}). Reply "${item.shared ? "personal" : "shared"}" to change.`,
       );
+    } else if (intent.type === "question") {
+      await respond(await answerQuestion(msg.text, member.name));
     } else if (intent.type === "help") {
       await respond(helpMessage());
     } else if (intent.type === "order_now") {

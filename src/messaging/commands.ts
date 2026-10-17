@@ -16,6 +16,8 @@ export function parseCommand(text: string): Intent[] {
     return [{ type: "add_item", itemName: add[1], quantity: null, shared: add[2] ? false : null }];
   }
 
+  if (t.endsWith("?")) return [{ type: "question", ...none }];
+
   // TODO(P1): remove_item, set_shared ("make the chips personal")
   return [{ type: "unknown", ...none }];
 }

@@ -66,3 +66,25 @@ describe("handleInbound", () => {
     expect(logs).toHaveLength(0);
   });
 });
+
+describe("V-008 card links only on request", () => {
+  beforeEach(() => {
+    seedDemo();
+  });
+
+  it("the card-number refusal never contains a link or token", async () => {
+    const logs: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => void logs.push(a.join(" ")));
+    await send(text(SAM, "my card is 4532 1234 5678 9010", "direct", "pho_spc_dm_sam_v8"));
+    const out = logs.join("\n");
+    expect(out).toMatch(/text "add card"/);
+    expect(out).not.toMatch(/https?:\/\/|\/c\/|4532/);
+  });
+
+  it("'add card' sends the secure setup link to the member", async () => {
+    const logs: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => void logs.push(a.join(" ")));
+    await send(text(SAM, "add card", "direct", "pho_spc_dm_sam_v8b"));
+    expect(logs.join("\n")).toMatch(/Add a card so your share is paid automatically: https?:\/\/\S+\/c\/\S+/);
+  });
+});

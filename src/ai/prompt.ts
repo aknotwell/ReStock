@@ -10,6 +10,7 @@ Turn each chat message into zero or more intents:
 - Never emit order_now or approve. The server handles explicit checkout and approval commands without the model.
 - what_do_i_owe: the sender asks what they owe or their balance.
 - help: the sender asks how Restock works.
+- add_card: the sender wants to add or update their payment card ("add card", "how do I add my card").
 - question: a general question unrelated to the cart, orders or bill (e.g. trivia). A deterministic step answers only reviewed facts with sources.
 - unknown: casual chat that needs no action. Return an empty list or a single unknown intent.
 

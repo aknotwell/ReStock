@@ -3,262 +3,384 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#f5f6f2">
-<title>Household dashboard | Restock</title>
+<meta name="theme-color" content="#f6f7f4">
+<title>Household spending | Restock</title>
 <style>
   :root {
     color-scheme: light;
-    --ink: #19231f;
-    --muted: #758078;
-    --line: #e7ebe5;
-    --paper: #fff;
-    --canvas: #f5f6f2;
-    --green: #296b4d;
-    --green-dark: #1e553b;
-    --green-soft: #e9f4ec;
-    --shadow: 0 18px 50px rgba(31, 48, 37, .07);
+    --ink: #202a24;
+    --muted: #788078;
+    --line: #e8ebe5;
+    --canvas: #f6f7f4;
+    --green: #28734e;
+    --green-soft: #edf5ef;
+    --blue: #566db1;
+    --blue-soft: #f0f2fa;
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
+
   * { box-sizing: border-box; }
-  body { margin: 0; min-width: 320px; background: var(--canvas); color: var(--ink); }
-  button { color: inherit; font: inherit; }
-  .shell { width: min(1180px, calc(100% - 48px)); margin: 0 auto; }
-  .topbar { height: 76px; border-bottom: 1px solid #e9ece7; background: rgba(255,255,255,.78); }
-  .topbar-inner { height: 100%; display: flex; align-items: center; justify-content: space-between; }
-  .brand { display: flex; align-items: center; gap: 10px; font-size: 19px; font-weight: 760; letter-spacing: -.7px; }
-  .brand-mark { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 11px; color: #fff; background: var(--green); }
-  .household-switch { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 12px; background: #fff; padding: 8px 12px; font-size: 13px; font-weight: 650; }
-  .household-avatar { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 9px; background: #f0e8d9; }
-  main { padding: 35px 0 64px; }
-  .intro { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin-bottom: 25px; }
-  .eyebrow { margin: 0 0 8px; color: var(--green); font-size: 11px; font-weight: 750; letter-spacing: 1.4px; text-transform: uppercase; }
-  h1 { margin: 0; font-size: clamp(25px, 3vw, 34px); line-height: 1.15; letter-spacing: -1.25px; }
-  .intro-copy { max-width: 550px; margin: 9px 0 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
-  .month-pill { flex: none; padding: 9px 12px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: #556159; font-size: 12px; font-weight: 650; }
-  .dashboard-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(390px, .94fr); align-items: start; gap: 22px; }
-  .panel { overflow: hidden; border: 1px solid var(--line); border-radius: 20px; background: var(--paper); box-shadow: var(--shadow); }
-  .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 20px 22px 16px; }
-  .panel-title { margin: 0; font-size: 15px; font-weight: 720; letter-spacing: -.25px; }
-  .panel-subtitle { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
-  .live-label { display: inline-flex; align-items: center; gap: 7px; color: var(--green); font-size: 11px; font-weight: 700; }
-  .live-dot { width: 7px; height: 7px; border-radius: 50%; background: #49a371; box-shadow: 0 0 0 3px #e7f4eb; }
-  .chat-panel { padding-bottom: 14px; }
-  .phone { width: min(100% - 38px, 390px); min-height: 540px; margin: 0 auto 8px; padding: 10px; border: 1px solid #e4e8e2; border-radius: 30px; background: #f4f6f3; }
-  .phone-screen { min-height: 518px; overflow: hidden; border: 1px solid #e6e9e4; border-radius: 22px; background: #fbfcfa; display: flex; flex-direction: column; }
-  .chat-top { display: flex; align-items: center; gap: 10px; min-height: 62px; padding: 10px 14px; border-bottom: 1px solid #e9ece7; background: #fff; }
-  .back { color: var(--green); font-size: 21px; font-weight: 500; }
-  .group-avatar { position: relative; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: #e7f0e6; font-size: 16px; }
-  .group-avatar::after { position: absolute; right: -2px; bottom: -1px; width: 11px; height: 11px; border: 2px solid white; border-radius: 50%; background: #58a675; content: ""; }
-  .group-name { font-size: 13px; font-weight: 720; }
-  .group-members { margin-top: 2px; color: var(--muted); font-size: 10px; }
-  .chat-more { margin-left: auto; color: #839087; font-weight: 800; letter-spacing: 2px; }
-  .chat-body { display: flex; flex: 1; flex-direction: column; gap: 12px; padding: 15px 12px; background-color: #f4f6f3; background-image: radial-gradient(#e5e9e3 .7px, transparent .7px); background-size: 15px 15px; }
-  .date-stamp { align-self: center; margin: 1px 0 2px; padding: 5px 9px; border-radius: 99px; background: rgba(255,255,255,.85); color: #78837b; font-size: 9px; font-weight: 650; }
-  .message { max-width: 86%; align-self: flex-start; }
-  .message.mine { align-self: flex-end; }
-  .sender { margin: 0 0 4px 8px; color: var(--green); font-size: 9px; font-weight: 700; }
-  .bubble { padding: 8px 10px; border: 1px solid rgba(226,232,224,.9); border-radius: 13px 13px 13px 4px; background: #fff; color: #29342e; font-size: 11px; line-height: 1.45; box-shadow: 0 2px 5px rgba(26,43,31,.025); }
-  .mine .bubble { border-color: #d8ecdf; border-radius: 13px 13px 4px 13px; background: #e5f3e9; }
-  .bubble-time { margin: 3px 3px 0; color: #939d95; font-size: 8px; text-align: right; }
-  .agent-bubble { display: flex; align-items: flex-start; gap: 7px; }
-  .agent-icon { flex: none; width: 19px; height: 19px; display: grid; place-items: center; border-radius: 7px; background: var(--green); color: #fff; font-size: 10px; }
-  .agent-copy { padding: 8px 10px; border: 1px solid #d9e9dc; border-radius: 4px 13px 13px 13px; background: #f0f7f0; color: #294633; font-size: 10px; line-height: 1.45; }
-  .agent-copy strong { font-weight: 750; }
-  .chat-notice { padding: 10px 13px; border-top: 1px solid #e8ece7; background: #fff; color: #7a857d; font-size: 10px; line-height: 1.45; text-align: center; }
-  .cart-panel { padding-bottom: 18px; }
-  .cart-total { color: var(--ink); font-size: 17px; font-weight: 760; }
-  .items-list { padding: 0 20px; }
-  .item-row { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; gap: 11px; padding: 11px 0; border-top: 1px solid #f0f2ee; }
-  .item-icon { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 12px; background: #f3f4ed; font-size: 18px; }
-  .item-name { margin: 0; font-size: 12px; font-weight: 690; }
-  .item-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 4px; color: var(--muted); font-size: 10px; }
-  .tag { padding: 3px 7px; border-radius: 999px; font-size: 9px; font-weight: 700; }
-  .tag.shared { background: var(--green-soft); color: var(--green); }
-  .tag.personal { background: #f1f0ed; color: #70736d; }
-  .item-price { align-self: start; padding-top: 2px; font-size: 12px; font-weight: 700; }
-  .budget-card { margin: 16px 20px 0; padding: 15px; border: 1px solid #e4ebe3; border-radius: 15px; background: #f8faf7; }
-  .budget-top { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
-  .budget-label { color: #647168; font-size: 10px; font-weight: 650; }
-  .budget-remain { margin-top: 4px; font-size: 22px; font-weight: 760; letter-spacing: -.7px; }
-  .budget-remain small { color: #69766d; font-size: 11px; font-weight: 550; letter-spacing: 0; }
-  .budget-side { color: #68736b; font-size: 10px; line-height: 1.55; text-align: right; }
-  .progress { height: 6px; overflow: hidden; margin-top: 12px; border-radius: 99px; background: #e7ece6; }
-  .progress span { display: block; width: 39.3%; height: 100%; border-radius: inherit; background: #76a989; }
-  .budget-foot { display: flex; justify-content: space-between; margin-top: 7px; color: #78827a; font-size: 9px; }
-  .budget-note { margin: 9px 0 0; color: #748078; font-size: 9px; line-height: 1.45; }
-  .split-section { margin: 16px 20px 0; padding-top: 15px; border-top: 1px solid var(--line); }
-  .split-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-  .split-title { margin: 0; font-size: 12px; font-weight: 720; }
-  .split-caption { color: var(--muted); font-size: 9px; }
-  .rule-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
-  .rule-button { min-height: 35px; padding: 7px 5px; border: 1px solid #e6eae4; border-radius: 9px; background: #fff; color: #67736a; cursor: pointer; font-size: 10px; font-weight: 650; transition: background .16s ease, border-color .16s ease, color .16s ease; }
-  .rule-button:hover { border-color: #a5c7ae; color: var(--green-dark); }
-  .rule-button[aria-pressed="true"] { border-color: #a9ccb3; background: #edf6ef; color: var(--green-dark); }
-  .shares { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 10px; }
-  .share-card { padding: 9px 10px; border: 1px solid #edf0eb; border-radius: 11px; background: #fff; }
-  .share-name { display: flex; align-items: center; gap: 5px; color: #69756c; font-size: 9px; }
-  .share-amount { margin-top: 4px; font-size: 13px; font-weight: 740; }
-  .share-status { margin-top: 4px; color: #758078; font-size: 8px; }
-  .share-status.covered { color: #96702d; }
-  .order-button { width: 100%; min-height: 44px; margin-top: 13px; border: 0; border-radius: 12px; background: var(--green); color: white; cursor: pointer; font-size: 12px; font-weight: 720; transition: background .16s ease, transform .16s ease; }
-  .order-button:hover { transform: translateY(-1px); background: var(--green-dark); }
-  .order-note { margin: 8px 0 0; color: #808a82; font-size: 9px; line-height: 1.45; text-align: center; }
-  dialog { width: min(400px, calc(100% - 32px)); padding: 0; border: 1px solid var(--line); border-radius: 18px; color: var(--ink); box-shadow: 0 24px 80px rgba(15,30,19,.24); }
-  dialog::backdrop { background: rgba(20,31,24,.38); backdrop-filter: blur(3px); }
-  .dialog-content { padding: 24px; }
-  .dialog-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 14px; background: var(--green-soft); font-size: 20px; }
-  .dialog-content h2 { margin: 14px 0 7px; font-size: 18px; letter-spacing: -.5px; }
-  .dialog-content p { margin: 0; color: #69746c; font-size: 13px; line-height: 1.55; }
-  .dialog-actions { display: flex; justify-content: end; margin-top: 20px; }
-  .dialog-close { padding: 9px 14px; border: 0; border-radius: 10px; background: var(--green); color: white; cursor: pointer; font-size: 12px; font-weight: 700; }
-  @media (max-width: 840px) {
-    .shell { width: min(650px, calc(100% - 32px)); }
-    .dashboard-grid { grid-template-columns: 1fr; }
-    .phone { width: min(100% - 28px, 430px); }
-    .intro { align-items: start; }
-  }
-  @media (max-width: 520px) {
-    .shell { width: calc(100% - 24px); }
-    .topbar { height: 64px; }
-    main { padding: 26px 0 40px; }
-    .intro { flex-direction: column; gap: 12px; margin-bottom: 19px; }
-    .month-pill { padding: 7px 10px; }
-    .panel { border-radius: 17px; }
-    .panel-heading { padding: 17px 16px 13px; }
-    .phone { width: calc(100% - 20px); min-height: 518px; padding: 7px; border-radius: 25px; }
-    .phone-screen { min-height: 500px; border-radius: 19px; }
-    .chat-body { gap: 10px; padding: 13px 9px; }
-    .items-list { padding: 0 15px; }
-    .budget-card, .split-section { margin-right: 15px; margin-left: 15px; }
-    .shares { gap: 5px; }
-    .share-card { padding: 8px 7px; }
-    .share-amount { font-size: 12px; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
-  }
+  body { min-width: 320px; margin: 0; background: var(--canvas); color: var(--ink); }
+  .shell { width: min(1280px, calc(100% - 56px)); margin: 0 auto; }
+  header { height: 68px; border-bottom: 1px solid var(--line); background: #fff; }
+  .topbar { height: 100%; display: flex; align-items: center; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 9px; font-size: 17px; font-weight: 750; letter-spacing: -.5px; }
+  .brand-mark { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 9px; background: var(--green); color: #fff; }
+  .household { display: flex; align-items: center; gap: 8px; color: #566159; font-size: 12px; font-weight: 650; }
+  .household-icon { display: grid; width: 26px; height: 26px; place-items: center; border-radius: 8px; background: #f1eee5; }
+
+  main { padding: 36px 0 60px; }
+  .workspace { display: grid; grid-template-columns: 204px minmax(0, 1fr); align-items: start; gap: 32px; }
+  .sidebar { position: sticky; top: 24px; }
+  .sidebar-label { margin: 0 0 12px 10px; color: var(--muted); font-size: 9px; font-weight: 750; letter-spacing: 1.1px; text-transform: uppercase; }
+  .nav-list { display: grid; gap: 5px; }
+  .nav-button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid transparent; border-radius: 11px; background: transparent; color: #677169; cursor: pointer; text-align: left; font-size: 12px; font-weight: 640; }
+  .nav-button:hover { background: #eff2ed; color: var(--ink); }
+  .nav-button[aria-selected="true"] { border-color: #e2e9e1; background: #fff; color: var(--green); box-shadow: 0 2px 6px rgba(24,39,28,.035); }
+  .nav-icon { width: 22px; text-align: center; font-size: 15px; }
+  .sidebar-section { margin-top: 27px; }
+  .sidebar-heading { display: flex; align-items: center; justify-content: space-between; margin: 0 0 10px 10px; color: var(--muted); font-size: 9px; font-weight: 750; letter-spacing: 1.1px; text-transform: uppercase; }
+  .group-list { display: grid; gap: 5px; }
+  .group-button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 10px 11px; border: 1px solid transparent; border-radius: 11px; background: transparent; color: #677169; cursor: pointer; text-align: left; font: inherit; font-size: 11px; font-weight: 640; }
+  .group-button:hover { background: #eff2ed; color: var(--ink); }
+  .group-button[aria-current="page"] { border-color: #e2e9e1; background: #fff; color: var(--green); box-shadow: 0 2px 6px rgba(24,39,28,.035); }
+  .group-icon { width: 22px; text-align: center; font-size: 14px; }
+  .add-group { width: 100%; margin-top: 7px; padding: 9px 11px; border: 1px dashed #cfd6cf; border-radius: 10px; background: transparent; color: #59655d; cursor: pointer; text-align: left; font: inherit; font-size: 10px; font-weight: 650; }
+  .add-group:hover { border-color: var(--green); color: var(--green); }
+  .add-group-form { display: grid; gap: 7px; margin-top: 8px; }
+  .add-group-form[hidden] { display: none; }
+  .add-group-form input { min-width: 0; padding: 9px; border: 1px solid #dfe5df; border-radius: 8px; font: inherit; font-size: 10px; }
+  .add-group-actions { display: flex; gap: 6px; }
+  .add-group-actions button { flex: 1; padding: 8px; border: 1px solid #dfe5df; border-radius: 8px; background: #fff; color: #59655d; cursor: pointer; font: inherit; font-size: 9px; font-weight: 650; }
+  .add-group-actions button[type="submit"] { border-color: var(--green); background: var(--green); color: #fff; }
+  .sidebar-note { margin: 23px 9px 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
+  .content { min-width: 0; }
+  .intro { margin: 2px 0 22px; }
+  .eyebrow { margin: 0 0 7px; color: var(--green); font-size: 10px; font-weight: 750; letter-spacing: 1.4px; text-transform: uppercase; }
+  h1 { margin: 0; font-size: clamp(24px, 3vw, 31px); letter-spacing: -1.1px; }
+  .intro-copy { max-width: 610px; margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+  .view[hidden] { display: none; }
+  .lane { overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+  .lane-header { display: flex; align-items: center; gap: 11px; padding: 17px 19px; border-bottom: 1px solid #eff1ed; }
+  .lane-icon { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 11px; background: var(--green-soft); color: var(--green); font-size: 16px; }
+  .personal .lane-icon { background: var(--blue-soft); color: var(--blue); }
+  .lane-title { margin: 0; font-size: 13px; font-weight: 730; }
+  .lane-subtitle { margin: 4px 0 0; color: var(--muted); font-size: 10px; }
+  .owner-badge, .you-badge { margin-left: auto; padding: 5px 8px; border-radius: 99px; background: var(--green-soft); color: var(--green); font-size: 9px; font-weight: 700; }
+  .you-badge { background: var(--blue-soft); color: var(--blue); }
+
+  .balance { padding: 19px; }
+  .balance-label { color: var(--muted); font-size: 10px; font-weight: 620; }
+  .balance-amount { margin-top: 5px; font-size: 30px; font-weight: 760; letter-spacing: -1px; }
+  .balance-context { margin-top: 4px; color: var(--muted); font-size: 10px; }
+  .meter { height: 5px; margin-top: 16px; overflow: hidden; border-radius: 99px; background: #eef0ec; }
+  .meter span { display: block; height: 100%; border-radius: inherit; background: #80b393; }
+  .personal .meter span { background: #8a9bd2; }
+  .meter-caption { display: flex; justify-content: space-between; margin-top: 7px; color: var(--muted); font-size: 9px; }
+
+  .message { margin: 0 19px 16px; padding: 12px 13px; border: 1px solid #e7ede8; border-radius: 13px; background: #f8faf8; }
+  .personal .message { border-color: #e8eaf4; background: #fafaff; }
+  .message-label { margin: 0 0 6px; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase; }
+  .bubble { color: #343d37; font-size: 12px; line-height: 1.5; }
+  .route { display: flex; align-items: center; gap: 7px; margin-top: 8px; color: var(--green); font-size: 10px; font-weight: 680; }
+  .personal .route { color: var(--blue); }
+  .route-mark { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  .items { padding: 0 19px; }
+  .items-heading { display: flex; justify-content: space-between; padding: 0 0 9px; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; }
+  .item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 0; border-top: 1px solid #f0f2ee; }
+  .item-name { font-size: 11px; font-weight: 640; }
+  .item-note { margin-top: 3px; color: var(--muted); font-size: 9px; }
+  .item-price { flex: none; font-size: 11px; font-weight: 680; }
+  .empty-hint { padding: 13px 0 3px; color: var(--muted); font-size: 10px; }
+
+  .total { display: flex; align-items: center; justify-content: space-between; margin: 0 19px; padding: 13px 0 17px; border-top: 1px solid var(--line); }
+  .total span:first-child { color: #566159; font-size: 10px; font-weight: 650; }
+  .total strong { font-size: 14px; }
+  .footnote { margin: 15px 0 0; color: var(--muted); font-size: 10px; line-height: 1.6; }
+  .footnote strong { color: #556158; }
+  .settings-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(300px, .8fr); align-items: start; gap: 18px; }
+  .settings-column { display: grid; gap: 18px; }
+  .settings-card { border: 1px solid var(--line); border-radius: 15px; background: #fff; }
+  .card-heading { padding: 17px 19px 14px; border-bottom: 1px solid #eff1ed; }
+  .card-heading h2 { margin: 0; font-size: 13px; font-weight: 730; }
+  .card-heading p { margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+  .card-body { padding: 17px 19px; }
+  .budget-row { display: flex; align-items: end; justify-content: space-between; gap: 20px; }
+  .field-label { display: block; margin-bottom: 7px; color: #5b665e; font-size: 10px; font-weight: 650; }
+  .money-input { display: flex; width: 170px; align-items: center; gap: 7px; padding: 9px 11px; border: 1px solid #dfe5df; border-radius: 9px; color: var(--ink); font-size: 13px; font-weight: 680; }
+  .money-input input { width: 100%; border: 0; outline: 0; color: inherit; font: inherit; }
+  .budget-status { color: var(--muted); font-size: 10px; text-align: right; }
+  .budget-status strong { display: block; margin-bottom: 4px; color: var(--ink); font-size: 15px; }
+  .settings-meter { height: 6px; margin-top: 17px; overflow: hidden; border-radius: 99px; background: #eef0ec; }
+  .settings-meter span { display: block; height: 100%; border-radius: inherit; background: #80b393; transition: width .2s ease; }
+  .settings-caption { display: flex; justify-content: space-between; margin-top: 8px; color: var(--muted); font-size: 9px; }
+  .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 13px 0; border-bottom: 1px solid #f0f2ee; }
+  .setting-row:first-child { padding-top: 0; }
+  .setting-row:last-child { padding-bottom: 0; border-bottom: 0; }
+  .setting-title { font-size: 11px; font-weight: 650; }
+  .setting-description { margin-top: 4px; color: var(--muted); font-size: 9px; line-height: 1.45; }
+  .setting-control { flex: none; }
+  .setting-control input[type="number"] { width: 94px; padding: 8px 9px; border: 1px solid #dfe5df; border-radius: 8px; color: var(--ink); font: inherit; font-size: 11px; }
+  .setting-control input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--green); }
+  .member-list { display: grid; }
+  .member { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f0f2ee; }
+  .member:last-child { border-bottom: 0; }
+  .avatar { width: 28px; height: 28px; display: grid; flex: none; place-items: center; border-radius: 50%; background: #edf2ed; color: #506452; font-size: 10px; font-weight: 700; }
+  .member-name { font-size: 10px; font-weight: 650; }
+  .member-role { margin-top: 3px; color: var(--muted); font-size: 9px; }
+  .member-count { margin-left: auto; color: var(--muted); font-size: 9px; }
+  .cart-preview { display: grid; gap: 0; }
+  .cart-line { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f0f2ee; font-size: 10px; }
+  .cart-line:last-child { border-bottom: 0; }
+  .cart-line span:last-child { font-weight: 650; }
+  .personal-panel { max-width: 760px; }
+
 </style>
 </head>
 <body>
-<header class="topbar">
-  <div class="shell topbar-inner">
+<header>
+  <div class="shell topbar">
     <div class="brand"><span class="brand-mark" aria-hidden="true">r</span>restock</div>
-    <div class="household-switch" aria-label="Current household">
-      <span class="household-avatar" aria-hidden="true">🏡</span><span>Maple House</span><span aria-hidden="true">⌄</span>
-    </div>
+    <div class="household"><span class="household-icon" id="selected-group-icon" aria-hidden="true">⌂</span><span id="selected-group-name">Maple House</span></div>
   </div>
 </header>
 
-<main class="shell">
-  <section class="intro" aria-labelledby="page-title">
-    <div>
-      <p class="eyebrow">Your household, in sync</p>
-      <h1 id="page-title">The group chat, at a glance.</h1>
-      <p class="intro-copy">See what everyone added, how the order could split, and how it fits your monthly household budget.</p>
-    </div>
-    <span class="month-pill">October household budget</span>
-  </section>
+<main class="shell workspace">
+  <aside class="sidebar" aria-label="Dashboard navigation">
+    <p class="sidebar-label">Manage spending</p>
+    <nav class="nav-list" aria-label="Spending views">
+      <button class="nav-button" id="groups-tab" type="button" aria-current="page"><span class="nav-icon" aria-hidden="true">▦</span><span>Group chats</span></button>
+      <button class="nav-button" id="personal-tab" type="button"><span class="nav-icon" aria-hidden="true">↗</span><span>Personal</span></button>
+    </nav>
+    <section class="sidebar-section" aria-labelledby="groups-heading">
+      <h2 class="sidebar-heading" id="groups-heading">Your group chats</h2>
+      <div class="group-list" id="group-list"></div>
+      <button class="add-group" id="add-group" type="button">＋ Add a group chat</button>
+      <form class="add-group-form" id="add-group-form" hidden>
+        <input id="new-group-name" type="text" maxlength="40" placeholder="e.g. Soccer team" aria-label="New group chat name" required>
+        <div class="add-group-actions"><button type="submit">Create group</button><button id="cancel-group" type="button">Cancel</button></div>
+      </form>
+    </section>
+    <p class="sidebar-note">Each group has its own budget and rules for what the AI can add.</p>
+  </aside>
 
-  <div class="dashboard-grid">
-    <section class="panel chat-panel" aria-labelledby="chat-title">
-      <div class="panel-heading">
-        <div><h2 class="panel-title" id="chat-title">Household chat</h2><p class="panel-subtitle">The real conversation stays in your group text.</p></div>
-        <span class="live-label"><span class="live-dot" aria-hidden="true"></span>Chat preview</span>
-      </div>
-      <div class="phone" aria-label="Phone showing the household group chat">
-        <div class="phone-screen">
-          <div class="chat-top">
-            <span class="back" aria-hidden="true">‹</span><span class="group-avatar" aria-hidden="true">🏠</span>
-            <div><div class="group-name">Maple House</div><div class="group-members">Sam, Jake, Priya, Restock</div></div>
-            <span class="chat-more" aria-hidden="true">•••</span>
-          </div>
-          <div class="chat-body" aria-label="Example household text conversation">
-            <span class="date-stamp">Today · 6 items in the cart</span>
-            <div class="message"><p class="sender">Priya</p><div class="bubble">We’re out of toilet paper and paper towels again 😅</div><p class="bubble-time">9:14 AM</p></div>
-            <div class="agent-bubble"><span class="agent-icon" aria-hidden="true">r</span><div class="agent-copy"><strong>Added both as shared.</strong><br>Toilet paper, 12 rolls · $11.99<br>Paper towels, 6 rolls · $9.99</div></div>
-            <div class="message"><p class="sender">Jake</p><div class="bubble">Add dish soap too. Chips are just for me.</div><p class="bubble-time">9:18 AM</p></div>
-            <div class="agent-bubble"><span class="agent-icon" aria-hidden="true">r</span><div class="agent-copy"><strong>Got it.</strong> Dish soap is shared ($8.49); tortilla chips are personal ($4.79). Reply “personal” to change.</div></div>
-            <div class="message mine"><p class="sender">Sam</p><div class="bubble">Add oat milk for me, and the air fryer Jake wanted is approved.</div><p class="bubble-time">9:22 AM</p></div>
-            <div class="agent-bubble"><span class="agent-icon" aria-hidden="true">r</span><div class="agent-copy"><strong>Added.</strong> Oat milk · personal · $5.49. Air fryer · Jake · approved.</div></div>
-          </div>
-          <div class="chat-notice">Preview only · ordering happens after someone texts “order now” in the group.</div>
+  <div class="content">
+    <section class="intro">
+      <p class="eyebrow" id="view-eyebrow">Group settings</p>
+      <h1 id="view-title">Maple House</h1>
+      <p class="intro-copy" id="view-copy">Set the shared monthly budget and decide what Restock can add or when it needs approval.</p>
+    </section>
+
+    <section class="view" id="group-view">
+      <div class="settings-grid">
+        <div class="settings-column">
+          <section class="settings-card" aria-labelledby="budget-heading">
+            <div class="card-heading"><h2 id="budget-heading">Monthly AI budget</h2><p>The maximum this group can spend through Restock each month.</p></div>
+            <div class="card-body">
+              <div class="budget-row">
+                <label><span class="field-label">Monthly limit</span><span class="money-input">$<input id="budget-input" type="number" min="0" step="10" value="200" aria-label="Monthly group budget in dollars"></span></label>
+                <div class="budget-status"><strong id="budget-remaining">$140.48 left</strong><span id="budget-spend-label">$59.52 used this month</span></div>
+              </div>
+              <div class="settings-meter" id="budget-meter" role="progressbar" aria-label="Monthly group budget used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="30"><span id="budget-meter-fill" style="width:30%"></span></div>
+              <div class="settings-caption"><span>Spent so far</span><span id="budget-limit-label">$200.00 monthly limit</span></div>
+            </div>
+          </section>
+          <section class="settings-card" aria-labelledby="rules-heading">
+            <div class="card-heading"><h2 id="rules-heading">What the AI can do</h2><p>These controls apply only to this group chat.</p></div>
+            <div class="card-body">
+              <div class="setting-row">
+                <div><div class="setting-title">Add routine shared items</div><div class="setting-description">Let the AI add common supplies to this group's shared cart.</div></div>
+                <label class="setting-control"><input id="routine-toggle" type="checkbox" checked aria-label="Allow the AI to add routine shared items"></label>
+              </div>
+              <div class="setting-row">
+                <div><div class="setting-title">Ask before expensive items</div><div class="setting-description">The owner must approve any single item above this amount.</div></div>
+                <label class="setting-control"><span class="money-input"><span>$</span><input id="approval-input" type="number" min="0" step="5" value="25" aria-label="Approval threshold in dollars"></span></label>
+              </div>
+              <div class="setting-row">
+                <div><div class="setting-title">Place an order</div><div class="setting-description">Someone in the group must explicitly confirm checkout.</div></div>
+                <span class="owner-badge">Confirmation required</span>
+              </div>
+            </div>
+          </section>
+        </div>
+        <div class="settings-column">
+          <section class="settings-card" aria-labelledby="members-heading">
+            <div class="card-heading"><h2 id="members-heading">Group members</h2><p>People included in this group's shared spending.</p></div>
+            <div class="card-body member-list" id="member-list"></div>
+          </section>
+          <section class="settings-card" aria-labelledby="cart-heading">
+            <div class="card-heading"><h2 id="cart-heading">Shared cart preview</h2><p>Example items assigned to this group's budget.</p></div>
+            <div class="card-body cart-preview" id="cart-preview"></div>
+          </section>
         </div>
       </div>
     </section>
 
-    <section class="panel cart-panel" aria-labelledby="cart-title">
-      <div class="panel-heading">
-        <div><h2 class="panel-title" id="cart-title">The shared cart</h2><p class="panel-subtitle">6 items · Added by your household</p></div>
-        <span class="cart-total">$72.75</span>
-      </div>
-      <div class="items-list">
-        <article class="item-row"><span class="item-icon" aria-hidden="true">🧻</span><div><h3 class="item-name">Toilet paper, 12 rolls</h3><div class="item-meta">Priya <span class="tag shared">Shared</span></div></div><span class="item-price">$11.99</span></article>
-        <article class="item-row"><span class="item-icon" aria-hidden="true">🫧</span><div><h3 class="item-name">Dish soap, 3 pack</h3><div class="item-meta">Jake <span class="tag shared">Shared</span></div></div><span class="item-price">$8.49</span></article>
-        <article class="item-row"><span class="item-icon" aria-hidden="true">🧻</span><div><h3 class="item-name">Paper towels, 6 rolls</h3><div class="item-meta">Priya <span class="tag shared">Shared</span></div></div><span class="item-price">$9.99</span></article>
-        <article class="item-row"><span class="item-icon" aria-hidden="true">🍟</span><div><h3 class="item-name">Air fryer</h3><div class="item-meta">Jake · approved by Sam <span class="tag personal">Personal</span></div></div><span class="item-price">$32.00</span></article>
-        <article class="item-row"><span class="item-icon" aria-hidden="true">🌽</span><div><h3 class="item-name">Tortilla chips</h3><div class="item-meta">Jake <span class="tag personal">Personal</span></div></div><span class="item-price">$4.79</span></article>
-        <article class="item-row"><span class="item-icon" aria-hidden="true">🥛</span><div><h3 class="item-name">Oat milk</h3><div class="item-meta">Sam <span class="tag personal">Personal</span></div></div><span class="item-price">$5.49</span></article>
-      </div>
-      <section class="budget-card" aria-label="Monthly household budget">
-        <div class="budget-top">
-          <div><div class="budget-label">Monthly household budget</div><div class="budget-remain">$112.40 <small>left after this cart</small></div></div>
-          <div class="budget-side">$185.15 budget<br>$72.75 in this cart</div>
+    <section class="view personal-panel" id="personal-view" hidden>
+      <section class="settings-card">
+        <div class="card-heading"><h2>Your personal spending</h2><p>Personal items stay separate from each group's shared budget and use your own payment method.</p></div>
+        <div class="card-body">
+          <div class="budget-row"><div><span class="field-label">Personal items this month</span><strong style="font-size:24px">$5.49</strong></div><span class="you-badge">You · Sam</span></div>
+          <div class="cart-preview" style="margin-top:16px"><div class="cart-line"><span>Oat milk · personal item</span><span>$5.49</span></div></div>
         </div>
-        <div class="progress" role="progressbar" aria-label="Budget used if this cart is ordered" aria-valuemin="0" aria-valuemax="100" aria-valuenow="39"><span></span></div>
-        <div class="budget-foot"><span>39% planned</span><span>Monthly limit</span></div>
-        <p class="budget-note">This is a spending limit, not an automatic monthly charge. No one is charged until the group confirms an order.</p>
-      </section>
-      <section class="split-section" aria-labelledby="split-title">
-        <div class="split-heading"><h3 class="split-title" id="split-title">Estimated split</h3><span class="split-caption" id="split-caption">Shared items split · personal items stay with their owner</span></div>
-        <div class="rule-options" role="group" aria-label="Choose how to split this order">
-          <button class="rule-button" type="button" data-rule="smart" aria-pressed="true">Smart</button>
-          <button class="rule-button" type="button" data-rule="even" aria-pressed="false">Split evenly</button>
-          <button class="rule-button" type="button" data-rule="adder" aria-pressed="false">By who added</button>
-        </div>
-        <div class="shares" aria-live="polite" aria-atomic="true">
-          <div class="share-card"><div class="share-name">Sam <span aria-label="has a card">💳</span></div><div class="share-amount" data-member="sam">$15.65</div><div class="share-status">Covered by own card</div></div>
-          <div class="share-card"><div class="share-name">Jake <span aria-label="has a card">💳</span></div><div class="share-amount" data-member="jake">$46.95</div><div class="share-status">Covered by own card</div></div>
-          <div class="share-card"><div class="share-name">Priya</div><div class="share-amount" data-member="priya">$10.15</div><div class="share-status covered">Covered by Sam · payback link</div></div>
-        </div>
-        <button class="order-button" type="button" id="order-button">Review order in group chat · $72.75</button>
-        <p class="order-note">This dashboard is a preview. It never places an order or charges a card.</p>
       </section>
     </section>
+    <p class="footnote"><strong>Concept preview:</strong> Settings and balances are demo data saved only in this page; it is not connected to live chats or payments.</p>
   </div>
 </main>
-
-<dialog id="order-dialog" aria-labelledby="dialog-title">
-  <div class="dialog-content">
-    <div class="dialog-icon" aria-hidden="true">💬</div>
-    <h2 id="dialog-title">Confirm together in the chat</h2>
-    <p>The dashboard is read-only. To place this order, someone in Maple House needs to text <strong>“order now”</strong> in the household group chat. No payment has been made.</p>
-    <div class="dialog-actions"><button class="dialog-close" type="button" id="dialog-close">Got it</button></div>
-  </div>
-</dialog>
-
 <script>
-  const previews = {
-    smart: { amounts: ["$15.65", "$46.95", "$10.15"], caption: "Shared items split · personal items stay with their owner" },
-    even: { amounts: ["$24.25", "$24.25", "$24.25"], caption: "Every item split evenly across all 3 roommates" },
-    adder: { amounts: ["$5.49", "$45.28", "$21.98"], caption: "Each person pays for what they added" },
-  };
-  const buttons = [...document.querySelectorAll("[data-rule]")];
-  const dialog = document.querySelector("#order-dialog");
-  for (const button of buttons) {
-    button.addEventListener("click", () => {
-      const preview = previews[button.dataset.rule];
-      for (const other of buttons) other.setAttribute("aria-pressed", String(other === button));
-      document.querySelector('[data-member="sam"]').textContent = preview.amounts[0];
-      document.querySelector('[data-member="jake"]').textContent = preview.amounts[1];
-      document.querySelector('[data-member="priya"]').textContent = preview.amounts[2];
-      document.querySelector("#split-caption").textContent = preview.caption;
-    });
+  const groups = [
+    { id: "maple", name: "Maple House", icon: "⌂", budget: 200, spent: 59.52, threshold: 25, routine: true, members: [["Sam", "Budget owner"], ["Jake", "Member"], ["Priya", "Member"]], cart: [["Toilet paper, 12 rolls", 11.99], ["Dish soap, 3 pack", 8.49]] },
+    { id: "soccer", name: "Soccer Team", icon: "⚽", budget: 120, spent: 34, threshold: 40, routine: true, members: [["Alex", "Budget owner"], ["You", "Member"], ["Jordan", "Member"], ["Taylor", "Member"]], cart: [["Sports drinks", 14], ["First-aid tape", 20]] },
+  ];
+  const groupList = document.querySelector("#group-list");
+  const groupView = document.querySelector("#group-view");
+  const personalView = document.querySelector("#personal-view");
+  const groupsTab = document.querySelector("#groups-tab");
+  const personalTab = document.querySelector("#personal-tab");
+  const budgetInput = document.querySelector("#budget-input");
+  const approvalInput = document.querySelector("#approval-input");
+  const routineToggle = document.querySelector("#routine-toggle");
+  const addGroupButton = document.querySelector("#add-group");
+  const addGroupForm = document.querySelector("#add-group-form");
+  const newGroupName = document.querySelector("#new-group-name");
+  let selectedGroupId = "maple";
+
+  function selectedGroup() {
+    return groups.find((group) => group.id === selectedGroupId);
   }
-  document.querySelector("#order-button").addEventListener("click", () => dialog.showModal());
-  document.querySelector("#dialog-close").addEventListener("click", () => dialog.close());
-  dialog.addEventListener("click", (event) => {
-    if (event.target === dialog) dialog.close();
+
+  function renderGroups() {
+    groupList.replaceChildren();
+    for (const group of groups) {
+      const button = document.createElement("button");
+      button.className = "group-button";
+      button.type = "button";
+      button.setAttribute("aria-current", String(group.id === selectedGroupId));
+      const icon = document.createElement("span");
+      icon.className = "group-icon";
+      icon.setAttribute("aria-hidden", "true");
+      icon.textContent = group.icon;
+      button.append(icon, document.createTextNode(group.name));
+      button.addEventListener("click", () => selectGroup(group.id));
+      groupList.append(button);
+    }
+  }
+
+  function renderBudget(group) {
+    const budget = Math.max(0, Number(group.budget) || 0);
+    const percent = budget === 0 ? 0 : Math.min(100, group.spent / budget * 100);
+    const remaining = budget - group.spent;
+    document.querySelector("#budget-remaining").textContent = remaining < 0
+      ? `$${Math.abs(remaining).toFixed(2)} over budget`
+      : `$${remaining.toFixed(2)} left`;
+    document.querySelector("#budget-spend-label").textContent = `$${group.spent.toFixed(2)} used this month`;
+    document.querySelector("#budget-limit-label").textContent = `$${budget.toFixed(2)} monthly limit`;
+    document.querySelector("#budget-meter-fill").style.width = `${percent}%`;
+    document.querySelector("#budget-meter").setAttribute("aria-valuenow", String(Math.round(percent)));
+  }
+
+  function renderGroup() {
+    const group = selectedGroup();
+    document.querySelector("#selected-group-icon").textContent = group.icon;
+    document.querySelector("#selected-group-name").textContent = group.name;
+    document.querySelector("#view-title").textContent = group.name;
+    budgetInput.value = group.budget;
+    approvalInput.value = group.threshold;
+    routineToggle.checked = group.routine;
+    renderBudget(group);
+    const memberList = document.querySelector("#member-list");
+    memberList.replaceChildren();
+    for (const [name, role] of group.members) {
+      const row = document.createElement("div");
+      row.className = "member";
+      const avatar = document.createElement("span");
+      avatar.className = "avatar";
+      avatar.setAttribute("aria-hidden", "true");
+      avatar.textContent = name.slice(0, 1);
+      const details = document.createElement("div");
+      const memberName = document.createElement("div");
+      memberName.className = "member-name";
+      memberName.textContent = name;
+      const memberRole = document.createElement("div");
+      memberRole.className = "member-role";
+      memberRole.textContent = role;
+      details.append(memberName, memberRole);
+      row.append(avatar, details);
+      memberList.append(row);
+    }
+    const cartPreview = document.querySelector("#cart-preview");
+    cartPreview.replaceChildren();
+    for (const [name, price] of group.cart) {
+      const line = document.createElement("div");
+      line.className = "cart-line";
+      const itemName = document.createElement("span");
+      itemName.textContent = name;
+      const itemPrice = document.createElement("span");
+      itemPrice.textContent = `$${price.toFixed(2)}`;
+      line.append(itemName, itemPrice);
+      cartPreview.append(line);
+    }
+    renderGroups();
+  }
+
+  function selectGroup(id) {
+    selectedGroupId = id;
+    groupsTab.setAttribute("aria-current", "page");
+    personalTab.removeAttribute("aria-current");
+    groupView.hidden = false;
+    personalView.hidden = true;
+    document.querySelector("#view-eyebrow").textContent = "Group settings";
+    document.querySelector("#view-copy").textContent = "Set the shared monthly budget and decide what Restock can add or when it needs approval.";
+    renderGroup();
+  }
+
+  groupsTab.addEventListener("click", () => selectGroup(selectedGroupId));
+  personalTab.addEventListener("click", () => {
+    groupsTab.removeAttribute("aria-current");
+    personalTab.setAttribute("aria-current", "page");
+    groupView.hidden = true;
+    personalView.hidden = false;
+    document.querySelector("#view-eyebrow").textContent = "Personal spending";
+    document.querySelector("#view-title").textContent = "Your own spending";
+    document.querySelector("#view-copy").textContent = "Your personal items are separate from all group chat budgets.";
   });
+  budgetInput.addEventListener("input", () => {
+    selectedGroup().budget = Math.max(0, Number(budgetInput.value) || 0);
+    renderBudget(selectedGroup());
+  });
+  approvalInput.addEventListener("input", () => {
+    selectedGroup().threshold = Math.max(0, Number(approvalInput.value) || 0);
+  });
+  routineToggle.addEventListener("change", () => {
+    selectedGroup().routine = routineToggle.checked;
+  });
+  addGroupButton.addEventListener("click", () => {
+    addGroupButton.hidden = true;
+    addGroupForm.hidden = false;
+    newGroupName.focus();
+  });
+  document.querySelector("#cancel-group").addEventListener("click", () => {
+    addGroupForm.hidden = true;
+    addGroupButton.hidden = false;
+  });
+  addGroupForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const name = newGroupName.value.trim();
+    if (!name) {
+      newGroupName.focus();
+      return;
+    }
+    const group = { id: `group-${Date.now()}`, name, icon: "✳", budget: 100, spent: 0, threshold: 25, routine: true, members: [["You", "Budget owner"]], cart: [] };
+    groups.push(group);
+    addGroupForm.reset();
+    addGroupForm.hidden = true;
+    addGroupButton.hidden = false;
+    selectGroup(group.id);
+  });
+
+  renderGroup();
 </script>
 </body>
 </html>

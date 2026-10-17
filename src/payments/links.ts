@@ -1,6 +1,7 @@
 // Owner: Person 3. Secure links texted to members. Card data only ever touches Stripe's pages.
 import { randomInt } from "node:crypto";
 import { config } from "../config.js";
+import { registerState } from "../core/persist.js";
 import { db, findMember } from "../core/store.js";
 import type { Member } from "../types.js";
 import { STRIPE_MIN_CHARGE_CENTS } from "./limits.js";
@@ -10,7 +11,7 @@ import { requireStripe } from "./stripe.js";
 export const CARD_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Short-link token -> member. A random token keeps member IDs out of texted URLs.
-// TODO(P2/P3): move into the database when store.ts does, so links survive a server restart.
+// Saved to the database (see the registerState call below), so texted links survive a restart.
 const cardLinkTokens = new Map<string, { memberId: string; expiresAt: number }>();
 
 /**
@@ -86,9 +87,28 @@ export function resetCardLinks(): void {
 export const PAY_BACK_LINK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 // Short-link token -> debt, and debt -> its Checkout session (so every tap reuses one payable page).
-// TODO(P2/P3): move into the database when store.ts does.
 const payBackTokens = new Map<string, { debtId: string; expiresAt: number }>();
 const payBackSessions = new Map<string, string>();
+
+// Links already texted to people must keep working after a restart or redeploy.
+type SavedLinks = {
+  card: [string, { memberId: string; expiresAt: number }][];
+  payBack: [string, { debtId: string; expiresAt: number }][];
+  sessions: [string, string][];
+};
+registerState("payment-links", {
+  dump: (): SavedLinks => ({ card: [...cardLinkTokens], payBack: [...payBackTokens], sessions: [...payBackSessions] }),
+  load: (data) => {
+    const saved = data as SavedLinks;
+    const now = Date.now();
+    cardLinkTokens.clear();
+    payBackTokens.clear();
+    payBackSessions.clear();
+    for (const [token, link] of saved.card ?? []) if (link.expiresAt > now) cardLinkTokens.set(token, link);
+    for (const [token, link] of saved.payBack ?? []) if (link.expiresAt > now) payBackTokens.set(token, link);
+    for (const [debtId, sessionId] of saved.sessions ?? []) payBackSessions.set(debtId, sessionId);
+  },
+});
 
 /**
  * Short link (/p/:token) for paying back an open debt. Like the add-card link, no Stripe call

@@ -17,6 +17,13 @@ export const config = {
   photonPlatform: (process.env.PHOTON_PLATFORM ?? "imessage") as "imessage" | "sms" | "whatsapp" | "telegram",
   devInbound: process.env.DEV_INBOUND === "1",
   demoSeed: process.env.DEMO_SEED === "1",
+  /** Re-seed the demo household even if the database already has one. */
+  demoReset: process.env.DEMO_RESET === "1",
+  // SQLite file for the store. Railway sets RAILWAY_VOLUME_MOUNT_PATH when a volume is attached.
+  // Unset = in-memory only (tests and quick local runs).
+  databasePath:
+    optional("DATABASE_PATH") ??
+    (process.env.RAILWAY_VOLUME_MOUNT_PATH ? `${process.env.RAILWAY_VOLUME_MOUNT_PATH}/restock.db` : undefined),
   agentApiToken: optional("AGENT_API_TOKEN"),
   stripeSecretKey: optional("STRIPE_SECRET_KEY"),
   stripeWebhookSecret: optional("STRIPE_WEBHOOK_SECRET"),

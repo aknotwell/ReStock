@@ -15,6 +15,7 @@ vi.mock("../src/payments/stripe.js", () => ({ requireStripe: () => fakeStripe })
 const { seedDemo } = await import("../scripts/seed.js");
 const { db, pendingItems } = await import("../src/core/store.js");
 const { handleInbound } = await import("../src/messaging/inbound.js");
+const { clearPendingChoices } = await import("../src/messaging/options.js");
 const { rememberInbound } = await import("../src/messaging/photon.js");
 
 const SAM = "+15550000001", JAKE = "+15550000002", PRIYA = "+15550000003";
@@ -31,6 +32,7 @@ const out = () => logs.join("\n");
 
 beforeEach(() => {
   const h = seedDemo();
+  clearPendingChoices();
   for (const m of h.members) if (m.paymentMethodId) m.stripeCustomerId = `cus_${m.id}`;
   logs = [];
   vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => void logs.push(a.join(" ")));
@@ -66,6 +68,7 @@ describe("demo flow over chat", () => {
 
   it("'personal' / 'shared' flips the sender's last item; 'remove' drops it", async () => {
     await say(SAM, "add hand soap");
+    await say(SAM, "1");
     const soap = () => pendingItems("demo-house").find((i) => i.name.startsWith("Hand soap"));
     expect(soap()?.shared).toBe(true);
     await say(SAM, "personal");

@@ -17,6 +17,7 @@ npm run dev            # http://localhost:3000/health
 npm test
 npm run typecheck
 npm run seed           # demo household (Sam, Jake, Priya)
+npm run audit:tunnel   # expose /api/agent over HTTPS for a VEYZL audit (see docs/veyzl.md)
 ```
 
 ## Layout

@@ -8,7 +8,23 @@ This is the evidence for the "Best Use of VEYZL" track: every VEYZL finding, and
 - Every commit that fixes a finding ends with the trailer `VEYZL: V-###`.
 - CI fails a PR whose tagged commits aren't logged here.
 
-## What the judges want (keep all four true)
+## Running the API audit
+
+VEYZL runs when a PR is opened, but its API audit sends test prompts to the **Backend URL** in VEYZL's settings. It doesn't build or run the PR. So the PR's code has to be running at that URL while the audit runs:
+
+1. Install the tunnel tool once: `brew install cloudflared`
+2. Check out the PR branch you want audited, and make sure `.env` has `ANTHROPIC_API_KEY`. Without it, the "capital of France" probe fails.
+3. Run `npm run audit:tunnel`. This:
+   - starts the server with `DEV_INBOUND=0`
+   - opens a public HTTPS tunnel
+   - checks that `POST /api/agent` refuses a prompt-injection probe through the tunnel
+   - prints the URL
+4. In VEYZL, paste the printed URL as the Backend URL, then re-run the audit on the PR. Keep the script running until the audit finishes.
+5. Copy the passing check-run link into the matching entries below.
+
+`/api/agent` runs the **same pipeline as real Photon texts** (`handleInbound`: guardrails → Claude → templates), but for an isolated sandbox household. The replies are returned in the HTTP response, not sent. The quick-tunnel URL changes every run, so update VEYZL each time. If `AGENT_API_TOKEN` is set, VEYZL must send `Authorization: Bearer <token>`.
+
+ (keep all four true)
 
 - [ ] **A working AI project.** The agent parses messages with Claude (`src/ai/`) and acts on them live.
 - [ ] **A real VEYZL audit on the repo.** GitHub is connected, the VEYZL check runs on every PR, and its result is visible on the PR. VEYZL is a **required status check** on `main`, so a failing audit blocks the merge.

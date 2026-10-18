@@ -9,12 +9,14 @@ import { createCardSetupLink } from "../payments/links.js";
 import { ChargeFailedError } from "../payments/charges.js";
 import { OwnerCardRequiredError, ownerCardRequest } from "../payments/ownerGate.js";
 import type { Debt, Household } from "../types.js";
-import { checkInput } from "../safety/guardrails.js";
+import { checkInput, INJECTION_REPLY } from "../safety/guardrails.js";
 import { reply, sendGroup, sendPrivate, type InboundMessage } from "./photon.js";
 import { parseCommand } from "./commands.js";
 import { balanceSummary, CARD_NUMBER_WARNING, fmt, groupSummary, helpMessage, inviteToAddCard } from "./templates.js";
 import { sendOrderTexts } from "./afterOrder.js";
 import { handleMembershipCommand, parseMembershipCommand } from "./membership.js";
+import { clearAction, isNo, isYes, peekAction, proposeAction } from "./confirm.js";
+import { cleanName, findPhone } from "../core/households.js";
 import { parseDealRequest, stripDealWords } from "../deals/request.js";
 import {
   buildDealChoice, hasPendingChoice, isCancel, lastBought, namedSpecifically, parsePick, queueChoices, resolvePick, stripUsual, wantsUsual,
@@ -52,6 +54,18 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   if (hit?.rule === "injection" && membership?.type === "add_member" && !checkInput(msg.text.replace(membership.phone, "[phone]"))) {
     hit = undefined;
   }
+  // Casual phrasing ("add amber, her number is 425 555 0123"): hold the number back in code so the model only
+  // ever sees "[phone]". If the model doesn't read it as adding a member, the message is refused below as before.
+  let aiText = msg.text;
+  let heldPhone: string | undefined;
+  if (hit?.rule === "injection" && !membership) {
+    const found = findPhone(msg.text);
+    if (found && !checkInput(msg.text.replace(found.raw, "[phone]"))) {
+      hit = undefined;
+      heldPhone = found.phone;
+      aiText = msg.text.replace(found.raw, "[phone]");
+    }
+  }
   if (hit?.reply) {
     await respond(hit.reply);
     return;
@@ -67,6 +81,22 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   const household = resolveHousehold(msg);
   const member = household && findMemberByPhone(household, msg.fromPhone);
 
+  // A "yes"/"no" to a question Restock asked (confirm-to-act). Only the person who was asked can answer.
+  let confirmedOrder = false;
+  const pendingAction = peekAction(msg.fromPhone);
+  if (pendingAction && (isYes(msg.text) || isNo(msg.text))) {
+    clearAction(msg.fromPhone);
+    if (isNo(msg.text)) {
+      await respond("OK, I won't do that.");
+      return;
+    }
+    if (pendingAction.kind === "membership") {
+      await handleMembershipCommand({ command: pendingAction.command, fromPhone: msg.fromPhone, spaceKind: msg.spaceKind, household, member: member || undefined, respond });
+      return;
+    }
+    confirmedOrder = true; // runs below, once the household context is set up
+  }
+
   // 2. Household membership commands (start / add member / remove member / members). Plain code, never the AI.
   if (membership) {
     await handleMembershipCommand({ command: membership, fromPhone: msg.fromPhone, spaceKind: msg.spaceKind, household, member: member || undefined, respond });
@@ -74,9 +104,25 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   }
 
   if (!household || !member) {
-    if (msg.spaceKind === "direct") {
-      await respond(`${helpMessage()}\nTo get started, text "start household as <your name>", or ask your household's budget owner to add you.`);
+    if (msg.spaceKind !== "direct") return;
+    // Someone new can start a household in their own words ("make me a household, I'm Alex"); they confirm with "yes".
+    const intents = heldPhone || confirmedOrder ? [] : await parseMessage(aiText, "member");
+    const start = intents.find((i) => i.type === "start_household");
+    if (start) {
+      const name = start.itemName ? cleanName(start.itemName) : undefined;
+      if (!name) {
+        await respond('Happy to set that up! What should I call you? Text "start household as <your first name>".');
+      } else {
+        proposeAction(msg.fromPhone, { kind: "membership", command: { type: "start", name } });
+        await respond(`Start a household with you (${name}) as the budget owner? Reply "yes" to confirm or "no" to cancel.`);
+      }
+      return;
     }
+    await respond(
+      heldPhone
+        ? INJECTION_REPLY
+        : `${helpMessage()}\nTo get started, text "start household as <your name>", or ask your household's budget owner to add you.`,
+    );
     return;
   }
 
@@ -114,6 +160,34 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     );
   };
 
+  const runOrder = async () => {
+    try {
+      const result = await placeOrder(household.id);
+      await announce(groupSummary(household, result));
+      const { waiting } = await sendOrderTexts(household, result);
+      if (waiting.length) {
+        await respond(waitingForDm(waiting));
+      }
+    } catch (err) {
+      if (err instanceof OwnerCardRequiredError) {
+        // The add-card link goes only to the owner, privately. The group just hears why we stopped.
+        const gate = await ownerCardRequest(household);
+        if (gate.ownerId === member.id && msg.spaceKind === "direct" && gate.ownerText) await respond(gate.ownerText);
+        else {
+          await respond(gate.groupText);
+          if (gate.ownerId && gate.ownerText) await sendPrivate(gate.ownerId, gate.ownerText, `owner-gate:${msg.messageId}`);
+        }
+      } else if (err instanceof OrderError || err instanceof ChargeFailedError) await respond(err.message);
+      else throw err;
+    }
+  };
+
+  // The member said "yes" to "Place the order now?": this, not the model, authorizes checkout.
+  if (confirmedOrder) {
+    await runOrder();
+    return;
+  }
+
   // A reply to "Which one?" (1/2/3 or cancel) is handled in code, before any AI parsing.
   if (hasPendingChoice(household.id, member.id)) {
     const pick = parsePick(msg.text);
@@ -129,7 +203,11 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   }
 
   // 2. Understand the message.
-  const intents = await parseMessage(msg.text, member.name);
+  const intents = await parseMessage(aiText, member.name);
+  if (heldPhone && !intents.some((i) => i.type === "add_member")) {
+    await respond(INJECTION_REPLY); // a phone number outside adding a member: refused, as before
+    return;
+  }
   const choices: Choice[] = [];
   // "cheapest TP under $15 from Costco": deal preferences come from the member's own words, read by code.
   const dealOptions = parseDealRequest(msg.text);
@@ -209,6 +287,37 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       const invite = inviteToAddCard(await createCardSetupLink(member.id));
       if (msg.spaceKind === "direct") await respond(invite);
       else await sendPrivate(member.id, invite, `add-card:${msg.messageId}`);
+    } else if (intent.type === "checkout") {
+      // Casual "let's order": ask first. Only the member's explicit "yes" (or "order now") places it.
+      const ready = pendingItems(household.id).filter((i) => !i.needsApproval);
+      if (ready.length === 0) {
+        await respond("The cart is empty.");
+      } else {
+        const total = ready.reduce((sum, i) => sum + i.cents, 0);
+        proposeAction(msg.fromPhone, { kind: "order" });
+        await respond(`Place the order now? ${ready.length} item${ready.length === 1 ? "" : "s"}, ${fmt(total)}. Reply "yes" to confirm or "no" to cancel.`);
+      }
+    } else if (intent.type === "start_household" || intent.type === "list_members") {
+      const command = intent.type === "list_members" ? ({ type: "members" } as const) : ({ type: "start", name: null } as const);
+      await handleMembershipCommand({ command, fromPhone: msg.fromPhone, spaceKind: msg.spaceKind, household, member, respond });
+    } else if (intent.type === "add_member" || intent.type === "remove_member") {
+      // Owner-only, checked in code before asking and again when it runs.
+      const name = intent.itemName ? cleanName(intent.itemName) : undefined;
+      if (member.id !== household.ownerId) {
+        await respond("Only the budget owner can add or remove people.");
+      } else if (!name) {
+        await respond(`Who should I ${intent.type === "add_member" ? "add" : "remove"}? Use their first name.`);
+      } else if (intent.type === "add_member" && !heldPhone) {
+        await respond(`What's ${name}'s phone number? Text "add member ${name} <phone number>".`);
+      } else if (intent.type === "add_member") {
+        proposeAction(msg.fromPhone, { kind: "membership", command: { type: "add_member", name, phone: heldPhone! } });
+        await respond(`Add ${name} (phone ending ${heldPhone!.slice(-4)}) to the household? Reply "yes" to confirm or "no" to cancel.`);
+      } else if (!household.members.some((m) => m.name.toLowerCase() === name.toLowerCase())) {
+        await respond(`I couldn't find ${name} in your household.`);
+      } else {
+        proposeAction(msg.fromPhone, { kind: "membership", command: { type: "remove_member", name } });
+        await respond(`Remove ${name} from the household? Reply "yes" to confirm or "no" to cancel.`);
+      }
     } else if (intent.type === "help") {
       await respond(helpMessage());
     } else if (intent.type === "order_now") {
@@ -218,25 +327,7 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
         await respond('To check out the current cart, text "order now".');
         continue;
       }
-      try {
-        const result = await placeOrder(household.id);
-        await announce(groupSummary(household, result));
-        const { waiting } = await sendOrderTexts(household, result);
-        if (waiting.length) {
-          await respond(waitingForDm(waiting));
-        }
-      } catch (err) {
-        if (err instanceof OwnerCardRequiredError) {
-          // The add-card link goes only to the owner, privately. The group just hears why we stopped.
-          const gate = await ownerCardRequest(household);
-          if (gate.ownerId === member.id && msg.spaceKind === "direct" && gate.ownerText) await respond(gate.ownerText);
-          else {
-            await respond(gate.groupText);
-            if (gate.ownerId && gate.ownerText) await sendPrivate(gate.ownerId, gate.ownerText, `owner-gate:${msg.messageId}`);
-          }
-        } else if (err instanceof OrderError || err instanceof ChargeFailedError) await respond(err.message);
-        else throw err;
-      }
+      await runOrder();
     }
   }
 

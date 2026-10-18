@@ -216,7 +216,7 @@ describe("delete my data", () => {
     expect(out()).toMatch(/can't be undone\. Reply "yes"/);
     expect(h.members).toHaveLength(2);
     await dm(AMBER, "yes");
-    expect(out()).toMatch(/your data is deleted/);
+    expect(out()).toMatch(/Your Restock data is deleted/);
     expect(householdsForPhone(AMBER)).toHaveLength(0);
   });
 

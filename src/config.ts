@@ -5,12 +5,18 @@ function optional(name: string): string | undefined {
   return v && v.length > 0 ? v : undefined;
 }
 
+/**
+ * Where texted links point. Railway sets RAILWAY_PUBLIC_DOMAIN on deployed services; PUBLIC_BASE_URL overrides it.
+ * A trailing slash is dropped: links are built as `${publicBaseUrl}/c/…`, which would otherwise read "https://site//c/…".
+ */
+export function publicBaseUrlFrom(env: Record<string, string | undefined>): string {
+  const raw = env.PUBLIC_BASE_URL?.trim() || (env.RAILWAY_PUBLIC_DOMAIN ? `https://${env.RAILWAY_PUBLIC_DOMAIN}` : "http://localhost:3000");
+  return raw.replace(/\/+$/, "");
+}
+
 export const config = {
   port: Number(process.env.PORT ?? 3000),
-  // Railway sets RAILWAY_PUBLIC_DOMAIN on deployed services; PUBLIC_BASE_URL overrides it.
-  publicBaseUrl:
-    process.env.PUBLIC_BASE_URL ??
-    (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "http://localhost:3000"),
+  publicBaseUrl: publicBaseUrlFrom(process.env),
   anthropicApiKey: optional("ANTHROPIC_API_KEY"),
   photonApiKey: optional("PHOTON_API_KEY"),
   photonProjectId: optional("PHOTON_PROJECT_ID"),

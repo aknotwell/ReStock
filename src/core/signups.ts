@@ -7,7 +7,7 @@
 import { randomBytes } from "node:crypto";
 import { addMember, atSpaceLimit, checkCanJoin, knownName, cleanName, createHousehold, householdName, MembershipError, normalizePhone, TOO_MANY_SPACES } from "./households.js";
 import { registerState } from "./persist.js";
-import { db } from "./store.js";
+import { db, householdsForPhone } from "./store.js";
 import { assignLine, lineTextedBy, releaseLine, releaseLinesForHandle } from "../messaging/photonLines.js";
 import type { Household, Member } from "../types.js";
 
@@ -118,10 +118,20 @@ export async function startSignup(input: { name: string; phone: string; inviteCo
  * The owner invites someone by text ("invite Alex 206-555-0102"). Works like signing up with the household's
  * invite link: it reserves them a Restock number (Photon's shared lines only take texts from assigned phones),
  * and they join the household when they text it. Same join rules as addMember (checkCanJoin). Lasts 7 days.
+ *
+ * Someone who already uses Restock already has a number, and their next text is about their own households: a
+ * pending sign-up would join them with whatever they text next. So nothing is reserved (`existingUser`), and the
+ * caller sends them the household's join code; they join by texting "join <code>" (joinWithInvite).
  */
-export async function inviteToHousehold(household: Household, name: string, phone: string, now = Date.now()): Promise<{ line: string }> {
+export async function inviteToHousehold(
+  household: Household,
+  name: string,
+  phone: string,
+  now = Date.now(),
+): Promise<{ line: string; existingUser?: undefined } | { existingUser: true }> {
   await sweepExpiredSignups(now);
   checkCanJoin(household, name, phone);
+  if (householdsForPhone(phone).length) return { existingUser: true };
   const others = invitedTo(household.id, now).filter((p) => p.phone !== phone);
   if (others.some((p) => p.name.toLowerCase() === name.toLowerCase())) {
     throw new MembershipError(`You've already invited a ${name}. Use a different name, like "${name} B".`);
@@ -147,8 +157,17 @@ export async function cancelInvite(householdId: string, name: string, now = Date
   const p = [...pending.values()].find((x) => x.householdId === householdId && x.expiresAt > now && x.name.toLowerCase() === name.trim().toLowerCase());
   if (!p) return undefined;
   pending.delete(p.phone);
-  if (!(await releaseLine(p.assignmentId))) unreleased.set(p.assignmentId, p.phone);
+  if (!lineInUse(p.phone, p.assignmentId) && !(await releaseLine(p.assignmentId))) unreleased.set(p.assignmentId, p.phone);
   return p.name;
+}
+
+/**
+ * Is this phone still texting Restock on this assignment? Photon gives a phone one live assignment, so a second
+ * sign-up (or an invite) for someone who already uses Restock reuses theirs. Expiring or cancelling that sign-up
+ * must not release it: they would lose their number while still in their households.
+ */
+function lineInUse(phone: string, assignmentId: string): boolean {
+  return lines.get(phone)?.assignmentId === assignmentId || householdsForPhone(phone).length > 0;
 }
 
 export type Activation = { household: Household; member: Member; joined: boolean };
@@ -226,10 +245,10 @@ export async function releaseLineFor(phone: string): Promise<void> {
 /** Release lines of sign-ups that were never activated, and retry failed releases. Runs on every sign-up and on a timer. */
 export async function sweepExpiredSignups(now = Date.now()): Promise<number> {
   const expired = sweepExpiredSync(now);
-  for (const p of expired) if (!(await releaseLine(p.assignmentId))) unreleased.set(p.assignmentId, p.phone);
+  for (const p of expired) if (!lineInUse(p.phone, p.assignmentId) && !(await releaseLine(p.assignmentId))) unreleased.set(p.assignmentId, p.phone);
   for (const [assignmentId, phone] of [...unreleased]) {
-    // They signed up again meanwhile: that assignment may be in use again, so leave it alone.
-    const inUse = lines.get(phone)?.assignmentId === assignmentId || pending.get(phone)?.assignmentId === assignmentId;
+    // They signed up again (or came back) meanwhile: that assignment may be in use again, so leave it alone.
+    const inUse = lineInUse(phone, assignmentId) || pending.get(phone)?.assignmentId === assignmentId;
     if (inUse || (await releaseLine(assignmentId))) unreleased.delete(assignmentId);
   }
   return expired.length;

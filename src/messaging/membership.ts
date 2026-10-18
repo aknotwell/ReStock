@@ -296,9 +296,27 @@ export async function handleMembershipCommand({ command, fromPhone, spaceKind, h
         return true;
       }
       // Reserves them a Restock number: Photon only accepts texts from phones that have one.
-      const { line } = await inviteToHousehold(household, name, phone);
+      const invited = await inviteToHousehold(household, name, phone);
+      if (invited.existingUser) {
+        // They already text Restock about their own households: send the household's join code, and they decide.
+        const code = inviteCodeFor(household, member.id);
+        const them = householdsForPhone(phone).flatMap((h) => h.members).find((m) => m.phone === phone)!;
+        const sent = await sendPrivate(
+          them.id,
+          `${member.name} invited you to ${householdName(household)}. To join, reply "join ${code}".`,
+          `invite:${household.id}:${them.id}:${code}`,
+        ).catch((err) => {
+          console.warn("invite text failed:", err instanceof Error ? err.message : err);
+          return undefined;
+        });
+        await respond(
+          `${name} already uses Restock, so ${sent === "sent" ? "I texted them" : "they'll get"} your invite to ${householdName(household)}` +
+            `${sent === "sent" ? "" : " next time they text me"}. They join by replying "join ${code}", or with your invite link: ${config.publicBaseUrl}/join/${code}`,
+        );
+        return true;
+      }
       await respond(
-        `Invited ${name} (${last4(phone)}). Ask ${name} to text "hi" to ${prettyLine(line)}. That's their Restock number, ` +
+        `Invited ${name} (${last4(phone)}). Ask ${name} to text "hi" to ${prettyLine(invited.line)}. That's their Restock number, ` +
           `and they'll join the household when they text it. I can't text them first. The invite lasts 7 days.`,
       );
       return true;

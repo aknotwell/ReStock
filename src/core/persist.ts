@@ -37,7 +37,7 @@ const SCHEMA = `
 
 /**
  * Open (or create) the database file and load whatever it holds into the in-memory store.
- * Returns true if it found saved households, so the caller can skip seeding the demo.
+ * Returns true if it found any saved data, so the caller doesn't seed the demo over it.
  */
 export function openDatabase(file: string): boolean {
   closeDatabase();
@@ -58,20 +58,30 @@ function rows<T>(d: DatabaseSync, sql: string): T[] {
   return (d.prepare(sql).all() as { data: string }[]).map((r) => JSON.parse(r.data) as T);
 }
 
+/**
+ * Load everything that was saved. Returns whether anything was (households, items, orders, charges, debts or
+ * module state): the caller only seeds the demo into an empty database, since seeding resets the store.
+ * Debts, the STOP list, texted links and the rest are restored even with no households: skipping them would
+ * let the next autosave write the empty store back and delete them for good.
+ */
 function load(d: DatabaseSync): boolean {
   const households = rows<Household>(d, "SELECT data FROM households");
-  if (!households.length) return false;
+  const items = rows<Item>(d, "SELECT data FROM items");
+  const orders = rows<Order>(d, "SELECT data FROM orders");
+  const charges = rows<Charge>(d, "SELECT data FROM charges ORDER BY seq");
+  const debts = rows<Debt>(d, "SELECT data FROM debts");
+  const state = d.prepare("SELECT name, data FROM state").all() as { name: string; data: string }[];
   db.households.clear();
   db.items.clear();
   db.orders.clear();
   db.debts.clear();
   db.charges.length = 0;
   for (const h of households) db.households.set(h.id, h);
-  for (const i of rows<Item>(d, "SELECT data FROM items")) db.items.set(i.id, i);
-  for (const o of rows<Order>(d, "SELECT data FROM orders")) db.orders.set(o.id, o);
-  db.charges.push(...rows<Charge>(d, "SELECT data FROM charges ORDER BY seq"));
-  for (const x of rows<Debt>(d, "SELECT data FROM debts")) db.debts.set(x.id, x);
-  for (const r of d.prepare("SELECT name, data FROM state").all() as { name: string; data: string }[]) {
+  for (const i of items) db.items.set(i.id, i);
+  for (const o of orders) db.orders.set(o.id, o);
+  db.charges.push(...charges);
+  for (const x of debts) db.debts.set(x.id, x);
+  for (const r of state) {
     try {
       sections.get(r.name)?.load(JSON.parse(r.data));
     } catch (err) {
@@ -79,7 +89,7 @@ function load(d: DatabaseSync): boolean {
       console.error(`Couldn't restore saved ${r.name}:`, err instanceof Error ? err.message : err);
     }
   }
-  return true;
+  return [households, items, orders, charges, debts, state].some((rows) => rows.length > 0);
 }
 
 function snapshot(): string {

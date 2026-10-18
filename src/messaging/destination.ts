@@ -118,16 +118,28 @@ export function answerDestination(phone: string, answer: string, member: (h: Hou
     return { kind: "cancelled" };
   }
   if (p.step === "household") {
+    // Numbers follow the list as it was asked (p.householdIds). Membership is re-checked: a household may have
+    // been deleted or left since, and then its number must not slide onto the next one.
     const options = householdsForPhone(phone).filter((h) => p.householdIds.includes(h.id));
     const number = /^#?(\d{1,2})$/.exec(a);
     const personalAnswer = /^(?:just me|me|mine|personal|my personal(?: list)?|personal list|new personal list|a new personal list)$/.test(a);
-    if (p.newPersonal && ((number && Number(number[1]) === options.length + 1) || personalAnswer)) {
+    if (p.newPersonal && ((number && Number(number[1]) === p.householdIds.length + 1) || personalAnswer)) {
       pending.delete(phone);
       return { kind: "newPersonal", text: p.text };
     }
-    const chosen = number ? options[Number(number[1]) - 1] : options.find((h) => namesFor(h, phone).some((n) => n === a || n.replace(/'s.*$/, "") === a));
+    const chosen = number
+      ? options.find((h) => h.id === p.householdIds[Number(number[1]) - 1])
+      : options.find((h) => namesFor(h, phone).some((n) => n === a || n.replace(/'s.*$/, "") === a));
     if (!chosen) {
-      if (number) return { kind: "ask", prompt: `Reply with a number from 1 to ${options.length + (p.newPersonal ? 1 : 0)}, or "cancel".` };
+      if (number) {
+        const listed = Number(number[1]) >= 1 && Number(number[1]) <= p.householdIds.length;
+        return {
+          kind: "ask",
+          prompt: listed
+            ? `That household isn't available anymore. Reply with another number, or "cancel".`
+            : `Reply with a number from 1 to ${p.householdIds.length + (p.newPersonal ? 1 : 0)}, or "cancel".`,
+        };
+      }
       pending.delete(phone);
       return { kind: "pass" };
     }

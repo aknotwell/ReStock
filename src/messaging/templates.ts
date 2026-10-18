@@ -2,7 +2,8 @@
 import type { ShareLine } from "../core/split.js";
 import type { Cents, Household, Member, OrderResult, SplitRule } from "../types.js";
 
-export const fmt = (c: Cents) => `$${(c / 100).toFixed(2)}`;
+/** "$10.15"; a negative amount is "-$5.00", never "$-5.00". */
+export const fmt = (c: Cents) => `${c < 0 ? "-" : ""}$${(Math.abs(c) / 100).toFixed(2)}`;
 
 const ruleText: Record<SplitRule, string> = {
   smart: "shared items split evenly, personal items paid by whoever added them",
@@ -12,8 +13,13 @@ const ruleText: Record<SplitRule, string> = {
 
 export function groupSummary(h: Household, r: OrderResult): string {
   const lines = h.members.map((m) => `${m.name} ${fmt(r.shares[m.id] ?? 0)}`).join(" · ");
-  const budget = h.budgetCents === undefined ? "" : ` Household budget left: ${fmt(h.budgetCents - h.spentCents)}`;
-  return `Ordered! ${r.items.length} items, ${fmt(r.order.totalCents)}, ${ruleText[r.order.rule]}.\n${lines}\nArrives ${r.order.eta ?? "soon"}.${budget}\n(Demo order: nothing ships, and payments are Stripe test mode.)`;
+  const left = h.budgetCents === undefined ? undefined : h.budgetCents - h.spentCents;
+  const budget =
+    left === undefined ? ""
+    : left >= 0 ? ` Household budget left: ${fmt(left)}`
+    : ` The household is ${fmt(-left)} over this month's budget.`;
+  const count = `${r.items.length} item${r.items.length === 1 ? "" : "s"}`;
+  return `Ordered! ${count}, ${fmt(r.order.totalCents)}, ${ruleText[r.order.rule]}.\n${lines}\nArrives ${r.order.eta ?? "soon"}.${budget}\n(Demo order: nothing ships, and payments are Stripe test mode.)`;
 }
 
 /** Most item lines shown in one text; the rest are summed into one "…and N more" line. */

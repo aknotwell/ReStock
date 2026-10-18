@@ -30,7 +30,7 @@ export function computeShareLines(items: Item[], members: Member[], rule: SplitR
     const group = rule === "smart" && item.splitWith?.length ? members.filter((m) => item.splitWith!.includes(m.id)) : [];
     const toAdder = !group.length && (rule === "adder" || (rule === "smart" && !item.shared));
     // An item added by someone no longer in the household is split evenly rather than dropped.
-    if (toAdder && item.addedBy in lines) {
+    if (toAdder && Object.hasOwn(lines, item.addedBy)) {
       lines[item.addedBy]!.push({ itemId: item.id, name: item.name, cents: item.cents, splitWays: 1 });
       continue;
     }

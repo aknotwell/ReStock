@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f6f7f4">
+<title>Pay back | Restock</title>
+<!-- Owner: Person 4 (page) + Person 3 (API in payments/payback.ts). Mobile-first: people open this from a text. -->
+<style>
+  :root {
+    color-scheme: light;
+    --ink: #202a24; --muted: #6f786f; --line: #e3e8e0; --canvas: #f6f7f4; --surface: #ffffff;
+    --green: #28734e; --green-soft: #edf5ef; --alert: #a24a1f;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { color-scheme: dark; --ink: #e6ebe6; --muted: #98a299; --line: #2d342e; --canvas: #141815; --surface: #1c211d; --green: #5fb487; --green-soft: #213328; --alert: #e59a6f; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--canvas); color: var(--ink); }
+  button, input { font: inherit; }
+  main { width: min(440px, 100%); margin: 0 auto; padding: 28px 16px 48px; }
+  .brand { display: flex; align-items: center; gap: 9px; margin-bottom: 26px; font-size: 17px; font-weight: 750; letter-spacing: -.4px; }
+  .brand-mark { width: 28px; height: 28px; }
+  h1 { margin: 0 0 6px; font-size: 25px; letter-spacing: -.7px; }
+  .lead { margin: 0 0 22px; color: var(--muted); font-size: 14px; line-height: 1.55; }
+  .card { padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+  label { display: grid; gap: 7px; color: var(--muted); font-size: 13px; font-weight: 650; }
+  input[type="tel"], input[type="text"] { padding: 13px 14px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); color: var(--ink); font-size: 17px; }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+  .code { letter-spacing: 6px; font-variant-numeric: tabular-nums; }
+  .primary { width: 100%; margin-top: 14px; padding: 14px; border: 0; border-radius: 12px; background: var(--green); color: #fff; cursor: pointer; font-size: 15px; font-weight: 700; }
+  .primary:disabled { opacity: .55; cursor: default; }
+  .link { margin-top: 12px; padding: 0; border: 0; background: none; color: var(--green); cursor: pointer; font-size: 13px; font-weight: 650; }
+  .error { margin: 12px 0 0; color: var(--alert); font-size: 13px; }
+  .error[hidden], [hidden] { display: none !important; }
+  .debt { display: grid; gap: 4px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+  .debt:first-child { padding-top: 0; }
+  .debt:last-of-type { border-bottom: 0; }
+  .debt-amount { font-size: 28px; font-weight: 760; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+  .debt-to { color: var(--muted); font-size: 13px; }
+  .save { display: flex; align-items: start; gap: 10px; margin-top: 16px; color: var(--ink); font-size: 13px; font-weight: 500; line-height: 1.45; }
+  .save input { width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--green); }
+  .note { margin: 14px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+  .done { padding: 22px 18px; border-radius: 16px; background: var(--green-soft); color: var(--green); font-size: 15px; font-weight: 650; text-align: center; }
+  .who { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand"><svg class="brand-mark" viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="7" fill="#111"/><path d="M19.64 16.05A6 6 0 1 1 18.6 10.14" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><path d="M18.34 7.15L18.6 10.14L15.7 9.36" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><rect x="11.5" y="11.5" width="5" height="5" rx="1.2" fill="#fff"/></svg>restock</div>
+
+  <section id="login">
+    <h1>Pay back your household</h1>
+    <p class="lead">Log in with the phone number you use with Restock. We'll text you a code.</p>
+    <form class="card" id="phone-form">
+      <label for="handle">Phone number<input id="handle" type="tel" autocomplete="tel" placeholder="(555) 555-0123" required></label>
+      <button class="primary" type="submit">Text me a code</button>
+    </form>
+    <form class="card" id="code-form" hidden>
+      <label for="code">6-digit code from Restock<input class="code" id="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required></label>
+      <button class="primary" type="submit">Log in</button>
+      <button class="link" id="resend" type="button">Send a new code</button>
+      <p class="error" id="login-error" role="alert" hidden></p>
+    </form>
+  </section>
+
+  <section id="owed" hidden>
+    <div class="who"><span id="who"></span><button class="link" id="logout" type="button" style="margin:0">Log out</button></div>
+    <h1 id="owed-title">What you owe</h1>
+    <p class="lead" id="owed-lead">The main card covered your share. Pay it back here.</p>
+    <div class="card" id="debts"></div>
+    <div class="done" id="settled" hidden>You're all paid back. Nobody's waiting on you.</div>
+    <p class="note">You'll type your card on Stripe's secure page. Restock never sees your card number.</p>
+    <p class="error" id="pay-error" role="alert" hidden></p>
+  </section>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  let handle = "";
+
+  async function api(path, body) {
+    const res = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : undefined);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw Object.assign(new Error(data.error || "Something went wrong. Try again."), { status: res.status });
+    return data;
+  }
+
+  function showError(id, message) {
+    $(id).textContent = message || "";
+    $(id).hidden = !message;
+  }
+
+  async function sendCode() {
+    await api("/pay/api/start", { handle });
+    $("phone-form").hidden = true;
+    $("code-form").hidden = false;
+    $("code").focus();
+  }
+
+  function renderDebts(me) {
+    $("login").hidden = true;
+    $("owed").hidden = false;
+    $("who").textContent = `Logged in as ${me.name}`;
+    const list = $("debts");
+    list.replaceChildren();
+    const total = me.debts.reduce((s, d) => s + d.cents, 0);
+    $("settled").hidden = me.debts.length > 0;
+    list.hidden = me.debts.length === 0;
+    $("owed-lead").textContent = me.debts.length
+      ? "The main card covered your share. Pay it back here."
+      : "Nothing to pay right now.";
+    for (const debt of me.debts) {
+      const row = document.createElement("div");
+      row.className = "debt";
+      const amount = document.createElement("div");
+      amount.className = "debt-amount";
+      amount.textContent = debt.amount;
+      const to = document.createElement("div");
+      to.className = "debt-to";
+      const when = debt.orderDate ? ` · order from ${new Date(debt.orderDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })}` : "";
+      to.textContent = `To ${debt.to}${when}`;
+      const pay = document.createElement("button");
+      pay.className = "primary";
+      pay.type = "button";
+      pay.textContent = `Pay ${debt.to} ${debt.amount}`;
+      pay.addEventListener("click", async () => {
+        pay.disabled = true;
+        showError("pay-error", "");
+        try {
+          const { url } = await api("/pay/api/checkout", { debtId: debt.id, saveCard: $("save-card").checked });
+          location.href = url;
+        } catch (err) {
+          showError("pay-error", err.message);
+          pay.disabled = false;
+        }
+      });
+      row.append(amount, to, pay);
+      list.append(row);
+    }
+    if (me.debts.length) {
+      const save = document.createElement("label");
+      save.className = "save";
+      save.innerHTML = '<input id="save-card" type="checkbox" checked><span></span>';
+      save.querySelector("span").textContent = me.cardLast4
+        ? `Use this card from now on instead of the one ending ${me.cardLast4}.`
+        : "Save this card so my share is paid automatically from the next order on.";
+      save.querySelector("input").checked = !me.cardLast4;
+      list.append(save);
+    }
+    if (total === 0) list.hidden = true;
+  }
+
+  async function loadMe() {
+    try {
+      renderDebts(await api("/pay/api/me"));
+    } catch (err) {
+      if (err.status !== 401) showError("login-error", err.message);
+    }
+  }
+
+  $("phone-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    handle = $("handle").value.trim();
+    try { await sendCode(); } catch (err) { showError("login-error", err.message); }
+  });
+  $("code-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    showError("login-error", "");
+    try {
+      await api("/pay/api/verify", { handle, code: $("code").value.trim() });
+      await loadMe();
+    } catch (err) {
+      showError("login-error", err.message);
+    }
+  });
+  $("resend").addEventListener("click", async () => {
+    $("code").value = "";
+    showError("login-error", "");
+    try { await sendCode(); showError("login-error", "New code sent."); } catch (err) { showError("login-error", err.message); }
+  });
+  $("logout").addEventListener("click", async () => {
+    await api("/pay/api/logout", {}).catch(() => {});
+    location.reload();
+  });
+
+  loadMe();
+</script>
+</body>
+</html>

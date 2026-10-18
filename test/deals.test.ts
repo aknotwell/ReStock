@@ -287,7 +287,7 @@ describe("options with live listings", () => {
   });
 
   it("labels options over the monthly budget with the owner's name", () => {
-    db.households.get(H)!.spentCents = db.households.get(H)!.budgetCents - 7275 - 1500; // $15 left after the cart
+    db.households.get(H)!.spentCents = db.households.get(H)!.budgetCents! - 7275 - 1500; // $15 left after the cart
     const choice = buildChoice(H, TP(), null);
     expect(choice.overBudgetIds).toEqual(["tp-24", "tp-soft"]);
     expect(choice.ownerName).toBe("Sam");
@@ -295,7 +295,7 @@ describe("options with live listings", () => {
   });
 
   it("an over-budget pick reports it so the item can wait for approval", () => {
-    db.households.get(H)!.spentCents = db.households.get(H)!.budgetCents - 7275 - 1500;
+    db.households.get(H)!.spentCents = db.households.get(H)!.budgetCents! - 7275 - 1500;
     queueChoices(H, "jake", [buildChoice(H, TP(), null)]);
     expect(resolvePick(H, "jake", 1)).toMatchObject({ kind: "picked", product: { id: "tp-24" }, overBudget: { ownerName: "Sam" } });
   });
@@ -332,14 +332,14 @@ describe("in the chat", () => {
     expect(out()).not.toMatch(/Store prices checked/);
   });
 
-  it("an over-budget pick by a member waits for the owner's yes", async () => {
+  it("an over-budget pick by a member waits for an approver's yes", async () => {
     config.serpapiKey = undefined;
-    db.households.get(H)!.spentCents = db.households.get(H)!.budgetCents - 7275 - 1500;
+    db.households.get(H)!.spentCents = db.households.get(H)!.budgetCents! - 7275 - 1500;
     await say(JAKE, "add tp");
     expect(out()).toMatch(/over budget, needs Sam's OK/);
     await say(JAKE, "1");
     expect(pendingItems(H).at(-1)).toMatchObject({ name: "Toilet paper, 24 rolls (bulk)", needsApproval: true });
-    expect(out()).toMatch(/waits for Sam's OK \(Sam: reply "yes"\)/);
+    expect(out()).toMatch(/would exceed this month's budget\. Sam or Priya: reply "yes"/);
     await say(SAM, "yes");
     expect(pendingItems(H).at(-1)?.needsApproval).toBe(false);
   });

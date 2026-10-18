@@ -11,8 +11,8 @@ const ruleText: Record<SplitRule, string> = {
 
 export function groupSummary(h: Household, r: OrderResult): string {
   const lines = h.members.map((m) => `${m.name} ${fmt(r.shares[m.id] ?? 0)}`).join(" · ");
-  const left = h.budgetCents - h.spentCents;
-  return `Ordered! ${r.items.length} items, ${fmt(r.order.totalCents)}, ${ruleText[r.order.rule]}.\n${lines}\nArrives ${r.order.eta ?? "soon"}. Household budget left: ${fmt(left)}`;
+  const budget = h.budgetCents === undefined ? "" : ` Household budget left: ${fmt(h.budgetCents - h.spentCents)}`;
+  return `Ordered! ${r.items.length} items, ${fmt(r.order.totalCents)}, ${ruleText[r.order.rule]}.\n${lines}\nArrives ${r.order.eta ?? "soon"}.${budget}`;
 }
 
 export function ownerReceipt(owner: Member, share: Cents, coveredForOthers: Cents): string {

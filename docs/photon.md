@@ -33,7 +33,7 @@ Restock talks to people through **Photon 2.0**, Photon's Beta platform: the `@ph
 
 ## Demo household
 
-By default the seed creates Sam (owner), Jake and Priya with fake numbers. For a live demo with real phones, set **`DEMO_MEMBERS`** on Railway to a JSON list (one line):
+Households can be created over chat (`start household as …`, then `add member …`, see the table below). For a pre-built demo household instead, the seed creates Sam (owner), Jake and Priya with fake numbers, or set **`DEMO_MEMBERS`** on Railway to a JSON list (one line):
 
 ```json
 [{"name":"YourName","phone":"+1206XXXXXXX","owner":true,"card":true},{"name":"David","phone":"+1…","card":true},{"name":"Amber","phone":"+1…"},{"name":"Abdul","phone":"+1…"}]
@@ -51,6 +51,10 @@ The AI understands natural phrasing. The fallback parser, used when there's no A
 
 | Text | What happens | Where the reply goes |
 |---|---|---|
+| `start household as Alex` | Creates a household with the sender as **budget owner** (anyone not already in one) | Same chat (DM) |
+| `add member Amber 425-555-0123` | **Owner only.** Adds Amber (no card yet). She must text her Restock number first. | Same chat |
+| `remove member Amber` | **Owner only.** Removes her, unless she has an open balance. Never the owner. | Same chat |
+| `members` | Lists names, the owner, and who has a card (no phone numbers) | Same chat |
 | `add dish soap` / "we're out of TP" | Matched to the catalog and added (shared by default) | Same chat |
 | `personal` / `shared` | Flips the sender's most recent item | Same chat |
 | `remove dish soap` | Removes that item from the cart | Same chat |

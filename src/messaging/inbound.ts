@@ -14,6 +14,7 @@ import { reply, sendGroup, sendPrivate, type InboundMessage } from "./photon.js"
 import { parseCommand } from "./commands.js";
 import { balanceSummary, CARD_NUMBER_WARNING, fmt, groupSummary, helpMessage, inviteToAddCard } from "./templates.js";
 import { sendOrderTexts } from "./afterOrder.js";
+import { handleMembershipCommand, parseMembershipCommand } from "./membership.js";
 import {
   buildChoice, hasPendingChoice, isCancel, lastBought, namedSpecifically, parsePick, queueChoices, resolvePick, stripUsual, wantsUsual,
   type Choice,
@@ -42,7 +43,14 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   const respond = (text: string) => reply(msg, text, part++);
 
   // 1. Guardrails run before anything else sees the text — even for unknown senders.
-  const hit = checkInput(msg.text);
+  // "add member <name> <phone>" must contain a phone number, which the PII guardrail would refuse. For that
+  // one deterministic command, check everything except the number (it goes to the store, never to the AI).
+  // The exemption applies only if the phone number is the *only* thing the guardrails object to.
+  const membership = parseMembershipCommand(msg.text);
+  let hit = checkInput(msg.text);
+  if (hit?.rule === "injection" && membership?.type === "add_member" && !checkInput(msg.text.replace(membership.phone, "[phone]"))) {
+    hit = undefined;
+  }
   if (hit?.reply) {
     await respond(hit.reply);
     return;
@@ -57,9 +65,17 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
 
   const household = resolveHousehold(msg);
   const member = household && findMemberByPhone(household, msg.fromPhone);
+
+  // 2. Household membership commands (start / add member / remove member / members). Plain code, never the AI.
+  if (membership) {
+    await handleMembershipCommand({ command: membership, fromPhone: msg.fromPhone, spaceKind: msg.spaceKind, household, member: member || undefined, respond });
+    return;
+  }
+
   if (!household || !member) {
-    // TODO(P1): join flow — create a Member with no card and send inviteToAddCard privately
-    if (msg.spaceKind === "direct") await respond(`${helpMessage()}\nAsk your household's budget owner to add you to Restock.`);
+    if (msg.spaceKind === "direct") {
+      await respond(`${helpMessage()}\nTo get started, text "start household as <your name>", or ask your household's budget owner to add you.`);
+    }
     return;
   }
 

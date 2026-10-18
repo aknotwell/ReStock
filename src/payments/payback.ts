@@ -11,7 +11,7 @@ import { config } from "../config.js";
 import { markDebtPaid, openDebtsFor } from "../core/ledger.js";
 import { db, findMember } from "../core/store.js";
 import { registerState } from "../core/persist.js";
-import { sendPrivate } from "../messaging/photon.js";
+import { canTextPrivately, sendPrivate } from "../messaging/photon.js";
 import { fmt, paidBack } from "../messaging/templates.js";
 import type { Debt, Member } from "../types.js";
 import { claimDebtsForNewPage, ensureStripeCustomer, registerPayBackPage } from "./links.js";
@@ -51,16 +51,32 @@ export function findMemberByHandle(input: string): Member | undefined {
   return undefined;
 }
 
+/** Make a fresh login code for this member (replacing any earlier one) and return the text that carries it. */
+export function newLoginCode(member: Member, now = Date.now()): string {
+  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+  codes.set(member.id, { code: hash(code), expiresAt: now + CODE_TTL_MS, tries: 0 });
+  return `Your Restock code is ${code}. It expires in 10 minutes. Don't share it with anyone.`;
+}
+
 /**
  * Text a login code to the member with this phone number. Says nothing about whether the number
- * belongs to anyone, so the site can't be used to look people up.
+ * belongs to anyone, so the site can't be used to look people up. Restock can't text someone first, so
+ * if they've never texted it one-on-one the code isn't held for later (it would expire and the group would
+ * be nudged); the page tells them to text "code" instead, and that reply carries one.
  */
 export async function startLogin(handle: string, now = Date.now()): Promise<void> {
   const member = findMemberByHandle(handle);
-  if (!member) return;
-  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
-  codes.set(member.id, { code: hash(code), expiresAt: now + CODE_TTL_MS, tries: 0 });
-  await sendPrivate(member.id, `Your Restock code is ${code}. It expires in 10 minutes. Don't share it with anyone.`, `login:${member.id}:${now}`);
+  if (!member) {
+    console.log("login code: no member with that number");
+    return;
+  }
+  const last4 = member.phone.slice(-4);
+  if (!canTextPrivately(member.phone)) {
+    console.log(`login code: not sent to …${last4}, no one-on-one chat with Restock yet (or they texted STOP). They can text "code".`);
+    return;
+  }
+  await sendPrivate(member.id, newLoginCode(member, now), `login:${member.id}:${now}`);
+  console.log(`login code: sent to …${last4}`);
 }
 
 /** Check the code. Returns a session token on success. A code works once and only for a few tries. */

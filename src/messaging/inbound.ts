@@ -31,6 +31,9 @@ import {
   type Choice,
 } from "./options.js";
 import type { Product } from "../core/catalog.js";
+import { sendLoginCode } from "../payments/payback.js";
+
+const LOGIN_CODE = /^(?:(?:send|text|give) me (?:a |my |the )?|get (?:a |my )?)?(?:log ?in |dashboard |verification )?code[.!?]*$|^log ?in[.!?]*$/i;
 
 /** Which household a message belongs to. Binds an unbound household to its group chat on first contact. */
 function resolveHousehold(msg: InboundMessage): Household | undefined {
@@ -115,6 +118,14 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
 
   const household = resolveHousehold(msg);
   const member = household && findMemberByPhone(household, msg.fromPhone);
+
+  // "code": a login code for the dashboard and pay-back site, as a reply (Restock can't text first, so the
+  // website's "Text me a code" only reaches people who have texted us one-on-one). Never in a group chat.
+  if (member && LOGIN_CODE.test(msg.text.trim())) {
+    if (msg.spaceKind === "direct") await sendLoginCode(member, respond);
+    else await respond("For your security, text me directly for a login code.");
+    return;
+  }
 
   // A "yes"/"no" to a question Restock asked (confirm-to-act). Only the person who was asked can answer.
   let confirmedOrder = false;

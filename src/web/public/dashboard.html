@@ -93,6 +93,7 @@
   .field { display: block; margin-bottom: 6px; font-size: 15px; font-weight: 600; }
   .text-input { width: 100%; min-height: 48px; padding: 0 14px; border: 1.5px solid var(--ink); border-radius: 4px; background: var(--paper); color: var(--ink); font-family: var(--mono); font-size: 17px; }
   .text-input.code { letter-spacing: .4em; font-variant-numeric: tabular-nums; }
+  .login-hint { margin-top: 14px; }
   .money { display: inline-flex; flex: none; align-items: center; gap: 4px; width: 120px; min-height: 42px; padding: 0 10px; border: 1.5px solid var(--ink); border-radius: 4px; background: var(--paper); font-family: var(--mono); font-size: 15px; font-weight: 500; }
   .money.small { width: 88px; }
   .money input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; text-align: right; font-variant-numeric: tabular-nums; }
@@ -281,6 +282,7 @@
         <input class="text-input code" id="login-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required>
         <button class="btn primary" type="submit">Log in</button>
         <div class="login-actions"><button class="link-button" id="login-back" type="button">Change number</button><button class="link-button" id="login-resend" type="button">Send again</button></div>
+        <p class="meta login-hint">No text after a minute? Text <b>code</b> to your Restock number and it replies with one.</p>
       </form>
       <p class="error" id="login-error" role="alert" hidden></p>
       <p class="demo-link"><button class="link-button" id="try-demo" type="button">Try the demo</button></p>

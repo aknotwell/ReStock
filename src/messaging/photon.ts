@@ -48,6 +48,15 @@ export function resetMuted(): void {
   muted.clear();
 }
 
+/**
+ * Can a private text reach this phone right now? Shared lines can't start chats, so only once the person has
+ * texted us one-on-one (or in console mode, or while capturing). STOP turns this off.
+ */
+export function canTextPrivately(phone: string): boolean {
+  if (muted.has(phone)) return false;
+  return !photon || capture.getStore() !== undefined || dmByHandle.has(phone);
+}
+
 /** A text that was captured instead of sent. Private texts carry `memberId`; the rest carry the space they were for. */
 export type CapturedText = { text: string; spaceId?: string; memberId?: string };
 

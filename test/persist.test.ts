@@ -85,7 +85,8 @@ describe("SQLite persistence", () => {
     expect(await b.links.openPayBackLink(small)).toMatchObject({ kind: "not_found" }); // nothing loaded yet
     b.persist.openDatabase(file);
     expect(await b.links.openPayBackLink(small)).toMatchObject({ kind: "too_small", cents: 30 });
-    expect(await b.links.openPayBackLink(done)).toMatchObject({ kind: "paid" });
+    // Any pay-back link pays everything still owed to that person, so the paid debt's link shows the 30¢ left.
+    expect(await b.links.openPayBackLink(done)).toMatchObject({ kind: "too_small", cents: 30 });
   });
 
   it("expired links are dropped when loading", async () => {

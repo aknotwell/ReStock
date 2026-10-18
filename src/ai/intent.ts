@@ -2,8 +2,8 @@
 import { z } from "zod";
 
 export const IntentSchema = z.object({
-  type: z.enum(["add_item", "remove_item", "set_shared", "order_now", "what_do_i_owe", "approve", "help", "add_card", "question", "unknown"]),
-  itemName: z.string().min(1).max(200).nullable().describe("Normalized product name, e.g. 'Toilet paper, 12 rolls'"),
+  type: z.enum(["add_item", "remove_item", "set_shared", "order_now", "what_do_i_owe", "approve", "help", "add_card", "question", "checkout", "start_household", "add_member", "remove_member", "list_members", "unknown"]),
+  itemName: z.string().min(1).max(200).nullable().describe("Normalized product name, e.g. 'Toilet paper, 12 rolls'. For start_household / add_member / remove_member: the person's first name only."),
   quantity: z.number().int().min(1).max(20).nullable(),
   shared: z.boolean().nullable().describe("true = household item, false = personal item, null = not stated"),
 });

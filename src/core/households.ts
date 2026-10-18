@@ -69,3 +69,13 @@ export function removeMember(household: Household, name: string): Member {
   household.members = household.members.filter((m) => m.id !== member.id);
   return member;
 }
+
+/** The first real phone number written anywhere in a message, e.g. "her number is 425 555 0123". */
+export function findPhone(text: string): { raw: string; phone: string } | undefined {
+  for (const m of text.matchAll(/\+?\(?\d[\d\s().-]{8,18}\d/g)) {
+    const raw = m[0].trim();
+    const phone = normalizePhone(raw);
+    if (phone && raw.replace(/\D/g, "").length >= 10) return { raw, phone };
+  }
+  return undefined;
+}

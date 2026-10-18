@@ -15,7 +15,7 @@ import { registerState } from "../core/persist.js";
 import { canTextPrivately, sendPrivate } from "../messaging/photon.js";
 import { fmt, paidBack } from "../messaging/templates.js";
 import type { Debt, Member } from "../types.js";
-import { claimDebtsForNewPage, ensureStripeCustomer, registerPayBackPage } from "./links.js";
+import { claimDebtsForNewPage, registerPayBackPage, withLiveCustomer } from "./links.js";
 import { requireStripe } from "./stripe.js";
 
 export const CODE_TTL_MS = 10 * 60 * 1000;
@@ -175,9 +175,8 @@ export async function createPayBackCheckout(member: Member, debtId: string, save
   if (!claimable) throw new Error("That pay-back was just paid.");
   const creditor = findMember(debt.creditorId)?.member;
   const debtor = findMember(debt.debtorId)?.member ?? member;
-  const customer = await ensureStripeCustomer(debtor);
   const metadata = { debtId: debt.id, memberId: debtor.id };
-  const session = await requireStripe().checkout.sessions.create({
+  const session = await withLiveCustomer(debtor, (customer) => requireStripe().checkout.sessions.create({
     mode: "payment",
     customer,
     client_reference_id: member.id,
@@ -186,7 +185,7 @@ export async function createPayBackCheckout(member: Member, debtId: string, save
     metadata: { ...metadata, saveCard: saveCard ? "1" : "0" },
     success_url: `${config.publicBaseUrl}/pay/success`,
     cancel_url: `${config.publicBaseUrl}/pay`,
-  });
+  }));
   if (!session.url) throw new Error("Stripe returned a Checkout session without a URL");
   registerPayBackPage(session.id, [debt.id]);
   return session.url;

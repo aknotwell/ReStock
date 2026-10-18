@@ -79,6 +79,7 @@ export function helpMessage(): string {
     "I'm Restock, an AI assistant for this household. I'm not a person.",
     "Text what you need (\"we're out of TP\") and I'll add it to the cart. Say \"personal\" if it's just for you, or name who it's for (\"for me and Jake\") to split it with some of you.",
     "Nothing is charged until someone texts \"order now\". I never ask for card numbers in chat.",
+    "In more than one household? Text \"households\" to see them and \"switch to <name>\" to change where your texts go.",
     "Reply STOP to stop texts, or \"delete my data\" to leave. Demo: orders are simulated and payments are Stripe test mode.",
   ].join("\n");
 }

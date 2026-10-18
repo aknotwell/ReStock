@@ -13,10 +13,9 @@
 // Every step is plain code: the answers decide the setup, the model never does. Answers are matched
 // loosely ("just me", "it's just me", "personal") so it reads like a conversation.
 import { config } from "../config.js";
-import { allMemberIds, cleanName, inAGroup, memberId } from "../core/households.js";
+import { allMemberIds, atSpaceLimit, cleanName, memberId, setActiveHousehold, TOO_MANY_SPACES } from "../core/households.js";
 import { registerState } from "../core/persist.js";
 import { db, householdsForPhone, newId, UNBOUND_GROUP } from "../core/store.js";
-import { ALREADY_USES_RESTOCK } from "../core/households.js";
 import { inviteCodeFor } from "../core/signups.js";
 import { createCardSetupLink } from "../payments/links.js";
 import type { Cents, Household, Member } from "../types.js";
@@ -83,6 +82,7 @@ function newSpace(kind: "personal" | "group", owner: Member, budget: Cents | nul
     ...extra,
   };
   db.households.set(household.id, household);
+  setActiveHousehold(owner.phone, household.id);
   return household;
 }
 
@@ -145,8 +145,8 @@ async function direct(msg: InboundMessage, respond: Ctx["respond"]): Promise<boo
   }
   setups.delete(key);
   if (setup.space === "group") {
-    if (householdsForPhone(msg.fromPhone).length) {
-      await respond(ALREADY_USES_RESTOCK);
+    if (atSpaceLimit(msg.fromPhone)) {
+      await respond(TOO_MANY_SPACES);
       return true;
     }
     const owner: Member = { id: memberId(setup.name!, allMemberIds()), name: setup.name!, phone: msg.fromPhone, role: "owner" };
@@ -202,8 +202,8 @@ async function group(msg: InboundMessage, respond: Ctx["respond"]): Promise<bool
   }
   if (setup.step === "owner") {
     if (!said(text, "me", "i will", "i'll", "mine", "my card")) return false; // other chat while we wait: stay quiet
-    if (inAGroup(msg.fromPhone)) {
-      await respond("You're already the card for another group. For now, someone else here should reply \"me\".");
+    if (atSpaceLimit(msg.fromPhone)) {
+      await respond(TOO_MANY_SPACES);
       return true;
     }
     setups.set(key, { ...setup, step: "name", ownerPhone: msg.fromPhone, expires });
@@ -255,8 +255,8 @@ async function join(msg: InboundMessage, household: Household, respond: Ctx["res
     await respond("This group is full (9 people).");
     return true;
   }
-  if (inAGroup(msg.fromPhone)) {
-    await respond('You\'re already in another group with me. Each number can be in one group for now; text "delete my data" there to leave it first.');
+  if (atSpaceLimit(msg.fromPhone)) {
+    await respond(TOO_MANY_SPACES);
     return true;
   }
   if (household.members.some((m) => m.name.toLowerCase() === name.toLowerCase())) {
@@ -271,6 +271,7 @@ async function join(msg: InboundMessage, household: Household, respond: Ctx["res
     ...(household.groupType === "family" ? {} : { canApprove: true }),
   };
   household.members.push(member);
+  setActiveHousehold(member.phone, household.id);
   await respond(`Welcome, ${name}! I'll text you a link to add your card, so your share is paid automatically.`);
   await sendPrivate(
     member.id,

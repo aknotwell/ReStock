@@ -4,7 +4,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { ApiError, Photon } from "@photon-ai/api";
 import { config } from "../config.js";
 import { registerState } from "../core/persist.js";
-import { findMember, getHousehold } from "../core/store.js";
+import { householdName } from "../core/households.js";
+import { findMember, getHousehold, householdsForPhone } from "../core/store.js";
 import { rememberRestockLine } from "./photonLines.js";
 import { redact } from "../safety/redact.js";
 
@@ -144,13 +145,15 @@ export async function sendGroup(householdId: string, text: string, key: string =
  * DM the agent (shared lines can't start new chats). Returns "queued" when the text is being held.
  */
 export async function sendPrivate(memberId: string, rawText: string, key: string = crypto.randomUUID()): Promise<"sent" | "queued"> {
-  const text = redact(rawText); // V-002
+  const found = findMember(memberId);
+  // Someone in several households gets all of them in one thread with Restock: say which one this is about.
+  const label = found && householdsForPhone(found.member.phone).length > 1 ? `${householdName(found.household)}: ` : "";
+  const text = redact(label + rawText); // V-002
   const captured = capture.getStore();
   if (captured) {
     captured.push({ text, memberId });
     return "sent";
   }
-  const found = findMember(memberId);
   if (!found) throw new Error(`Unknown member ${memberId}`);
   if (muted.has(found.member.phone)) return "sent"; // they texted STOP: drop it silently
   const dm = dmByHandle.get(found.member.phone);

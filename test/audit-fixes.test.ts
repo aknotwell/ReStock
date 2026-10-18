@@ -1,12 +1,12 @@
-// Fixes from the repo audit: logins survive deploys (stored hashed), one place per number when texting
-// one-on-one, and invited members can approve (except in a family).
+// Fixes from the repo audit: logins survive deploys (stored hashed), one number in several households,
+// and invited members can approve (except in a family).
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { addMember, createHousehold, MembershipError } from "../src/core/households.js";
+import { activeHousehold, addMember, createHousehold, MAX_SPACES_PER_PHONE, MembershipError } from "../src/core/households.js";
 import { closeDatabase, openDatabase, saveNow } from "../src/core/persist.js";
-import { db, resetStore, UNBOUND_GROUP } from "../src/core/store.js";
+import { db, householdsForPhone, resetStore, UNBOUND_GROUP } from "../src/core/store.js";
 import { inviteCodeFor, resetSignups, startSignup, activateFromFirstText } from "../src/core/signups.js";
 import { needsApproval } from "../src/core/approvals.js";
 import { resetPayBack, sessionMember, startLogin, verifyLogin } from "../src/payments/payback.js";
@@ -56,33 +56,29 @@ describe("login sessions survive a restart", () => {
   });
 });
 
-describe("one place per number when texting one-on-one", () => {
+describe("one number in several households", () => {
   const personal = (phone: string) => {
     db.households.set("p1", { id: "p1", kind: "personal", groupChatId: `personal:${phone}`, ownerId: "zoe", spentCents: 0, members: [{ id: "zoe", name: "Zoe", phone, role: "owner" }] });
   };
 
-  it("someone with a personal space can't be added to a household without a group chat", () => {
+  it("someone with a personal space can also join a household without a group chat", () => {
     personal("+12065550190");
     const h = createHousehold("Alex", "+14255550101");
     expect(h.groupChatId).toBe(UNBOUND_GROUP);
-    expect(() => addMember(h, "Zoe", "+12065550190")).toThrow(/personal Restock space.*delete my data/);
-  });
-
-  it("but can join a household that has a real group chat (their group texts reach it)", () => {
-    personal("+12065550190");
-    const h = createHousehold("Alex", "+14255550101");
-    h.groupChatId = "pho_spc_group";
     expect(addMember(h, "Zoe", "+12065550190").name).toBe("Zoe");
+    expect(activeHousehold("+12065550190")?.id).toBe(h.id); // joining makes it where her texts go
   });
 
-  it("someone with a personal space can't start a second space", () => {
+  it("and can start a household of their own", () => {
     personal("+12065550190");
+    const h = createHousehold("Zoe", "+12065550190", { name: "Soccer Team" });
+    expect(householdsForPhone("+12065550190").map((x) => x.id)).toEqual(["p1", h.id]);
+  });
+
+  it("stops at the per-number limit, on the web too", async () => {
+    for (let i = 0; i < MAX_SPACES_PER_PHONE; i++) createHousehold("Zoe", "+12065550190", { name: `Group ${i + 1}` });
     expect(() => createHousehold("Zoe", "+12065550190")).toThrow(MembershipError);
-  });
-
-  it("web sign-up explains the one-place rule", async () => {
-    personal("+12065550190");
-    await expect(startSignup({ name: "Zoe", phone: "+12065550190" })).rejects.toThrow(/already uses Restock.*delete my data/);
+    await expect(startSignup({ name: "Zoe", phone: "+12065550190" })).rejects.toThrow(/already in 5 Restock households/);
   });
 });
 

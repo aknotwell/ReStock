@@ -142,41 +142,13 @@
     @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
   }
 
-  /* Test chat (local server only) */
-  .chat-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(280px, .75fr); align-items: start; gap: 16px; }
-  .chat-card { padding: 0; overflow: hidden; }
-  .chat-notice { margin: 0 0 14px; padding: 12px 14px; border-radius: 8px; background: var(--red-soft); color: var(--red); font-size: 13px; }
-  .chat-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--line); }
-  .pill-group { display: flex; flex-wrap: wrap; gap: 5px; }
-  .chat-pill { padding: 5px 11px; border: 1px solid var(--line); border-radius: 99px; background: var(--surface); color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 600; }
-  .chat-pill[aria-pressed="true"] { border-color: var(--black); color: var(--black); }
-  .thread { display: flex; flex-direction: column; gap: 11px; height: 440px; overflow-y: auto; padding: 18px 20px; background: #fbfbfa; }
-  .msg { max-width: 82%; }
-  .msg.out { align-self: flex-end; text-align: right; }
-  .msg.system { align-self: center; max-width: 92%; text-align: center; }
-  .msg-meta { margin-bottom: 4px; color: var(--muted); font-size: 11px; font-weight: 600; }
-  .msg-body { display: inline-block; padding: 9px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font-size: 13px; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .msg.out .msg-body { border-color: var(--black); background: var(--black); color: #fff; }
-  .msg.private .msg-body { border-color: transparent; background: var(--blue-soft); color: var(--ink); }
-  .msg.out.private .msg-body { border-color: var(--blue); background: var(--blue); color: #fff; }
-  .msg.system .msg-body { border-color: transparent; background: var(--red-soft); color: var(--red); font-size: 12px; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 20px 0; }
-  .chip { padding: 5px 10px; border: 1px dashed #d6d5d0; border-radius: 99px; background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 600; }
-  .composer { display: flex; gap: 8px; padding: 12px 20px 18px; }
-  .composer input { flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
-  .chip:disabled, .composer button:disabled { cursor: default; opacity: .5; }
-  .cart-line { display: flex; justify-content: space-between; gap: 12px; min-height: 44px; align-items: center; border-top: 1px solid var(--line); font-size: 13px; }
-  .cart-line:first-child { border-top: 0; }
-  .cart-line small { display: block; color: var(--muted); font-size: 12px; }
-  .cart-line .tag { margin-left: 6px; font-size: 11px; }
-  .cart-line.total-line { font-weight: 650; }
 
   @media (max-width: 820px) {
     .shell { width: calc(100% - 32px); }
     main.app { padding-top: 20px; }
     .workspace { grid-template-columns: minmax(0, 1fr); gap: 20px; }
     .sidebar { position: static; grid-template-columns: 1fr 1fr; }
-    .settings-grid, .chat-grid { grid-template-columns: minmax(0, 1fr); }
+    .settings-grid { grid-template-columns: minmax(0, 1fr); }
     .space-row { grid-template-columns: minmax(0, 1fr) auto 12px; gap: 14px; }
     .space-row .bar-slot { grid-column: 1 / -1; grid-row: 2; }
     .card { padding: 20px; }
@@ -200,7 +172,6 @@
   <div class="shell topbar">
     <div class="brand"><svg class="logo"><use href="#logo"/></svg>restock</div>
     <div class="account" id="account" hidden>
-      <button class="link-button" id="chat-tab" type="button" hidden>Test chat</button>
       <span id="account-name"></span>
       <button class="link-button" id="logout" type="button">Log out</button>
     </div>
@@ -298,34 +269,6 @@
       </div>
     </section>
 
-    <section id="chat-view" hidden>
-      <p class="chat-notice" id="chat-notice" hidden></p>
-      <div class="chat-grid">
-        <section class="card chat-card" aria-label="Test chat">
-          <div class="chat-controls">
-            <div class="pill-group" id="sender-pills" role="group" aria-label="Send as"></div>
-            <div class="pill-group" id="mode-pills" role="group" aria-label="Where to send">
-              <button class="chat-pill" type="button" data-mode="group" aria-pressed="true">Group</button>
-              <button class="chat-pill" type="button" data-mode="direct" aria-pressed="false">Private</button>
-              <button class="chat-pill" id="chat-reset" type="button">Reset</button>
-            </div>
-          </div>
-          <div class="thread" id="thread" aria-live="polite"></div>
-          <div class="chips" id="chips"></div>
-          <form class="composer" id="composer"><input id="chat-input" type="text" maxlength="500" autocomplete="off" aria-label="Message"><button class="btn primary" id="chat-send" type="submit">Send</button></form>
-        </section>
-        <div class="settings-column">
-          <section class="card" aria-labelledby="live-cart-heading">
-            <div class="card-head"><h2 id="live-cart-heading">Cart</h2></div>
-            <div id="live-cart"></div>
-          </section>
-          <section class="card" aria-labelledby="live-split-heading">
-            <div class="card-head"><h2 id="live-split-heading">If ordered now</h2></div>
-            <div id="live-split"></div>
-          </section>
-        </div>
-      </div>
-    </section>
   </div>
 </main>
 <script>
@@ -503,7 +446,6 @@
   const content = $("#content");
   const navPersonal = $("#nav-personal");
   const navGroups = $("#nav-groups");
-  const chatTab = $("#chat-tab");
   const spaceById = (id) => (id === "personal" ? personal : groups.find((g) => g.id === id));
   const sideOf = (space) => (space === personal ? "personal" : "group");
 
@@ -539,7 +481,6 @@
     $("#list-view").hidden = view !== "list";
     $("#detail-intro").hidden = view === "list";
     $("#space-view").hidden = view !== "space";
-    $("#chat-view").hidden = view !== "chat";
     window.scrollTo(0, 0);
   }
 
@@ -761,177 +702,6 @@
     else if (result === "login") showLogin();
     else loginError("Couldn't reach Restock. Showing sample data.") || enterApp("Sample");
   }).catch(() => enterApp("Sample"));
-
-  // ---------- Test chat: the local server's /dev routes (DEV_INBOUND=1). Hidden when they don't exist. ----------
-  fetch("/dev/state").then((r) => { if ((r.headers.get("content-type") || "").includes("json")) chatTab.hidden = false; }).catch(() => {});
-
-  const chat = { state: null, senderId: null, mode: "group", busy: false };
-  const thread = $("#thread");
-  const chatInput = $("#chat-input");
-  const chatSend = $("#chat-send");
-  const chatNotice = $("#chat-notice");
-  const suggestions = ["add dish soap", "add chips for me", "personal", "remove dish soap", "what do I owe?", "add card", "order now", "yes", "help"];
-
-  async function chatApi(path, body) {
-    const response = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : undefined);
-    const data = await response.json().catch(() => null);
-    if (!data) throw new Error("The test chat needs the local server with DEV_INBOUND=1 (and DEMO_SEED=1) in .env. Restart it with npm run dev, then reload this page.");
-    if (!response.ok) throw new Error(data.error || "Request failed");
-    return data;
-  }
-
-  const memberName = (id) => chat.state?.members.find((m) => m.id === id)?.name ?? id;
-
-  function setChatEnabled(enabled) {
-    chatInput.disabled = !enabled || chat.busy;
-    chatSend.disabled = !enabled || chat.busy;
-    for (const chip of document.querySelectorAll(".chip")) chip.disabled = !enabled || chat.busy;
-  }
-
-  function showNotice(text) {
-    chatNotice.textContent = text ?? "";
-    chatNotice.hidden = !text;
-  }
-
-  function addMessage(kind, meta, text, isPrivate = false) {
-    const message = make("div", `msg ${kind}${isPrivate ? " private" : ""}`);
-    if (meta) message.append(make("div", "msg-meta", meta));
-    message.append(make("div", "msg-body", text));
-    thread.append(message);
-    thread.scrollTop = thread.scrollHeight;
-  }
-
-  function updatePlaceholder() {
-    const name = memberName(chat.senderId);
-    chatInput.placeholder = chat.mode === "group" ? `Text the group as ${name}` : `Text Restock privately as ${name}`;
-  }
-
-  function renderSenders() {
-    const pills = $("#sender-pills");
-    pills.replaceChildren();
-    for (const member of chat.state.members) {
-      const pill = make("button", "chat-pill", member.name);
-      pill.type = "button";
-      pill.setAttribute("aria-pressed", String(member.id === chat.senderId));
-      pill.addEventListener("click", () => {
-        chat.senderId = member.id;
-        renderSenders();
-      });
-      pills.append(pill);
-    }
-    updatePlaceholder();
-  }
-
-  function cartLine(left, right, note, tags = []) {
-    const row = make("div", "cart-line");
-    const name = make("span");
-    name.append(left);
-    for (const [text, kind] of tags) name.append(make("span", `tag ${kind}`, text));
-    if (note) name.append(make("small", null, note));
-    row.append(name, make("span", null, right));
-    return row;
-  }
-
-  function renderLive() {
-    const { items, members, shares, debts, budgetCents, spentCents } = chat.state;
-    const cart = $("#live-cart");
-    cart.replaceChildren();
-    if (items.length === 0) cart.append(cartLine("Empty", ""));
-    for (const item of items) {
-      const tags = [[item.shared ? "shared" : "personal", item.shared ? "green" : ""]];
-      if (item.needsApproval) tags.push(["waiting for yes", "red"]);
-      cart.append(cartLine(item.name, formatCents(item.cents), memberName(item.addedBy), tags));
-    }
-    const split = $("#live-split");
-    split.replaceChildren();
-    const total = members.reduce((s, m) => s + (shares[m.id] ?? 0), 0);
-    for (const member of members) split.append(cartLine(member.name, formatCents(shares[member.id] ?? 0)));
-    const left = budgetCents == null ? null : `${formatCents(budgetCents - spentCents - total)} left after`;
-    const totalLine = cartLine("Total", formatCents(total), left);
-    totalLine.classList.add("total-line");
-    split.append(totalLine);
-    for (const debt of debts) split.append(cartLine(`${memberName(debt.debtorId)} owes ${memberName(debt.creditorId)}`, formatCents(debt.cents)));
-  }
-
-  async function loadChat() {
-    try {
-      chat.state = await chatApi("/dev/state");
-      showNotice(null);
-      if (!chat.state.members.some((m) => m.id === chat.senderId)) chat.senderId = chat.state.members[0]?.id ?? null;
-      renderSenders();
-      renderLive();
-      setChatEnabled(true);
-    } catch (err) {
-      showNotice(err.message);
-      setChatEnabled(false);
-    }
-  }
-
-  async function sendChat(text) {
-    text = text.trim();
-    if (!text || chat.busy || !chat.senderId) return;
-    const sender = memberName(chat.senderId);
-    const direct = chat.mode === "direct";
-    addMessage("out", direct ? `${sender} → Restock` : sender, text, direct);
-    chatInput.value = "";
-    chat.busy = true;
-    setChatEnabled(true);
-    try {
-      const data = await chatApi("/dev/chat", { memberId: chat.senderId, text, direct });
-      for (const reply of data.replies) {
-        if (reply.to === "group") addMessage("in", "Restock", reply.text);
-        else addMessage("in", `Restock → ${memberName(reply.to)}`, reply.text, true);
-      }
-      if (data.error) addMessage("system", null, `Server error: ${data.error}`);
-      else if (data.replies.length === 0) addMessage("system", null, "No reply");
-      chat.state = data.state;
-      renderLive();
-    } catch (err) {
-      addMessage("system", null, err.message);
-    } finally {
-      chat.busy = false;
-      setChatEnabled(true);
-      chatInput.focus();
-    }
-  }
-
-  for (const text of suggestions) {
-    const chip = make("button", "chip", text);
-    chip.type = "button";
-    chip.addEventListener("click", () => sendChat(text));
-    $("#chips").append(chip);
-  }
-  for (const pill of document.querySelectorAll("#mode-pills [data-mode]")) {
-    pill.addEventListener("click", () => {
-      chat.mode = pill.dataset.mode;
-      for (const other of document.querySelectorAll("#mode-pills [data-mode]")) other.setAttribute("aria-pressed", String(other === pill));
-      updatePlaceholder();
-    });
-  }
-  $("#composer").addEventListener("submit", (event) => {
-    event.preventDefault();
-    sendChat(chatInput.value);
-  });
-  $("#chat-reset").addEventListener("click", async () => {
-    try {
-      chat.state = await chatApi("/dev/reset", {});
-      thread.replaceChildren();
-      showNotice(null);
-      renderSenders();
-      renderLive();
-      setChatEnabled(true);
-    } catch (err) {
-      showNotice(err.message);
-    }
-  });
-  chatTab.addEventListener("click", () => {
-    content.className = "content is-group";
-    markNav(null);
-    $("#back").textContent = listKind === "personal" ? "← Personal" : "← Groups";
-    $("#view-title").textContent = "Test chat";
-    show("chat");
-    loadChat();
-  });
 </script>
 </body>
 </html>

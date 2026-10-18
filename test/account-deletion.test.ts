@@ -6,7 +6,6 @@ const photonLines = vi.hoisted(() => ({
   assignLine: vi.fn(async (phone: string) => ({ assignmentId: `asg-${phone}`, line: "+16285550100" })),
   releaseLine: vi.fn(async (_id: string) => true),
   releaseLinesForHandle: vi.fn(async (_phone: string) => true),
-  isLineActive: vi.fn(async (_id: string) => true),
 }));
 vi.mock("../src/messaging/photonLines.js", async (orig) => ({ ...(await orig<object>()), ...photonLines }));
 const fakeStripe = vi.hoisted(() => ({ customers: { del: vi.fn(async (id: string) => ({ id, deleted: true })) } }));
@@ -188,18 +187,19 @@ describe("account deletion reaches Stripe", () => {
   });
 });
 
-describe("signing up again reuses a saved number only while Photon still has it", () => {
-  it("a pending sign-up whose line was released gets a new line", async () => {
+describe("signing up again always connects in Photon first", () => {
+  it("asks Photon again on a repeat sign-up, passing the saved number along", async () => {
     await startSignup({ name: "Amber", phone: AMBER });
-    photonLines.isLineActive.mockResolvedValueOnce(false);
+    await startSignup({ name: "Amber", phone: AMBER }, Date.now() + 2 * 60_000);
+    const calls = photonLines.assignLine.mock.calls.filter(([p]) => p === AMBER);
+    expect(calls).toHaveLength(2);
+    expect((calls[1] as unknown[])[3]).toMatchObject({ assignmentId: `asg-${AMBER}`, line: "+16285550100" });
+  });
+
+  it("shows whatever number Photon connected, not the saved one", async () => {
+    await startSignup({ name: "Amber", phone: AMBER });
     photonLines.assignLine.mockResolvedValueOnce({ assignmentId: "asg-fresh", line: "+16285550199" });
     const again = await startSignup({ name: "Amber", phone: AMBER }, Date.now() + 2 * 60_000);
     expect(again.line).toBe("+16285550199");
-  });
-
-  it("a live saved line is reused without a new assignment", async () => {
-    await startSignup({ name: "Amber", phone: AMBER });
-    await startSignup({ name: "Amber", phone: AMBER });
-    expect(photonLines.assignLine.mock.calls.filter(([p]) => p === AMBER)).toHaveLength(1);
   });
 });

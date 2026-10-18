@@ -48,12 +48,19 @@ const toLine = (a: Assignment): LineAssignment => {
 const problemCode = (err: ApiError) => (err.body as { code?: unknown } | undefined)?.code;
 
 /**
- * Give this phone a Restock number it can text. Never returns a released assignment: Photon answers texts
- * to one of those with its own "not connected to an agent yet" reply, and Restock never sees them.
+ * Connect this phone to a Restock number in Photon and return the number to text. Always asks Photon, even
+ * when we saved a number for this phone before, so the connection exists when we show the number: texts from a
+ * phone Photon hasn't connected get its own "not connected to an agent yet" reply and never reach Restock.
+ * Never returns a released assignment. `saved` is only used if Photon says the phone is already connected,
+ * the lookup of which number fails, and Photon confirms `saved` is that phone's live assignment.
  */
-export async function assignLine(phone: string, firstName: string, idempotencyKey: string): Promise<LineAssignment> {
-  if (!photon || !config.photonProjectId) return { assignmentId: `console-${phone}`, line: CONSOLE_LINE };
+export async function assignLine(phone: string, firstName: string, idempotencyKey: string, saved?: LineAssignment): Promise<LineAssignment> {
+  if (!photon || !config.photonProjectId) {
+    console.warn("sign-up line: Photon isn't configured (PHOTON_API_KEY / PHOTON_PROJECT_ID), so this is a placeholder number nobody can text.");
+    return { assignmentId: `console-${phone}`, line: CONSOLE_LINE };
+  }
   const projectId = config.photonProjectId;
+  const who = `…${phone.slice(-4)}`;
   const create = (key: string) =>
     photon.projects.platforms.imessage.assignments.create({ path: { id: projectId }, headers: { idempotencyKey: key }, body: { handle: phone, firstName } });
   try {
@@ -61,13 +68,26 @@ export async function assignLine(phone: string, firstName: string, idempotencyKe
     // A key Photon has seen before replays its first answer, even if that assignment was released since.
     if (a.releasedAt) a = await create(`${idempotencyKey}:${randomUUID()}`);
     if (a.releasedAt) throw new LineUnavailableError("Restock couldn't set up a number for you right now. Please try again in a minute.");
+    console.log(`sign-up line: connected ${who} to Restock number …${a.assignedPhoneNumber.slice(-4)} in Photon`);
     return toLine(a);
   } catch (err) {
     if (err instanceof ApiError && problemCode(err) === "ASSIGNMENT_EXISTS") {
-      // This phone already has a live Restock number (from an earlier sign-up we lost track of, or one added
-      // in the Photon dashboard). Use it: a second number would be refused anyway.
-      const existing = await activeAssignmentFor(phone).catch(() => undefined);
-      if (existing) return toLine(existing);
+      // This phone is already connected (an earlier sign-up, or one added in the Photon dashboard). Use that number:
+      // a second one would be refused anyway.
+      const existing = await activeAssignmentFor(phone).catch((e) => {
+        console.warn("sign-up line: couldn't look up the existing connection:", e instanceof ApiError ? `${e.status}` : e instanceof Error ? e.message : e);
+        return undefined;
+      });
+      if (existing) {
+        console.log(`sign-up line: ${who} was already connected to Restock number …${existing.assignedPhoneNumber.slice(-4)} in Photon`);
+        return toLine(existing);
+      }
+      // The saved number counts only if Photon confirms it's this phone's live assignment: an old, released one
+      // would send them to a number Photon no longer connects to their phone.
+      if (saved && (await isLiveFor(saved.assignmentId, phone))) {
+        console.log(`sign-up line: ${who} is already connected in Photon to the saved number …${saved.line.slice(-4)}`);
+        return saved;
+      }
     }
     if (err instanceof ApiError) {
       console.error(`Photon line assignment failed: ${err.status} ${String(problemCode(err) ?? "")} (request ${err.requestId ?? "unknown"})`);
@@ -81,19 +101,15 @@ export async function assignLine(phone: string, firstName: string, idempotencyKe
   }
 }
 
-/**
- * Is this assignment still live in Photon? Checked before showing someone a number we saved earlier. Only a
- * clear "released" or "not found" counts as gone; if Photon can't be reached we keep the saved number.
- */
-export async function isLineActive(assignmentId: string): Promise<boolean> {
-  if (!photon || !config.photonProjectId || assignmentId.startsWith("console-")) return true;
+/** Whether this assignment is live and belongs to this phone. Anything Photon can't confirm counts as no. */
+async function isLiveFor(assignmentId: string, phone: string): Promise<boolean> {
+  if (!photon || !config.photonProjectId) return false;
   try {
     const a = await photon.projects.platforms.imessage.assignments.get({ path: { id: config.photonProjectId, assignmentId } });
-    return !a.releasedAt;
+    return a.handle === phone && !a.releasedAt;
   } catch (err) {
-    if (err instanceof ApiError && err.status === 404) return false;
-    console.warn("Photon line check failed:", err instanceof ApiError ? `${err.status}` : err instanceof Error ? err.message : err);
-    return true;
+    console.warn("sign-up line: couldn't confirm the saved number:", err instanceof ApiError ? `${err.status}` : err instanceof Error ? err.message : err);
+    return false;
   }
 }
 

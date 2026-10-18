@@ -167,7 +167,7 @@ flowchart LR
 | Data | A 39-product catalog (`data/catalog.json`); SQLite persistence |
 | Payments | Stripe test mode: Checkout for adding cards and paying back, PaymentIntents (hold then capture) for orders |
 | Server | TypeScript, Node 22+, Express, deployed on Railway |
-| Quality | Vitest (417 tests); CI runs type-check, tests, the VEYZL log check and VEYZL probes on every PR |
+| Quality | Vitest; CI runs type-check, tests, the VEYZL log check and VEYZL probes on every PR |
 
 ---
 

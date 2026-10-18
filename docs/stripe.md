@@ -82,6 +82,10 @@ Terminal 2 should show the events with `[200]` next to them. A `[400]` means the
 
 **Keep your local setup separate.** Your laptop keeps using the `stripe listen` secret in your own `.env`, and Railway uses the endpoint's secret. Both can point at the same sandbox at the same time: the dashboard endpoint delivers to Railway, and `stripe listen` delivers to your laptop. Stripe sends each event to both, and each server only acts on members and debts it knows about.
 
+## Deleting a member's data
+
+When someone texts "delete my data" (and confirms), or the owner removes them, Restock deletes their Stripe Customer (`src/payments/deleteCustomer.ts`). That removes their saved card. Stripe keeps its records of past payments, and refunds still work. A customer Stripe already deleted counts as done. If Stripe can't be reached, the deletion is saved and retried every 10 minutes. Deletion is blocked while the person owes money or is owed money, so no payment is cut off partway.
+
 ## Test cards
 
 Type these only into Stripe's own hosted pages, never into the chat or our code. Any future expiry date, any 3-digit CVC, and any ZIP work.

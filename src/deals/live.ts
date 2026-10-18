@@ -61,6 +61,11 @@ function serpError(json: unknown): string | undefined {
 
 let loggedOff = false;
 
+// v3: offers also come from grouped results. Older cached results missed those, so they're searched again once.
+const cacheKeyFor = (label: string) => `v3|${label.toLowerCase()}|${config.dealsLocation ?? ""}`;
+/** Below this many usable listings, a search isn't worth keeping for 12 hours: the next request searches again. */
+export const MIN_CACHED_LISTINGS = 2;
+
 export function liveDealsEnabled(): boolean {
   return !!config.serpapiKey;
 }
@@ -167,8 +172,7 @@ export async function searchOffers(
     loggedOff = true;
     return undefined;
   }
-  // v3: offers also come from grouped results. Older cached results missed those, so they're searched again once.
-  const cacheKey = `v3|${query.toLowerCase()}|${config.dealsLocation ?? ""}`;
+  const cacheKey = cacheKeyFor(query);
   const hit = cache.get(cacheKey);
   const fallback = hit ? `cached (${minutesOld(hit.at, now)} old)` : "catalog";
   if (hit && now - hit.at <= maxAgeHours * 3_600_000) {
@@ -227,6 +231,9 @@ export function searchQuery(product: Product): string {
 }
 
 const ACCESSORY = /\b(?:holders?|dispensers?|stands?|organizers?|storage|covers?|mounts?|caddy|rack)\b/i;
+// Janitorial and commercial packs ("Jumbo Tissue, 12 Rolls Per Case", "JRT"), and facial tissue next to bath tissue.
+// A bare "jumbo" stays allowed: consumer packs say "6 Jumbo Rolls".
+const NOT_HOUSEHOLD = /\b(?:jumbo (?:roll )?(?:bath )?tissue|jumbo[- ]jr|jr\.? jumbo|jrt|per case|case of|commercial|janitorial|industrial|facial)\b/i;
 const OFF_CATALOG = "search-";
 
 /**
@@ -262,7 +269,8 @@ export function offCatalogProduct(requested: string): Product | undefined {
 
 /**
  * A listing only counts if its title shares a word with the product ("toilet", "paper"), isn't an accessory
- * (a toilet paper holder) unless an accessory is what was asked for, and is priced like the product: between a
+ * (a toilet paper holder) or a commercial or facial-tissue pack unless that is what was asked for, and is priced
+ * like the product: between a
  * quarter and three times the catalog price, which drops single rolls and commercial cases. Items that aren't
  * in the catalog have no price to compare, so only the words count.
  */
@@ -272,7 +280,9 @@ function relevant(offer: Offer, product: Product): boolean {
   const long = all.filter((w) => w.length >= 4);
   // Short requests ("ice", "AA batteries") still need a word to match.
   const words = long.length ? long : all.filter((w) => w.length >= 2);
-  const accessoryOk = !ACCESSORY.test(title) || ACCESSORY.test(product.name);
+  // Accessories and commercial packs are dropped unless that's what was asked for ("jumbo trash bags").
+  const asked = [product.name, ...product.aliases].join(" ");
+  const accessoryOk = (!ACCESSORY.test(title) || ACCESSORY.test(asked)) && (!NOT_HOUSEHOLD.test(title) || NOT_HOUSEHOLD.test(asked));
   const base = getProduct(groupOf(product))?.cents ?? product.cents;
   const offCatalog = base <= 0;
   const priced = offCatalog || (offer.cents >= base / 4 && offer.cents <= base * 3);
@@ -320,6 +330,11 @@ export async function liveOptionsFor(
     kept: products.length, offers: result.offers.length, relevant: relevantOffers.length,
     sized: products.filter((p) => p.units).length,
   });
+  // A search that leaves almost nothing usable shouldn't be reused for 12 hours: drop it so the next request
+  // searches again. The daily cap still limits how often that can happen.
+  if (products.length < MIN_CACHED_LISTINGS && cache.delete(cacheKeyFor(logAs ?? query))) {
+    logSearch(logAs ?? query, "not cached", { kept: products.length, min: MIN_CACHED_LISTINGS });
+  }
   return { products, checkedAt: result.at };
 }
 

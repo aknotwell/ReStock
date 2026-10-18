@@ -270,6 +270,33 @@ describe("SerpApi results", () => {
     expect(live[0]).not.toHaveProperty("units");
   });
 
+  it("counts bath tissue as toilet paper, and drops commercial cases and facial tissue", async () => {
+    stubSerpApi({
+      shopping_results: [
+        row("Charmin Ultra Soft Bathroom Tissue, 12 Mega Rolls", "Walmart", 25.05),
+        row("Empress 9 in. 2 Ply White Jumbo Tissue (1000-Sheets 12 Rolls Per Case)", "Home Depot", 28.84),
+        row("Genuine Joe 2-Ply Jumbo Roll Bath Tissue", "Lowe's", 32.02),
+        row("Kleenex Ultra Soft Facial Tissues, 4 Boxes", "Target", 9.99),
+        row("Cottonelle Ultra Clean Toilet Paper, 12 Family Mega Rolls", "Target", 11.99),
+      ],
+    });
+    expect((await liveOptionsFor(TP()))?.products.map((p) => p.store)).toEqual(["Walmart", "Target"]);
+  });
+
+  it("doesn't cache a search that leaves fewer than two listings", async () => {
+    const fetch = stubSerpApi({ shopping_results: [row("Empress Jumbo Tissue, 12 Rolls Per Case", "Home Depot", 28.84), row("Cottonelle Toilet Paper", "Target", 11.99)] });
+    await liveOptionsFor(TP());
+    await liveOptionsFor(TP());
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(out()).toMatch(/\[serpapi\] "Toilet paper 12 rolls" not cached kept=1 min=2/);
+    // Two or more usable listings are cached as before.
+    stubSerpApi();
+    await liveOptionsFor(TP());
+    const again = stubSerpApi();
+    await liveOptionsFor(TP());
+    expect(again).not.toHaveBeenCalled();
+  });
+
   it("keeps major retailers only, unless DEALS_ANY_STORE is on", async () => {
     stubSerpApi({
       shopping_results: [
@@ -281,7 +308,8 @@ describe("SerpApi results", () => {
     expect((await liveOptionsFor(TP()))?.products.map((p) => p.store)).toEqual(["Amazon"]);
     config.dealsAnyStore = true;
     try {
-      expect((await liveOptionsFor(TP()))?.products).toHaveLength(3); // same cached search, no new request
+      // One kept listing isn't cached, so this searches again and keeps every seller.
+      expect((await liveOptionsFor(TP()))?.products).toHaveLength(3);
     } finally {
       config.dealsAnyStore = false;
     }

@@ -82,7 +82,11 @@ describe("over text", () => {
     expect(soccer.members[0]).toMatchObject({ name: "Alex", role: "owner" }); // remembered her name
     expect(soccer.members[0]!.id).not.toBe(maple.members[0]!.id); // her own record (and card) per household
 
-    await add(ALEX, "add dish soap");
+    // In two households, an add first asks which one.
+    logs = [];
+    await dm(ALEX, "add dish soap");
+    expect(out()).toMatch(/Which household is this for\?\n1\. Maple House \(you\)\n2\. Soccer Team \(you\)/);
+    await add(ALEX, "2");
     expect(pendingItems(soccer.id)).toHaveLength(1);
     expect(pendingItems(maple.id)).toHaveLength(0);
 
@@ -93,7 +97,7 @@ describe("over text", () => {
     logs = [];
     await dm(ALEX, "switch to maple");
     expect(out()).toMatch(/Switched to Maple House\. Texts to me now go there\. Its cart is empty\./);
-    await add(ALEX, "add paper towels");
+    await add(ALEX, "add paper towels for maple house"); // naming the household skips the question
     expect(pendingItems(maple.id)).toHaveLength(1);
     expect(pendingItems(soccer.id)).toHaveLength(1);
   });

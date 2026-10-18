@@ -272,4 +272,6 @@ webRoutes.get("/card/success", (_req, res) => res.sendFile(path.join(publicDir, 
 webRoutes.get("/pay/success", (_req, res) => res.sendFile(path.join(publicDir, "pay-success.html")));
 webRoutes.get("/cancel", (_req, res) => res.sendFile(path.join(publicDir, "cancel.html")));
 webRoutes.get("/dashboard", (_req, res) => res.sendFile(path.join(publicDir, "dashboard.html")));
-webRoutes.get("/", (_req, res) => res.sendFile(path.join(publicDir, "landing.html")));
+webRoutes.get("/", (_req, res) => res.sendFile("landing.html", { root: publicDir }));
+// The link preview image (og:image in landing.html). Re-render it with scripts/og-image.sh.
+webRoutes.get("/og.png", (_req, res) => res.sendFile("og.png", { root: publicDir, maxAge: "7d" }));

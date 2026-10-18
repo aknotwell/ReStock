@@ -187,7 +187,8 @@ function optionLine(p: Product, i: number, choice: Choice): string {
     p.id === choice.lastBoughtId ? "what you got last time" : undefined,
     choice.overBudgetIds?.includes(p.id) ? (choice.askedByOwner ? "over budget" : `over budget, needs ${choice.ownerName}'s OK`) : undefined,
   ].filter(Boolean);
-  return `${i + 1}. ${p.name}: ${fmt(p.cents)}${notes.length ? ` (${notes.join(", ")})` : ""}`;
+  // The store page goes on its own line so the member can look before replying with a number.
+  return `${i + 1}. ${p.name}: ${fmt(p.cents)}${notes.length ? ` (${notes.join(", ")})` : ""}${p.url ? `\n   ${p.url}` : ""}`;
 }
 
 export function choicePrompt(choice: Choice): string {

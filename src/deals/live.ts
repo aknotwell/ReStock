@@ -13,10 +13,12 @@ import { getProduct, groupOf, type Product } from "../core/catalog.js";
 import { registerState } from "../core/persist.js";
 import { checkInput } from "../safety/guardrails.js";
 import { parseUnits } from "./rank.js";
+import { shortLink } from "./links.js";
 import { knownStore } from "./request.js";
 
 /** One store listing, already cleaned. */
-export type Offer = { title: string; store: string; cents: number };
+/** One store listing, already cleaned. `link` is its Google Shopping page, rebuilt by productLink. */
+export type Offer = { title: string; store: string; cents: number; link?: string };
 
 const SEARCH_URL = "https://serpapi.com/search.json";
 export const SEARCH_TIMEOUT_MS = 3000;
@@ -61,8 +63,8 @@ function serpError(json: unknown): string | undefined {
 
 let loggedOff = false;
 
-// v3: offers also come from grouped results. Older cached results missed those, so they're searched again once.
-const cacheKeyFor = (label: string) => `v3|${label.toLowerCase()}|${config.dealsLocation ?? ""}`;
+// v4: offers carry their Google Shopping link. Older cached results have none, so they're searched again once.
+const cacheKeyFor = (label: string) => `v4|${label.toLowerCase()}|${config.dealsLocation ?? ""}`;
 /** Below this many usable listings, a search isn't worth keeping for 12 hours: the next request searches again. */
 export const MIN_CACHED_LISTINGS = 2;
 
@@ -75,7 +77,28 @@ const Row = z.object({
   source: z.string().min(1).max(100),
   extracted_price: z.number().positive().optional(),
   price: z.string().max(40).optional(),
+  product_link: z.string().max(2000).optional(),
 });
+
+/**
+ * A listing's Google Shopping page, rebuilt from its product id: https, www.google.com, the shopping view, and
+ * nothing else from the result (no tracking or redirect parameters). Undefined for anything else. SerpApi's
+ * shopping results carry no direct store link; getting one costs another search per listing.
+ */
+export function productLink(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return undefined;
+  }
+  const prds = url.searchParams.get("prds");
+  if (url.protocol !== "https:" || url.hostname !== "www.google.com" || url.pathname !== "/search" || !prds) return undefined;
+  if (!/^[\w:,-]{1,200}$/.test(prds)) return undefined;
+  const q = (url.searchParams.get("q") ?? "").replace(/[^\p{L}\p{N} '&.-]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+  return `https://www.google.com/search?${new URLSearchParams({ ibp: "oshop", q, prds, udm: "28", gl: "us", hl: "en" })}`;
+}
 const Top = z.object({
   shopping_results: z.array(z.unknown()).optional(),
   inline_shopping_results: z.array(z.unknown()).optional(),
@@ -148,7 +171,8 @@ export function parseOffers(json: unknown, stats?: ParseStats): Offer[] {
       continue;
     }
     seen.add(key);
-    offers.push({ title, store, cents });
+    const link = productLink(row.data.product_link);
+    offers.push({ title, store, cents, ...(link ? { link } : {}) });
     if (offers.length >= MAX_OFFERS) break;
   }
   return offers;
@@ -305,6 +329,37 @@ function relevant(offer: Offer, product: Product, brand?: string): boolean {
   return shares && accessoryOk && priced;
 }
 
+/** By default only major retailers we recognize, under their usual names. DEALS_ANY_STORE=1 keeps every seller. */
+export function storeOffers(offers: Offer[]): Offer[] {
+  return offers.flatMap((o) => {
+    const store = config.dealsAnyStore ? o.store : knownStore(o.store);
+    return store ? [{ ...o, store }] : [];
+  });
+}
+
+/**
+ * A store listing as an option the member can pick, grouped with `base` (a catalog product or an off-catalog
+ * stand-in) so "the usual" can find it again. The link is a short Restock link to the listing's page.
+ */
+export function listingProduct(o: Offer, base: Product, checkedAt: number): Product {
+  const units = parseUnits(o.title, base.unit);
+  const url = o.link ? shortLink(o.link) : undefined;
+  return {
+    id: `live-${createHash("sha256").update(`${o.store}|${o.title}`).digest("hex").slice(0, 12)}`,
+    name: `${o.title.length > 60 ? `${o.title.slice(0, 59).trimEnd()}…` : o.title} (${o.store})`,
+    aliases: [],
+    category: base.category,
+    cents: o.cents,
+    defaultShared: base.defaultShared,
+    restockDays: base.restockDays,
+    group: groupOf(base),
+    ...(units ? { units, unit: base.unit } : {}),
+    store: o.store,
+    checkedAt: new Date(checkedAt).toISOString(),
+    ...(url ? { url } : {}),
+  };
+}
+
 /** Live store listings for a catalog product, as options the member can pick. Undefined when unavailable. */
 export async function liveOptionsFor(
   product: Product,
@@ -322,27 +377,7 @@ export async function liveOptionsFor(
   if (!result) return undefined;
   // By default only major retailers we recognize, under their usual names. DEALS_ANY_STORE=1 keeps every seller.
   const relevantOffers = result.offers.filter((o) => relevant(o, product, brand));
-  const products = relevantOffers
-    .flatMap((o) => {
-      const store = config.dealsAnyStore ? o.store : knownStore(o.store);
-      return store ? [{ ...o, store }] : [];
-    })
-    .map((o): Product => {
-      const units = parseUnits(o.title, product.unit);
-      return {
-        id: `live-${createHash("sha256").update(`${o.store}|${o.title}`).digest("hex").slice(0, 12)}`,
-        name: `${o.title.length > 60 ? `${o.title.slice(0, 59).trimEnd()}…` : o.title} (${o.store})`,
-        aliases: [],
-        category: product.category,
-        cents: o.cents,
-        defaultShared: product.defaultShared,
-        restockDays: product.restockDays,
-        group: groupOf(product),
-        ...(units ? { units, unit: product.unit } : {}),
-        store: o.store,
-        checkedAt: new Date(result.at).toISOString(),
-      };
-    });
+  const products = storeOffers(relevantOffers).map((o) => listingProduct(o, product, result.at));
   // Why listings drop out: off-topic or mispriced (relevant), then sellers we don't recognize (stores).
   logSearch(logAs ?? query, "listings", {
     kept: products.length, offers: result.offers.length, relevant: relevantOffers.length,

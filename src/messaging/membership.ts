@@ -7,6 +7,7 @@ import { deleteHousehold } from "../core/households.js";
 import { openDebtsFor, owedTo } from "../core/ledger.js";
 import { config } from "../config.js";
 import { forgetHandle } from "./photon.js";
+import { deleteStripeCustomer } from "../payments/deleteCustomer.js";
 
 export type MembershipCommand =
   | { type: "start"; name: string | null }
@@ -42,10 +43,14 @@ type Ctx = {
   respond: (text: string) => Promise<void>;
 };
 
-/** Someone left Restock: release their Restock number in Photon and drop what Photon told us about them. */
-async function forgetPhone(phone: string): Promise<void> {
-  forgetHandle(phone);
-  await releaseLineFor(phone);
+/**
+ * Someone left Restock: release their Restock number in Photon, drop what Photon told us about them, and
+ * delete their Stripe customer so their saved card goes too. Failures are retried by the sweep.
+ */
+async function forgetPerson(member: Member): Promise<void> {
+  forgetHandle(member.phone);
+  await releaseLineFor(member.phone);
+  if (member.stripeCustomerId) await deleteStripeCustomer(member.stripeCustomerId);
 }
 
 const last4 = (phone: string) => `phone ending ${phone.slice(-4)}`;
@@ -95,7 +100,8 @@ export async function handleMembershipCommand({ command, fromPhone, spaceKind, h
     }
 
     if (command.type === "delete_self") {
-      // Runs only after the person's explicit "yes" (inbound asks first). Plain code; frees their Photon line.
+      // Runs only after the person's explicit "yes" (inbound asks first). Plain code; frees their Photon line
+      // and deletes their Stripe customer (and saved card).
       const others = household.members.filter((m) => m.id !== member.id);
       if (member.id === household.ownerId && others.length) {
         await respond(`You're the budget owner, so remove the others first ("remove member ${others[0]!.name}"), then text "delete my data" again.`);
@@ -107,7 +113,7 @@ export async function handleMembershipCommand({ command, fromPhone, spaceKind, h
       }
       if (member.id === household.ownerId) deleteHousehold(household);
       else removeMember(household, member.name);
-      await forgetPhone(fromPhone);
+      await forgetPerson(member);
       await respond("Done. You've left Restock and your data is deleted. Thanks for trying it!");
       return true;
     }
@@ -147,7 +153,7 @@ export async function handleMembershipCommand({ command, fromPhone, spaceKind, h
     }
 
     const removed = removeMember(household, command.name);
-    await forgetPhone(removed.phone);
+    await forgetPerson(removed);
     await respond(`Removed ${removed.name} from the household.`);
     return true;
   } catch (err) {

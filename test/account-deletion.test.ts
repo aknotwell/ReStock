@@ -8,6 +8,11 @@ const photonLines = vi.hoisted(() => ({
   releaseLinesForHandle: vi.fn(async (_phone: string) => true),
 }));
 vi.mock("../src/messaging/photonLines.js", async (orig) => ({ ...(await orig<object>()), ...photonLines }));
+const fakeStripe = vi.hoisted(() => ({ customers: { del: vi.fn(async (id: string) => ({ id, deleted: true })) } }));
+vi.mock("../src/payments/stripe.js", () => ({ stripe: fakeStripe, requireStripe: () => fakeStripe }));
+
+import Stripe from "stripe";
+import { pendingCustomerDeletions, resetCustomerDeletions, retryCustomerDeletions } from "../src/payments/deleteCustomer.js";
 
 import { householdsForPhone, resetStore } from "../src/core/store.js";
 import { inviteCodeFor, resetSignups, startSignup, sweepExpiredSignups, unreleasedLines } from "../src/core/signups.js";
@@ -41,6 +46,7 @@ beforeEach(() => {
   resetPayBack();
   resetMuted();
   resetConfirmations();
+  resetCustomerDeletions();
   vi.clearAllMocks();
   logs = [];
   vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => void logs.push(a.join(" ")));
@@ -95,5 +101,62 @@ describe("account deletion reaches Photon", () => {
     const keys = photonLines.assignLine.mock.calls.filter(([phone]) => phone === AMBER).map((c) => (c as unknown[])[2]);
     expect(keys).toHaveLength(2);
     expect(keys[0]).not.toBe(keys[1]); // a reused key would return the released assignment
+  });
+});
+
+describe("account deletion reaches Stripe", () => {
+  const withCard = (phone: string, customerId: string) => {
+    const m = householdsForPhone(phone)[0]!.members.find((x) => x.phone === phone)!;
+    m.stripeCustomerId = customerId;
+  };
+
+  it("'delete my data' deletes the member's Stripe customer (and with it their saved card)", async () => {
+    await household();
+    withCard(AMBER, "cus_amber");
+    await dm(AMBER, "delete my data");
+    expect(fakeStripe.customers.del).not.toHaveBeenCalled(); // nothing happens before "yes"
+    await dm(AMBER, "yes");
+    expect(fakeStripe.customers.del).toHaveBeenCalledWith("cus_amber");
+    expect(fakeStripe.customers.del).toHaveBeenCalledTimes(1);
+  });
+
+  it("the owner removing someone deletes that person's Stripe customer, not the owner's", async () => {
+    await household();
+    withCard(ALEX, "cus_alex");
+    withCard(AMBER, "cus_amber");
+    await dm(ALEX, "remove member Amber");
+    expect(fakeStripe.customers.del).toHaveBeenCalledWith("cus_amber");
+    expect(fakeStripe.customers.del).not.toHaveBeenCalledWith("cus_alex");
+  });
+
+  it("someone who never added a card makes no Stripe call", async () => {
+    await household();
+    await dm(AMBER, "delete my data");
+    await dm(AMBER, "yes");
+    expect(fakeStripe.customers.del).not.toHaveBeenCalled();
+  });
+
+  it("a failed deletion is kept and retried; one Stripe already deleted counts as done", async () => {
+    await household();
+    withCard(AMBER, "cus_amber");
+    fakeStripe.customers.del.mockRejectedValueOnce(new Error("network down"));
+    await dm(AMBER, "delete my data");
+    await dm(AMBER, "yes");
+    expect(householdsForPhone(AMBER)).toHaveLength(0); // our side is deleted right away
+    expect(pendingCustomerDeletions()).toEqual(["cus_amber"]);
+    fakeStripe.customers.del.mockRejectedValueOnce(
+      new Stripe.errors.StripeInvalidRequestError({ type: "invalid_request_error", code: "resource_missing", message: "No such customer" }),
+    );
+    await retryCustomerDeletions();
+    expect(pendingCustomerDeletions()).toEqual([]);
+  });
+
+  it("without a Stripe key, the deletion is kept for a later run instead of dropped", async () => {
+    vi.resetModules();
+    vi.doMock("../src/payments/stripe.js", () => ({ stripe: undefined, requireStripe: () => { throw new Error("no key"); } }));
+    const mod = await import("../src/payments/deleteCustomer.js");
+    expect(await mod.deleteStripeCustomer("cus_later")).toBe(false);
+    expect(mod.pendingCustomerDeletions()).toEqual(["cus_later"]);
+    vi.doUnmock("../src/payments/stripe.js");
   });
 });

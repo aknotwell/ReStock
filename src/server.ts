@@ -11,6 +11,7 @@ import { stripeWebhook } from "./payments/webhook.js";
 import { agentApi, agentApiInfo } from "./web/agentApi.js";
 import { rateLimiter } from "./web/rateLimit.js";
 import { sweepExpiredSignups } from "./core/signups.js";
+import { retryCustomerDeletions } from "./payments/deleteCustomer.js";
 
 const agentLimit = rateLimiter(60, 60 * 1000);
 import { webRoutes } from "./web/routes.js";
@@ -78,5 +79,9 @@ app.listen(config.port, () => {
   console.log(anthropic ? `Claude AI: on (${MODEL})` : "Claude AI: off (ANTHROPIC_API_KEY not set), so the command parser handles every message");
   startPolling(handleInbound);
   // Sign-ups that never texted "hi" give their Photon seat back.
-  setInterval(() => void sweepExpiredSignups().catch((err) => console.warn("sign-up sweep failed:", err)), 10 * 60 * 1000).unref();
+  // Deletions that Stripe couldn't take the first time are retried on the same timer.
+  setInterval(() => {
+    void sweepExpiredSignups().catch((err) => console.warn("sign-up sweep failed:", err));
+    void retryCustomerDeletions().catch((err) => console.warn("Stripe deletion retry failed:", err));
+  }, 10 * 60 * 1000).unref();
 });

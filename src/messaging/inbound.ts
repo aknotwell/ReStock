@@ -20,7 +20,7 @@ import { cartSummary } from "./cart.js";
 import { stripIntensifiers } from "./casualAdd.js";
 import { balanceSummary, CARD_NUMBER_WARNING, fmt, groupSummary, helpMessage, inviteToAddCard } from "./templates.js";
 import { sendOrderTexts } from "./afterOrder.js";
-import { handleMembershipCommand, parseMembershipCommand } from "./membership.js";
+import { handleMembershipCommand, parseMembershipCommand, type MembershipCommand } from "./membership.js";
 import { clearAction, clearOrderConfirmation, isNo, isYes, peekAction, proposeAction } from "./confirm.js";
 import {
   activateFromFirstText, inviteCodeIn, invitedTo, inviteCodeFor, isPendingSignup, joinWithInvite, lineFor, SignupError, type Activation,
@@ -215,6 +215,13 @@ export async function handleInbound(
     if (pick?.kind === "order") {
       const me = findMemberByPhone(pick.household, msg.fromPhone);
       if (me) await startCheckout(pick.household, me, msg, respond);
+      return;
+    }
+    if (pick?.kind === "invite") {
+      // "Which household should I invite them to?": the invite, for the household they picked.
+      const me = findMemberByPhone(pick.household, msg.fromPhone);
+      const command = { ...(pick.payload as MembershipCommand), householdId: pick.household.id } as MembershipCommand;
+      await handleMembershipCommand({ command, fromPhone: msg.fromPhone, spaceKind: msg.spaceKind, household: pick.household, member: me, respond });
       return;
     }
     if (pick) {

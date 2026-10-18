@@ -14,6 +14,7 @@ import { config } from "../config.js";
 import { forgetHandle, sendPrivate } from "./photon.js";
 import { proposeAction } from "./confirm.js";
 import { removedFromHousehold } from "./templates.js";
+import { askWhichList } from "./whichList.js";
 import { deleteStripeCustomer } from "../payments/deleteCustomer.js";
 
 export type MembershipCommand =
@@ -22,13 +23,14 @@ export type MembershipCommand =
   | { type: "switch"; query: string }
   | { type: "rename"; name: string }
   | { type: "leave"; householdId?: string }
-  | { type: "add_member"; name: string; phone: string }
+  // `householdId`: the household picked in "Which household?" (someone who owns several).
+  | { type: "add_member"; name: string; phone: string; householdId?: string }
   // `confirmed`/`householdId`: set when the owner said "yes" to a warning about this household.
   | { type: "remove_member"; name: string; confirmed?: boolean; householdId?: string }
   | { type: "remove_everyone"; confirmed?: boolean; householdId?: string }
   | { type: "delete_household"; confirmed?: boolean; householdId?: string }
   | { type: "members" }
-  | { type: "invite"; reset: boolean }
+  | { type: "invite"; reset: boolean; householdId?: string }
   | { type: "delete_self" };
 
 export function parseMembershipCommand(text: string): MembershipCommand | undefined {
@@ -110,6 +112,34 @@ function householdList(phone: string): string {
 }
 
 const last4 = (phone: string) => `phone ending ${phone.slice(-4)}`;
+
+/**
+ * The household an invite goes to. A group chat: that group. One-on-one: the group household they own (asked when
+ * they own several), never their personal list. Otherwise a plain explanation of who can invite.
+ */
+function inviteTarget(
+  householdId: string | undefined, phone: string, spaceKind: "direct" | "group", current: Household | undefined, byPhone = false,
+): { household: Household } | { ask: Household[] } | { say: string } {
+  const isOwner = (h: Household) => h.members.find((m) => m.id === h.ownerId)?.phone === phone;
+  if (householdId) {
+    const picked = householdsForPhone(phone).find((h) => h.id === householdId);
+    return picked ? { household: picked } : { say: "That household is gone, so I can't invite anyone to it." };
+  }
+  if (spaceKind === "group" && current && current.kind !== "personal") return { household: current };
+  const groups = householdsForPhone(phone).filter((h) => h.kind !== "personal");
+  const owned = groups.filter(isOwner);
+  if (owned.length === 1) return { household: owned[0]! };
+  if (owned.length > 1) return { ask: owned };
+  if (!groups.length) {
+    return { say: 'Your personal list is just for you, so there\'s no one to invite. To shop with others, text "start household" to start one.' };
+  }
+  const owners = groups.map((h) => {
+    const owner = h.members.find((m) => m.id === h.ownerId)?.name ?? "the budget owner";
+    return groups.length === 1 ? owner : `${owner} for ${householdName(h)}`;
+  });
+  const only = byPhone ? "Only the budget owner can invite or remove people." : "Only the budget owner can invite people.";
+  return { say: `${only} Ask ${owners.join(", or ")}${byPhone ? " to invite them" : " for the invite link"}.` };
+}
 
 /** Handles a membership command. Returns true if it replied (the caller stops processing). */
 export async function handleMembershipCommand({ command, fromPhone, spaceKind, household, member, respond }: Ctx): Promise<boolean> {
@@ -250,6 +280,26 @@ export async function handleMembershipCommand({ command, fromPhone, spaceKind, h
         for (const { me } of memberships) await forgetPerson(me);
       }
       return true;
+    }
+
+    // Inviting: only into a group household the sender owns. Never their personal list (it's just them), and
+    // when they own several, ask which one.
+    if (command.type === "invite" || command.type === "add_member") {
+      const target = inviteTarget(command.householdId, fromPhone, spaceKind, household, command.type === "add_member");
+      if ("say" in target) {
+        await respond(target.say);
+        return true;
+      }
+      if ("ask" in target) {
+        const who = command.type === "add_member" ? cleanName(command.name) ?? "them" : undefined;
+        await respond(askWhichList(fromPhone, target.ask, "invite", command, who ? `Which household should I invite ${who} to?` : "Which household should I make an invite link for?"));
+        return true;
+      }
+      if (target.household.id !== household.id) {
+        // Run the same command for the right household (with its id set, this check passes straight through).
+        const me = target.household.members.find((m) => m.phone === fromPhone);
+        return handleMembershipCommand({ command: { ...command, householdId: target.household.id }, fromPhone, spaceKind, household: target.household, member: me, respond });
+      }
     }
 
     if (command.type === "invite") {

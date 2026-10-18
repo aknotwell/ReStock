@@ -10,6 +10,7 @@ Turn each chat message into zero or more intents:
 - set_shared: change an existing item between shared and personal.
 - Never emit order_now or approve. The server handles explicit checkout and approval commands without the model.
 - what_do_i_owe: the sender asks what they owe or their balance.
+- show_cart: the sender asks what's in the cart or on the shopping list ("what do we have so far?", "what's on the list").
 - help: the sender asks how Restock works.
 - add_card: the sender wants to add or update their payment card ("add card", "how do I add my card").
 - checkout: the sender wants to place / check out / buy the current order, in any phrasing ("ok let's order", "buy it all", "send the order"). The app asks them to confirm before anything is bought.

@@ -31,6 +31,9 @@ export type Choice = {
   note?: string;
   /** Catalog options shown because store prices weren't available: labelled as demo prices. */
   demoPrices?: boolean;
+  /** What was asked for, in plain words ("dish soap"), and its product group, to name and dedupe queued questions. */
+  item?: string;
+  group?: string;
 };
 type Pending = { queue: Choice[]; expires: number };
 
@@ -130,7 +133,7 @@ export function buildChoice(
   const last = current && (note || !hasFilters(opts) || applyFilters([current], opts).length > 0) ? current : undefined;
   const options = (last ? [last, ...ranked.filter((p) => p.id !== last.id)] : ranked).slice(0, count);
 
-  const choice: Choice = { options, shared };
+  const choice: Choice = { options, shared, item: product.name.split(",")[0]!.toLowerCase(), group: groupOf(product) };
   if (last) choice.lastBoughtId = last.id;
   const best = bestValueId(options);
   if (best) choice.bestValueId = best;
@@ -210,12 +213,25 @@ export function queueChoices(householdId: string, memberId: string, choices: Cho
   const k = key(householdId, memberId);
   const current = pending.get(k);
   if (current && current.expires > now && current.queue.length) {
-    current.queue.push(...choices);
+    // A question is already waiting. Never go quiet: say what happens to the new request and ask the waiting
+    // question again. Asking for something that's already waiting doesn't queue it twice.
+    const fresh = choices.filter((c) => !c.group || !current.queue.some((w) => w.group === c.group));
+    current.queue.push(...fresh);
     current.expires = now + PICK_TTL_MS;
-    return undefined;
+    const names = fresh.map((c) => c.item).filter((n): n is string => !!n);
+    const waiting = current.queue[0]!;
+    const head = !fresh.length
+      ? `That's already waiting for your pick${waiting.item ? `: ${waiting.item}` : ""}.`
+      : `Got it, I'll ask about ${names.length ? joinWords(names) : "that"} next. First, ${waiting.item ? `the ${waiting.item}` : "this one"}:`;
+    return `${head}\n${choicePrompt(waiting)}`;
   }
   pending.set(k, { queue: [...choices], expires: now + PICK_TTL_MS });
   return choicePrompt(choices[0]!);
+}
+
+/** "dish soap", "dish soap and sponges", "dish soap, sponges and TP". */
+function joinWords(names: string[]): string {
+  return names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
 
 export function hasPendingChoice(householdId: string, memberId: string, now = Date.now()): boolean {

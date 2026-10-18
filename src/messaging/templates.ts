@@ -27,8 +27,10 @@ export function memberReceipt(member: Member, share: Cents): string {
   return `Receipt: your share is ${fmt(share)}, charged to your card ending ${member.cardLast4 ?? "????"}.`;
 }
 
-export function youOwe(owner: Member, share: Cents, payLink: string, cardLink: string): string {
-  return `Your share of this week's order is ${fmt(share)}. ${owner.name}'s card covered it.\nPay ${owner.name} back: ${payLink}\nOr add a card so it's paid automatically next time: ${cardLink}`;
+/** `totalOwed`: everything they owe the owner, this order included. The pay link pays all of it. */
+export function youOwe(owner: Member, share: Cents, payLink: string, cardLink: string, totalOwed: Cents = share): string {
+  const total = totalOwed > share ? `\nWith earlier orders, you owe ${owner.name} ${fmt(totalOwed)} in total. This link pays all of it.` : "";
+  return `Your share of this week's order is ${fmt(share)}. ${owner.name}'s card covered it.${total}\nPay ${owner.name} back: ${payLink}\nOr add a card so it's paid automatically next time: ${cardLink}`;
 }
 
 export function helpMessage(): string {

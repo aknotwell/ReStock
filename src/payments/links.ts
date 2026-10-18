@@ -3,7 +3,7 @@ import { randomInt } from "node:crypto";
 import { config } from "../config.js";
 import { registerState } from "../core/persist.js";
 import { db, findMember } from "../core/store.js";
-import type { Member } from "../types.js";
+import type { Debt, Member } from "../types.js";
 import { STRIPE_MIN_CHARGE_CENTS } from "./limits.js";
 import { requireStripe } from "./stripe.js";
 
@@ -86,15 +86,27 @@ export function resetCardLinks(): void {
 /** Pay-back links stay valid longer than add-card links: people settle up when they get around to it. */
 export const PAY_BACK_LINK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-// Short-link token -> debt, and debt -> its Checkout session (so every tap reuses one payable page).
+/** Order dates on the Stripe page. DubHacks is in Seattle, so show Pacific time. */
+const ORDER_TIME = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "America/Los_Angeles",
+});
+
+// Short-link token -> the debt it was texted for. Any link pays everything that debtor owes that creditor.
 const payBackTokens = new Map<string, { debtId: string; expiresAt: number }>();
-const payBackSessions = new Map<string, string>();
+// "debtor->creditor" -> their open Checkout session and exactly which debts it pays.
+type PayBackSession = { sessionId: string; debtIds: string[] };
+const payBackSessions = new Map<string, PayBackSession>();
+const pairKey = (debtorId: string, creditorId: string) => `${debtorId}->${creditorId}`;
 
 // Links already texted to people must keep working after a restart or redeploy.
 type SavedLinks = {
   card: [string, { memberId: string; expiresAt: number }][];
   payBack: [string, { debtId: string; expiresAt: number }][];
-  sessions: [string, string][];
+  sessions: [string, PayBackSession | string][]; // a string is the older one-session-per-debt format
 };
 registerState("payment-links", {
   dump: (): SavedLinks => ({ card: [...cardLinkTokens], payBack: [...payBackTokens], sessions: [...payBackSessions] }),
@@ -106,19 +118,34 @@ registerState("payment-links", {
     payBackSessions.clear();
     for (const [token, link] of saved.card ?? []) if (link.expiresAt > now) cardLinkTokens.set(token, link);
     for (const [token, link] of saved.payBack ?? []) if (link.expiresAt > now) payBackTokens.set(token, link);
-    for (const [debtId, sessionId] of saved.sessions ?? []) payBackSessions.set(debtId, sessionId);
+    // Older saves mapped one debt to one session; those sessions still carry debtId in their metadata.
+    for (const [key, s] of saved.sessions ?? []) if (typeof s === "object") payBackSessions.set(key, s);
   },
 });
 
 /**
- * Short link (/p/:token) for paying back an open debt. Like the add-card link, no Stripe call
- * happens until it's tapped (see openPayBackLink).
+ * Short link (/p/:token) for paying back. Tapping it pays **everything** the debtor currently owes
+ * that creditor, not just this debt. Like the add-card link, no Stripe call happens until it's tapped.
  */
 export async function createPayBackLink(debtId: string, now = Date.now()): Promise<string> {
   if (!db.debts.has(debtId)) throw new Error(`Unknown debt ${debtId}`);
   const token = newLinkToken();
   payBackTokens.set(token, { debtId, expiresAt: now + PAY_BACK_LINK_TTL_MS });
   return `${config.publicBaseUrl}/p/${token}`;
+}
+
+/** Open debts from debtor to creditor, oldest order first. */
+export function openDebtsBetween(debtorId: string, creditorId: string): Debt[] {
+  const placedAt = (d: Debt) => db.orders.get(d.orderId)?.createdAt ?? "";
+  return [...db.debts.values()]
+    .filter((d) => d.debtorId === debtorId && d.creditorId === creditorId && d.status === "open")
+    .sort((a, b) => placedAt(a).localeCompare(placedAt(b)));
+}
+
+/** Which debts a pay-back Checkout session pays, if we created it. Used by the webhook. */
+export function payBackDebtsForSession(sessionId: string): string[] | undefined {
+  for (const s of payBackSessions.values()) if (s.sessionId === sessionId) return s.debtIds;
+  return undefined;
 }
 
 export type PayBackPage =
@@ -128,54 +155,84 @@ export type PayBackPage =
   | { kind: "not_found" }; // unknown or expired token
 
 /**
- * Called when a debtor taps /p/:token. Returns where to send them. Every tap for the same debt
- * reuses one Checkout session while it's open, and a session can only be paid once, so tapping
- * twice (or opening two tabs) can't pay the debt twice.
+ * Called when a debtor taps /p/:token. Returns where to send them: one Stripe page for the total of
+ * every open debt they owe that creditor, itemized by order. Taps reuse that page while it still
+ * matches what they owe, and a page can only be paid once, so they can't pay twice. If a new order
+ * added a debt, the old page is cancelled first, so a stale total can never be paid.
  */
 export async function openPayBackLink(token: string, now = Date.now()): Promise<PayBackPage> {
   const entry = payBackTokens.get(token);
-  const debt = entry && entry.expiresAt >= now ? db.debts.get(entry.debtId) : undefined;
-  if (!debt) return { kind: "not_found" };
-  if (debt.status === "paid") return { kind: "paid" };
-
-  const creditor = findMember(debt.creditorId)?.member;
-  const debtor = findMember(debt.debtorId)?.member;
+  const anchor = entry && entry.expiresAt >= now ? db.debts.get(entry.debtId) : undefined;
+  if (!anchor) return { kind: "not_found" };
+  const creditor = findMember(anchor.creditorId)?.member;
+  const debtor = findMember(anchor.debtorId)?.member;
   if (!creditor || !debtor) return { kind: "not_found" };
-  if (debt.cents < STRIPE_MIN_CHARGE_CENTS) return { kind: "too_small", cents: debt.cents, creditorName: creditor.name };
+
+  const key = pairKey(debtor.id, creditor.id);
+  let open = openDebtsBetween(debtor.id, creditor.id);
+
+  const existing = payBackSessions.get(key);
+  // Nothing owed and no page out there: no need to ask Stripe anything.
+  if (!existing && open.length === 0) return { kind: "paid" };
+  const total0 = open.reduce((sum, d) => sum + d.cents, 0);
+  if (!existing && total0 < STRIPE_MIN_CHARGE_CENTS) return { kind: "too_small", cents: total0, creditorName: creditor.name };
 
   const stripe = requireStripe();
-  const existingId = payBackSessions.get(debt.id);
-  if (existingId) {
-    const existing = await stripe.checkout.sessions.retrieve(existingId);
-    if (existing.status === "complete") return { kind: "paid" }; // paid; the webhook may still be on its way
-    if (existing.status === "open" && existing.url) return { kind: "checkout", url: existing.url };
-    // expired: make a new one below
+  if (existing) {
+    let session = await stripe.checkout.sessions.retrieve(existing.sessionId);
+    if (session.status === "open" && session.url && sameSet(existing.debtIds, open.map((d) => d.id))) {
+      return { kind: "checkout", url: session.url };
+    }
+    if (session.status === "open") {
+      // What they owe changed since this page was made. Cancel it so the old total can't be paid.
+      // If it was paid in the meantime, Stripe refuses to cancel it; then we see "complete" below.
+      session = await stripe.checkout.sessions
+        .expire(existing.sessionId)
+        .catch(() => stripe.checkout.sessions.retrieve(existing.sessionId));
+    }
+    if (session.status === "complete") {
+      // Paid; the webhook marks those debts (it may still be on its way). Only the rest needs a page.
+      open = open.filter((d) => !existing.debtIds.includes(d.id));
+    }
+    payBackSessions.delete(key);
   }
 
+  if (open.length === 0) return { kind: "paid" };
+  const total = open.reduce((sum, d) => sum + d.cents, 0);
+  if (total < STRIPE_MIN_CHARGE_CENTS) return { kind: "too_small", cents: total, creditorName: creditor.name };
+
+  const debtIds = open.map((d) => d.id);
+  const idList = debtIds.join(",");
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     allowed_payment_method_types: ["card"], // cards, plus Apple Pay / Google Pay wallets
     customer: debtor.stripeCustomerId, // prefills their details if they have one; optional
-    line_items: [
-      {
+    // One line per order, so the total on Stripe's page is easy to check against the texts.
+    line_items: open.map((d) => {
+      const placed = db.orders.get(d.orderId)?.createdAt;
+      const when = placed ? ` on ${ORDER_TIME.format(new Date(placed))}` : "";
+      return {
         quantity: 1,
         price_data: {
           currency: "usd",
-          unit_amount: debt.cents,
-          product_data: { name: `Pay ${creditor.name} back for your share of the household order` },
+          unit_amount: d.cents,
+          product_data: { name: `Pay ${creditor.name} back: your share of the order${when}` },
         },
-      },
-    ],
-    client_reference_id: debt.id,
-    metadata: { debtId: debt.id },
-    payment_intent_data: { metadata: { debtId: debt.id, orderId: debt.orderId } },
+      };
+    }),
+    client_reference_id: debtor.id,
+    // The server keeps the debt list (payBackSessions); metadata repeats it when it fits Stripe's 500-char limit.
+    metadata: { payBack: "1", debtorId: debtor.id, creditorId: creditor.id, ...(idList.length <= 500 ? { debtIds: idList } : {}) },
+    payment_intent_data: { metadata: { payBack: "1", debtorId: debtor.id, creditorId: creditor.id } },
     success_url: `${config.publicBaseUrl}/pay/success`,
     cancel_url: `${config.publicBaseUrl}/cancel`,
   });
   if (!session.url) throw new Error("Stripe returned a Checkout session without a URL");
-  payBackSessions.set(debt.id, session.id);
+  payBackSessions.set(key, { sessionId: session.id, debtIds });
   return { kind: "checkout", url: session.url };
 }
+
+const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
 
 /** Test helper: forget every issued pay-back token and session. */
 export function resetPayBackLinks(): void {

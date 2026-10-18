@@ -169,12 +169,13 @@ The "incomplete" entries are attempts that were declined. No money moved, and th
 
 ### Pay-back link
 
-How it works: `createPayBackLink(debtId)` makes a short `/p/<token>` link and doesn't call Stripe yet. When the debtor taps it, the server creates a Stripe Checkout **payment** page for exactly the debt amount and redirects there.
+How it works: `createPayBackLink(debtId)` makes a short `/p/<token>` link and doesn't call Stripe yet. When the debtor taps it, the server creates a Stripe Checkout **payment** page for **everything they still owe that person**, across all orders, with one line per order ("Pay Sam back: your share of the order on Oct 17, 5:07 PM"). Any of their pay links, old or new, opens that same total. The "you owe" text says the total when there are earlier debts.
 
-- **Can't be paid twice.** Every tap for the same debt, even from a newer link, reuses the same Stripe page while it's open, and a Stripe page can only be paid once. If that page expires (after 24 hours), the next tap makes a fresh one.
+- **Can't be paid twice.** Taps reuse the same Stripe page while it still matches what they owe, and a Stripe page can only be paid once. If a new order adds a debt, the old page is **cancelled** before a new one is made, so a stale total can never be paid. If a page expires (after 24 hours), the next tap makes a fresh one.
+- **Paying marks every debt on the page paid.** The server remembers which debts each page covers, and the page's metadata repeats the list as a backup.
 - **Already paid.** If the debt is already paid, or Stripe says the page was paid and our webhook just hasn't arrived yet, the link goes straight to our "Thanks!" page.
 - **Webhook.** When they pay, Stripe sends `checkout.session.completed`. We check that it's paid and that the amount matches the debt, then mark the debt paid with `markDebtPaid`. Bank payments offered through Link clear days later and arrive as `checkout.session.async_payment_succeeded`, which is handled the same way.
-- **Debts under $0.50** can't go through Stripe. The link shows a short page asking them to settle it with the owner directly.
+- **Under $0.50 in total** can't go through Stripe. The link shows a short page asking them to settle it with the owner directly. Small debts add up, though: once the total passes $0.50, the link works.
 - **Where the money goes:** into our Stripe account, not the owner's bank. Sending it on to the owner needs Stripe Connect, which PLAN.md lists as a stretch goal. For the hackathon we record the debt as paid.
 
 Steps:

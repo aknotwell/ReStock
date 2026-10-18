@@ -150,4 +150,13 @@ describe("account deletion reaches Stripe", () => {
     await retryCustomerDeletions();
     expect(pendingCustomerDeletions()).toEqual([]);
   });
+
+  it("without a Stripe key, the deletion is kept for a later run instead of dropped", async () => {
+    vi.resetModules();
+    vi.doMock("../src/payments/stripe.js", () => ({ stripe: undefined, requireStripe: () => { throw new Error("no key"); } }));
+    const mod = await import("../src/payments/deleteCustomer.js");
+    expect(await mod.deleteStripeCustomer("cus_later")).toBe(false);
+    expect(mod.pendingCustomerDeletions()).toEqual(["cus_later"]);
+    vi.doUnmock("../src/payments/stripe.js");
+  });
 });

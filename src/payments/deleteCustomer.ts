@@ -16,7 +16,11 @@ registerState("stripe-deletions", {
 
 /** Delete a Stripe Customer. Already gone counts as done. A failure is saved and retried later. */
 export async function deleteStripeCustomer(customerId: string): Promise<boolean> {
-  if (!stripe) return true; // no Stripe key: nothing was ever created there
+  if (!stripe) {
+    // The customer exists, so Stripe was set up when it was made. Keep it until a run with the key deletes it.
+    failed.add(customerId);
+    return false;
+  }
   try {
     await stripe.customers.del(customerId);
     failed.delete(customerId);

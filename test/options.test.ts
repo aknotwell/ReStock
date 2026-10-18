@@ -222,6 +222,15 @@ describe("everyday phrasing in the chat, with no LLM", () => {
     expect(pendingItems(H)).toHaveLength(before);
   });
 
+  it("'I'm out of toilet paper' offers options and doesn't take anyone off the cart's toilet paper", async () => {
+    const tp = pendingItems(H).find((i) => i.name === "Toilet paper, 12 rolls")!;
+    const before = JSON.stringify(tp);
+    await say(SAM, "I'm out of toilet paper");
+    expect(out()).toMatch(/Which one\?\n1\. Toilet paper/);
+    expect(out()).not.toMatch(/Took you off/);
+    expect(JSON.stringify(tp)).toBe(before);
+  });
+
   it("'we're out of TP and dish soap' asks about both, one at a time", async () => {
     await say(SAM, "we're out of TP and dish soap");
     expect(out()).toMatch(/Which one\?\n1\. Toilet paper/);

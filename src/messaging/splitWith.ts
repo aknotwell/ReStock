@@ -84,7 +84,10 @@ export function parseSplitInAdd(text: string, household: Household, sender: Memb
  */
 export function parseSplitCommand(text: string, household: Household, sender: Member): SplitRequest | undefined {
   const t = text.trim().toLowerCase().replace(/[’]/g, "'");
-  const notMe = /^(?:not me|count me out|leave me out|take me off|i'?m out)(?:\s+(?:for|of|from|on)\s+(?:the\s+)?(.+?))?[.!]*$/.exec(t);
+  // "I'm out of X" is a shopping request ("I'm out of toilet paper"), so after "I'm out" only "for/from/on" opts out.
+  const notMe =
+    /^(?:not me|count me out|leave me out|take me off)(?:\s+(?:for|of|from|on)\s+(?:the\s+)?(.+?))?[.!]*$/.exec(t) ??
+    /^i'?m out(?:\s+(?:for|from|on)\s+(?:the\s+)?(.+?))?[.!]*$/.exec(t);
   if (notMe) return { kind: "not_me", ...(notMe[1] ? { itemName: notMe[1] } : {}) };
   if (/^(?:(?:split (?:it )?with|share (?:it )?with)\s+)?(?:everyone|everybody|all of us)[.!]*$/.test(t)) return { kind: "everyone" };
 

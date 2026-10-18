@@ -60,6 +60,14 @@ describe("changing who pays for an item already in the cart", () => {
     expect(parseSplitCommand("split with sarah", h, sam)?.kind).toBe("unclear");
   });
 
+  it("'I'm out' opts out, but 'I'm out of X' is a shopping request, not an opt-out", () => {
+    expect(parseSplitCommand("I'm out", h, jake)).toEqual({ kind: "not_me" });
+    expect(parseSplitCommand("im out for the chips", h, jake)).toEqual({ kind: "not_me", itemName: "chips" });
+    expect(parseSplitCommand("count me out of the chips", h, jake)).toEqual({ kind: "not_me", itemName: "chips" });
+    expect(parseSplitCommand("I'm out of toilet paper", h, jake)).toBeUndefined();
+    expect(parseSplitCommand("im out of eggs", h, jake)).toBeUndefined();
+  });
+
   it("leaves ordinary messages alone", () => {
     for (const t of ["just checking", "only 2 left", "order now", "add tp", "yes", "personal"]) expect(parseSplitCommand(t, h, sam)).toBeUndefined();
   });

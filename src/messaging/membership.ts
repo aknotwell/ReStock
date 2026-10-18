@@ -6,6 +6,7 @@ import { inviteCodeFor, releaseLineFor, resetInvite } from "../core/signups.js";
 import { deleteHousehold } from "../core/households.js";
 import { openDebtsFor, owedTo } from "../core/ledger.js";
 import { config } from "../config.js";
+import { forgetHandle } from "./photon.js";
 
 export type MembershipCommand =
   | { type: "start"; name: string | null }
@@ -40,6 +41,12 @@ type Ctx = {
   member: Member | undefined;
   respond: (text: string) => Promise<void>;
 };
+
+/** Someone left Restock: release their Restock number in Photon and drop what Photon told us about them. */
+async function forgetPhone(phone: string): Promise<void> {
+  forgetHandle(phone);
+  await releaseLineFor(phone);
+}
 
 const last4 = (phone: string) => `phone ending ${phone.slice(-4)}`;
 
@@ -100,7 +107,7 @@ export async function handleMembershipCommand({ command, fromPhone, spaceKind, h
       }
       if (member.id === household.ownerId) deleteHousehold(household);
       else removeMember(household, member.name);
-      await releaseLineFor(fromPhone);
+      await forgetPhone(fromPhone);
       await respond("Done. You've left Restock and your data is deleted. Thanks for trying it!");
       return true;
     }
@@ -140,6 +147,7 @@ export async function handleMembershipCommand({ command, fromPhone, spaceKind, h
     }
 
     const removed = removeMember(household, command.name);
+    await forgetPhone(removed.phone);
     await respond(`Removed ${removed.name} from the household.`);
     return true;
   } catch (err) {

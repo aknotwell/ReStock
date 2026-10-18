@@ -125,6 +125,11 @@ export function sessionMember(token: string | undefined, now = Date.now()): Memb
   return findMember(s.memberId)?.member;
 }
 
+/** Their household was deleted: keep them logged in through another of their member records (same phone). */
+export function moveSessions(fromMemberId: string, toMemberId: string): void {
+  for (const s of sessions.values()) if (s.memberId === fromMemberId) s.memberId = toMemberId;
+}
+
 export function logout(token: string | undefined): void {
   if (token) sessions.delete(hash(token));
 }

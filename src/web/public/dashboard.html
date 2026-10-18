@@ -89,6 +89,11 @@
   .btn.primary:hover { border-color: var(--btn-hover); background: var(--btn-hover); }
   .btn.primary svg.icon { stroke: var(--btn-icon); stroke-width: 2.8; }
   .btn:disabled { cursor: default; opacity: .5; }
+  .btn.danger { border-color: var(--red); color: var(--red); }
+  .manage-actions, .confirm-actions { display: flex; flex-wrap: wrap; gap: 10px; padding-block: 12px; }
+  .confirm-box { margin-block: 8px 12px; padding: 14px 16px; border: 1.5px solid var(--red); border-radius: 6px; }
+  .confirm-box p { margin: 0 0 8px; }
+  .confirm-box ul { margin: 0 0 8px; padding-left: 20px; }
   .link-button { min-height: 44px; padding: 0; border: 0; background: none; color: var(--ink); cursor: pointer; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
   .field { display: block; margin-bottom: 6px; font-size: 15px; font-weight: 600; }
   .text-input { width: 100%; min-height: 48px; padding: 0 14px; border: 1.5px solid var(--ink); border-radius: 4px; background: var(--paper); color: var(--ink); font-family: var(--mono); font-size: 17px; }
@@ -370,7 +375,7 @@
         </section>
       </div>
       <div class="section-grid" id="sec-panel-settings" role="tabpanel" aria-labelledby="sec-settings" hidden>
-        <p class="note settings-note" id="settings-note" hidden>View only for now.</p>
+        <p class="note settings-note" id="settings-note" hidden>Rules are view only for now.</p>
         <section class="card" aria-labelledby="rules-heading">
           <h3 id="rules-heading">Rules</h3>
           <div class="lines">
@@ -398,6 +403,24 @@
             <button type="button" data-preset="chosen" aria-pressed="false">Only who I pick</button>
           </div>
           <div class="lines" id="approver-list"></div>
+        </section>
+        <section class="card" id="manage-card" aria-labelledby="manage-heading" hidden>
+          <h3 id="manage-heading">Manage group</h3>
+          <p class="note">Removed people get a short text from Restock. Anything they still owe stays on record, and they can pay it back.</p>
+          <div class="lines" id="manage-list"></div>
+          <div class="confirm-box" id="manage-confirm" role="alertdialog" aria-labelledby="manage-question" hidden>
+            <p id="manage-question"></p>
+            <div id="manage-balances"></div>
+            <div class="confirm-actions">
+              <button class="btn danger" id="manage-go" type="button">Confirm</button>
+              <button class="btn" id="manage-cancel" type="button">Cancel</button>
+            </div>
+          </div>
+          <div class="manage-actions">
+            <button class="btn" id="remove-everyone" type="button">Remove everyone</button>
+            <button class="btn danger" id="delete-group" type="button">Delete group</button>
+          </div>
+          <p class="error" id="manage-error" hidden></p>
         </section>
       </div>
     </div>
@@ -1095,7 +1118,96 @@
     renderPayments(space);
     renderRules(space);
     if (!isPersonal(space)) renderApprovers(space);
+    renderManage(space);
   }
+
+  // ---------- Manage group: owner-only removing and deleting (POST /app/api/remove) ----------
+  // Nothing changes on the first click: the server answers with the question and any open debts, shown here
+  // with a recommendation to settle up first. Only the second click ("Remove anyway", "Delete group") acts.
+  let pendingRemoval = null;
+  function manageError(message) {
+    $("#manage-error").textContent = message || "";
+    $("#manage-error").hidden = !message;
+  }
+  function renderManage(space) {
+    const show = !isPersonal(space) && iOwn(space);
+    $("#manage-card").hidden = !show;
+    $("#manage-confirm").hidden = true;
+    pendingRemoval = null;
+    manageError("");
+    if (!show) return;
+    const others = space.members.filter((m) => !isOwner(m));
+    $("#remove-everyone").hidden = others.length === 0;
+    $("#manage-list").replaceChildren(
+      ...(others.length
+        ? others.map((m) => line(memberLabel(space, m), button("Remove", () => askRemoval(space, { kind: "member", targetId: m.id }), "btn danger")))
+        : [make("p", "note", "Nobody else is in this group yet.")]),
+    );
+  }
+  // Demo mode: the same question and warning, worked out from the demo data. Nothing is sent anywhere.
+  function demoPreview(space, { kind, targetId }) {
+    const leaving = kind === "member" ? space.members.filter((m) => m.id === targetId) : space.members.filter((m) => !isOwner(m));
+    const names = leaving.map((m) => m.name).join(", ");
+    const affected = new Set((kind === "household" ? space.members : leaving).map((m) => m.name));
+    const question = kind === "household"
+      ? `Delete ${space.name}? This removes everyone${names ? ` (${names})` : ""}, clears the cart and can't be undone.`
+      : kind === "everyone" ? `Remove everyone else from ${space.name} (${names})? You'll stay as the budget owner.` : `Remove ${names} from ${space.name}?`;
+    return { question, balances: space.openDebts.filter((d) => affected.has(d.from) || affected.has(d.to)) };
+  }
+  async function askRemoval(space, request) {
+    manageError("");
+    let preview;
+    try {
+      preview = live ? await api("/app/api/remove", { memberId: space.me.id, ...request }) : demoPreview(space, request);
+    } catch (err) {
+      return manageError(err.message);
+    }
+    pendingRemoval = { space, request };
+    $("#manage-question").textContent = preview.question;
+    const box = $("#manage-balances");
+    box.replaceChildren();
+    if (preview.balances.length) {
+      const list = make("ul");
+      for (const d of preview.balances) list.append(make("li", null, `${d.from} owes ${d.to} ${formatCents(d.cents)}`));
+      box.append(make("p", null, "Heads up, there are open balances:"), list,
+        make("p", "note", "We recommend settling up first. If you go ahead, these stay on record and can still be paid back."));
+    }
+    const verb = request.kind === "household" ? "Delete group" : "Remove";
+    $("#manage-go").textContent = preview.balances.length ? `${verb} anyway` : verb;
+    $("#manage-confirm").hidden = false;
+    $("#manage-go").focus();
+  }
+  $("#manage-cancel").addEventListener("click", () => {
+    pendingRemoval = null;
+    $("#manage-confirm").hidden = true;
+  });
+  $("#manage-go").addEventListener("click", async () => {
+    if (!pendingRemoval) return;
+    const { space, request } = pendingRemoval;
+    pendingRemoval = null;
+    $("#manage-confirm").hidden = true;
+    if (live) {
+      try {
+        const { message } = await api("/app/api/remove", { memberId: space.me.id, ...request, confirm: true });
+        alert(message);
+      } catch (err) {
+        return manageError(err.message);
+      }
+      return refresh();
+    }
+    if (request.kind === "household") {
+      groups = groups.filter((g) => g !== space);
+      spaces = spaces.filter((s) => s !== space);
+      selectedId = null;
+      renderTabs();
+      return groups.length ? selectSpace(groups[0].id) : renderSpace();
+    }
+    space.members = space.members.filter((m) => isOwner(m) || (request.kind === "member" && m.id !== request.targetId));
+    renderSpace();
+    refreshStatus(space);
+  });
+  $("#remove-everyone").addEventListener("click", () => askRemoval(spaceById(selectedId), { kind: "everyone" }));
+  $("#delete-group").addEventListener("click", () => askRemoval(spaceById(selectedId), { kind: "household" }));
 
   budgetToggle.addEventListener("change", () => {
     const space = spaceById(selectedId);

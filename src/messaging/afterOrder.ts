@@ -5,25 +5,36 @@ import { createCardSetupLink, createPayBackLink } from "../payments/links.js";
 import { sendPrivate } from "./photon.js";
 import { memberReceipt, ownerReceipt, youOwe } from "./templates.js";
 
-export async function sendOrderTexts(household: Household, result: OrderResult): Promise<void> {
+/**
+ * Sends each member's private text. One member failing never stops the others. Returns the names of
+ * members whose text is being held until they DM the agent, so the sender can be told who to nudge.
+ */
+export async function sendOrderTexts(household: Household, result: OrderResult): Promise<{ waiting: string[] }> {
+  const waiting: string[] = [];
   const owner = household.members.find((m) => m.id === household.ownerId);
-  if (!owner) return;
+  if (!owner) return { waiting };
   const key = (memberId: string) => `order:${result.order.id}:${memberId}`;
   const coveredForOthers = result.debts.filter((d) => d.creditorId === owner.id).reduce((s, d) => s + d.cents, 0);
 
   for (const member of household.members) {
-    const share = result.shares[member.id] ?? 0;
-    if (member.id === owner.id) {
-      if (share > 0 || coveredForOthers > 0) await sendPrivate(member.id, ownerReceipt(owner, share, coveredForOthers), key(member.id));
-      continue;
-    }
-    if (share <= 0) continue;
-    const debt = result.debts.find((d) => d.debtorId === member.id);
-    if (debt) {
-      const [payLink, cardLink] = await Promise.all([createPayBackLink(debt.id), createCardSetupLink(member.id)]);
-      await sendPrivate(member.id, youOwe(owner, debt.cents, payLink, cardLink), key(member.id));
-    } else {
-      await sendPrivate(member.id, memberReceipt(member, share), key(member.id));
+    try {
+      const share = result.shares[member.id] ?? 0;
+      let text: string | undefined;
+      if (member.id === owner.id) {
+        if (share > 0 || coveredForOthers > 0) text = ownerReceipt(owner, share, coveredForOthers);
+      } else if (share > 0) {
+        const debt = result.debts.find((d) => d.debtorId === member.id);
+        if (debt) {
+          const [payLink, cardLink] = await Promise.all([createPayBackLink(debt.id), createCardSetupLink(member.id)]);
+          text = youOwe(owner, debt.cents, payLink, cardLink);
+        } else {
+          text = memberReceipt(member, share);
+        }
+      }
+      if (text && (await sendPrivate(member.id, text, key(member.id))) === "queued") waiting.push(member.name);
+    } catch (err) {
+      console.error(`order text to ${member.name} failed:`, err instanceof Error ? err.message : err);
     }
   }
+  return { waiting };
 }

@@ -11,7 +11,7 @@ import { config } from "../config.js";
 import { markDebtPaid, openDebtsFor } from "../core/ledger.js";
 import { db, findMember } from "../core/store.js";
 import { sendPrivate } from "../messaging/photon.js";
-import { fmt } from "../messaging/templates.js";
+import { fmt, paidBack } from "../messaging/templates.js";
 import type { Debt, Member } from "../types.js";
 import { ensureStripeCustomer } from "./links.js";
 import { requireStripe } from "./stripe.js";
@@ -136,7 +136,7 @@ export async function settlePayBack(session: Stripe.Checkout.Session): Promise<"
     }
   }
   if (debtor) {
-    await sendPrivate(debt.creditorId, `${debtor.name} paid you back ${fmt(debt.cents)}.`, `paid-back:${debt.id}`).catch((err) =>
+    await sendPrivate(debt.creditorId, paidBack(debtor.name, debt.cents, 1), `paid-back:${debt.id}`).catch((err) =>
       console.warn("paid-back text failed:", err instanceof Error ? err.message : err),
     );
   }

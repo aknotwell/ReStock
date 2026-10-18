@@ -5,7 +5,7 @@ import { config } from "../config.js";
 import { markDebtPaid } from "../core/ledger.js";
 import { db, findMember } from "../core/store.js";
 import { sendPrivate } from "../messaging/photon.js";
-import { cardAdded } from "../messaging/templates.js";
+import { cardAdded, paidBack } from "../messaging/templates.js";
 import { settlePayBack } from "./payback.js";
 import { payBackDebtsForSession } from "./links.js";
 import { requireStripe } from "./stripe.js";
@@ -32,14 +32,14 @@ export async function stripeWebhook(req: Request, res: Response): Promise<void> 
         if (event.data.object.mode === "setup") await saveCardFromSetupSession(event.data.object);
         else if (event.data.object.mode === "payment" && event.data.object.payment_status === "paid") {
           if (event.data.object.metadata?.memberId) await settlePayBack(event.data.object);
-          else markDebtPaidFromSession(event.data.object);
+          else await markDebtPaidFromSession(event.data.object);
         }
         break;
       // Bank payments (offered through Link) finish Checkout as "processing" and clear days later.
       case "checkout.session.async_payment_succeeded":
         if (event.data.object.mode === "payment") {
           if (event.data.object.metadata?.memberId) await settlePayBack(event.data.object);
-          else markDebtPaidFromSession(event.data.object);
+          else await markDebtPaidFromSession(event.data.object);
         }
         break;
       default:
@@ -55,12 +55,12 @@ export async function stripeWebhook(req: Request, res: Response): Promise<void> 
 }
 
 /**
- * A member finished a pay-back page. Mark their Debt paid.
- * Idempotent: marking a paid debt paid again changes nothing.
+ * A member finished a pay-back page. Mark its debts paid and text the person who was paid back.
+ * Idempotent: a repeated event finds the debts already paid and sends no second text.
  */
-export function markDebtPaidFromSession(
+export async function markDebtPaidFromSession(
   session: Stripe.Checkout.Session,
-): "paid" | "not_a_pay_back" | "unknown_debt" | "not_paid" | "amount_mismatch" {
+): Promise<"paid" | "not_a_pay_back" | "unknown_debt" | "not_paid" | "amount_mismatch"> {
   // Which debts this page paid: our own record first, then the metadata copy, then the older
   // one-debt-per-page format. Sessions we didn't create (e.g. `stripe trigger`) have none: ignore them.
   const debtIds =
@@ -80,8 +80,18 @@ export function markDebtPaidFromSession(
     console.error(`pay-back amount ${session.amount_total} doesn't match its ${debts.length} debt(s) (${total})`);
     return "amount_mismatch";
   }
+  const newlyPaid = debts.filter((d) => d!.status === "open");
   for (const id of debtIds) markDebtPaid(id);
-  // TODO(P1): text the creditor "{debtor} paid you back {amount}".
+
+  // Tell the person who was paid back, once: a retried event finds nothing newly paid.
+  const first = debts[0]!;
+  const debtor = findMember(first.debtorId)?.member;
+  if (debtor && newlyPaid.length > 0) {
+    const cents = newlyPaid.reduce((sum, d) => sum + d!.cents, 0);
+    await sendPrivate(first.creditorId, paidBack(debtor.name, cents, newlyPaid.length), `paid-back:${session.id}`).catch((err) =>
+      console.warn("paid-back text failed:", err instanceof Error ? err.message : err),
+    );
+  }
   return "paid";
 }
 

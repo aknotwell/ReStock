@@ -46,21 +46,28 @@ function cleanItem(raw: string): string {
     .replace(/^[\s,;:.!-]+|[\s,;:.!?-]+$/g, "");
 }
 
-/** "tp, dish soap and eggs" -> ["tp", "dish soap", "eggs"]. */
-function splitItems(raw: string): string[] {
+/** "for me" / "personal" -> false, "for everyone" / "for the house" / "for us" / "shared" -> true, else null. */
+function sharedMarker(raw: string): boolean | null {
+  if (/\b(?:for me|personal)\b/.test(raw)) return false;
+  if (/\b(?:for everyone|for the house|for us|shared)\b/.test(raw)) return true;
+  return null;
+}
+
+/** "coffee for me, dish soap and eggs" -> coffee (personal), dish soap, eggs. Each item keeps its own marker. */
+function splitItems(raw: string): { name: string; shared: boolean | null }[] {
   return raw
     .split(/\s*(?:,|&|\+|\band also\b|\band\b|\bplus\b)\s*/)
-    .map(cleanItem)
-    .filter((s) => s.length > 0 && s.length <= 60)
+    .map((part) => ({ name: cleanItem(part), shared: sharedMarker(part) }))
+    .filter((i) => i.name.length > 0 && i.name.length <= 60)
     .slice(0, 10);
 }
 
 function naturalAdd(text: string): Intent[] | undefined {
   const question = text.endsWith("?");
   const t = text.replace(/[.!?]+$/, "");
-  const shared = /\b(?:for me|personal)\b/.test(t) ? false : null;
-  const toIntents = (items: string[]) => items.map((itemName): Intent => ({ type: "add_item", itemName, quantity: null, shared }));
-  const explicit = question ? undefined : LIST_ADD.exec(t)?.[1];
+  const toIntents = (items: { name: string; shared: boolean | null }[]) =>
+    items.map((i): Intent => ({ type: "add_item", itemName: i.name, quantity: null, shared: i.shared }));
+  const explicit = LIST_ADD.exec(t)?.[1]; // "add eggs to the list?" is still an explicit request
   if (explicit) {
     const items = splitItems(explicit);
     return items.length ? toIntents(items) : undefined;
@@ -68,7 +75,7 @@ function naturalAdd(text: string): Intent[] | undefined {
   const raw = (question ? REQUESTS : [...REQUESTS, ...STATEMENTS]).map((re) => re.exec(t)?.[1]).find(Boolean);
   if (!raw) return undefined;
   const items = splitItems(raw);
-  return items.some((i) => keywordMatch(i)) ? toIntents(items) : undefined;
+  return items.some((i) => keywordMatch(i.name)) ? toIntents(items) : undefined;
 }
 
 export function parseCommand(text: string): Intent[] {

@@ -48,6 +48,17 @@ describe("everyday ways to add items (works without the LLM)", () => {
     expect(parseCommand("I need coffee for me")[0]).toMatchObject({ type: "add_item", itemName: "coffee", shared: false });
   });
 
+  it("marks shared/personal per item in a list", () => {
+    expect(parseCommand("I need coffee for me and dish soap for everyone")).toEqual([
+      { type: "add_item", itemName: "coffee", quantity: null, shared: false },
+      { type: "add_item", itemName: "dish soap", quantity: null, shared: true },
+    ]);
+  });
+
+  it("reads 'add X to the list?' with a question mark", () => {
+    expect(adds("add eggs to the list?")).toEqual(["eggs"]);
+  });
+
   it.each(["I'm out of town this weekend", "we need to talk", "short on time today", "let's get pizza", "out of curiosity, do we have soap?"])(
     "leaves ordinary chat alone: %j",
     (text) => {

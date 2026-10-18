@@ -28,6 +28,11 @@ export const photonEnabled = () => photon !== undefined;
 const agentBySpace = new Map<string, string>();
 const dmByHandle = new Map<string, string>();
 
+// Private texts for people who haven't DM'd the agent yet (shared lines can't start a chat). Delivered
+// the next time they text us directly. Kept in memory only, never saved: message text isn't stored.
+const PENDING_KEEP = 20;
+const pendingByHandle = new Map<string, { text: string; key: string }[]>();
+
 // Polling position. Saved so texts that arrive during a restart are answered once, not twice or never.
 const POLL_RESUME_LIMIT_MS = 10 * 60 * 1000; // after a longer outage, skip the backlog instead of replaying it
 const SEEN_KEEP = 500;
@@ -96,31 +101,64 @@ export async function sendGroup(householdId: string, text: string, key: string =
 }
 
 /**
- * Private text to one member. Uses their DM space if they've texted the agent directly;
- * otherwise asks them in the group to DM the agent (shared lines can't start new chats).
+ * Private text to one member. Uses their DM space if they've texted the agent directly. Otherwise
+ * holds the text until they do (see deliverPending) and, if the group chat works, asks them there to
+ * DM the agent (shared lines can't start new chats). Returns "queued" when the text is being held.
  */
-export async function sendPrivate(memberId: string, rawText: string, key: string = crypto.randomUUID()): Promise<void> {
+export async function sendPrivate(memberId: string, rawText: string, key: string = crypto.randomUUID()): Promise<"sent" | "queued"> {
   const text = redact(rawText); // V-002
   const captured = capture.getStore();
   if (captured) {
     captured.push(text);
-    return;
+    return "sent";
   }
   const found = findMember(memberId);
   if (!found) throw new Error(`Unknown member ${memberId}`);
   const dm = dmByHandle.get(found.member.phone);
-  if (dm) return send(dm, text, `restock-dm:${key}`);
+  if (dm) {
+    await send(dm, text, `restock-dm:${key}`);
+    return "sent";
+  }
 
   if (!photon) {
     console.log(`[photon:console → ${found.member.name} (private)]\n${text}\n`);
-    return;
+    return "sent";
   }
-  console.warn(`No DM space for ${found.member.name}; nudging them in the group instead.`);
+  const queue = pendingByHandle.get(found.member.phone) ?? [];
+  queue.push({ text, key });
+  pendingByHandle.set(found.member.phone, queue.slice(-PENDING_KEEP));
+  console.warn(`No DM space for ${found.member.name}; holding their private text until they DM us.`);
+  // Best effort: a nudge in the group. With no working group chat, they get the text when they DM us.
   await sendGroup(
     found.household.id,
     `${found.member.name}, I have something private for you. Text me directly and I'll send it there.`,
     `nudge:${key}`,
-  );
+  ).catch((err) => console.warn("group nudge failed:", err instanceof Error ? err.message : err));
+  return "queued";
+}
+
+/** Send any private texts held for this sender, now that they've DM'd us. Call after rememberInbound. */
+export async function deliverPending(msg: InboundMessage): Promise<void> {
+  if (msg.spaceKind !== "direct") return;
+  const queue = pendingByHandle.get(msg.fromPhone);
+  if (!queue?.length) return;
+  pendingByHandle.delete(msg.fromPhone);
+  for (const [i, item] of queue.entries()) {
+    try {
+      await send(msg.spaceId, item.text, `restock-dm:${item.key}`);
+    } catch (err) {
+      // Keep what's left for their next DM, so nothing is lost to a temporary Photon error.
+      pendingByHandle.set(msg.fromPhone, queue.slice(i));
+      console.warn("held private text failed to send:", err instanceof Error ? err.message : err);
+      return;
+    }
+  }
+  console.log(`[photon] delivered ${queue.length} held private text(s) to …${msg.fromPhone.slice(-4)}`);
+}
+
+/** Test helper: forget held private texts. */
+export function resetPendingPrivate(): void {
+  pendingByHandle.clear();
 }
 
 type PhotonMessage = Awaited<ReturnType<Photon["projects"]["listMessages"]>>["items"][number];
@@ -191,6 +229,7 @@ export function startPolling(handle: (msg: InboundMessage) => Promise<void>, int
           rememberInbound(msg);
           // Traffic log for debugging live tests: chat type and the sender's last 4 digits only, never content.
           console.log(`[photon] received ${msg.spaceKind} message from …${msg.fromPhone.slice(-4)}`);
+          await deliverPending(msg); // receipts and links held until they texted us directly
           await handle(msg).catch((err) => console.error("handler failed:", err instanceof Error ? err.message : err));
         }
         pageToken = page.nextPageToken;

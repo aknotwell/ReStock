@@ -48,7 +48,7 @@ What the AI in Restock does, what data it uses, and what controls keep it safe. 
 9. **Output redaction** (`src/safety/redact.ts`): every outbound text is stripped of emails, phone numbers, IDs, card numbers, and API keys.
 10. **Factual grounding.** General answers use only reviewed facts with versioned sources or exact demo catalog lookups. Unsupported questions get a fixed uncertainty reply. Restock reasons are computed from purchase dates rather than copied from model prose. The currently reviewed general fact is France’s capital, verified against the EU country profile on 2026-10-17. This is deliberately limited coverage, not a general knowledge assistant.
 11. **Audit endpoint** (`POST /api/agent`): runs the real pipeline for a sandbox household so VEYZL can test it. Optionally protected with a bearer token (`AGENT_API_TOKEN`).
-12. **Sensitive data protection.** The card-number guard runs before the AI, and adding a card happens only on Stripe-hosted pages, in test mode.
+12. **Sensitive data protection.** The card-number guard runs before household lookup or AI parsing. A card-number message gets a fixed warning with no setup link; a member can request a Stripe-hosted test-mode link by texting "add card". AI fallback warnings omit exception details that could contain message text.
 
 ## Known risks and mitigations
 
@@ -57,7 +57,7 @@ What the AI in Restock does, what data it uses, and what controls keep it safe. 
 | The model misreads a message and adds the wrong item | Every addition is echoed back and can be changed with a reply. Nothing is bought until "order now". |
 | The model invents a product or price | Only catalog IDs are accepted, and the price comes from the catalog |
 | The model triggers an order on its own | `order_now` is acted on only when the message explicitly asks. Charging is deterministic code behind that command. |
-| A member pastes a card number | The Luhn guard drops the message before the AI or the database sees it, and the member gets a private secure link instead. Digit groups may be split by any whitespace (tabs, newlines, repeated spaces), dots, slashes, underscores, or dashes, and a card followed by its expiry/CVC is still caught |
+| A member pastes a card number | The Luhn guard drops the message before household lookup or AI parsing, and sends a fixed private warning without a link. The member can separately text "add card" for a secure Stripe link. Digit groups may be split by whitespace, dots, slashes, underscores, or dashes, and a card followed by its expiry/CVC is still caught |
 | The LLM is unavailable during the demo | Every component has a deterministic fallback, covered by tests in `test/ai-fallbacks.test.ts` |
 | Unfair splits | Split rules are explicit and visible in the group summary, and covered by unit tests |
 | A store listing carries injected instructions or junk | Listings are schema-validated, run through the guardrails, shortened, and never sent to the model; only the title, seller, and price are shown |

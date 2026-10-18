@@ -48,9 +48,11 @@ describe("demo flow over chat", () => {
     const text = out();
     expect(text).toMatch(/Ordered! 6 items, \$72\.75/);
     expect(text).toMatch(/Receipt: your share is \$\d+\.\d\d, charged to your Visa ending 4242\./);
-    expect(text).toMatch(/Your card also covered \$\d+\.\d\d for roommates without a card/);
+    expect(text).toMatch(/Your card also covered \$10\.15 for Priya\. I'll remind them to pay you back\./);
     expect(text).toMatch(/Receipt: your share is \$\d+\.\d\d, charged to your card ending 1881\./);
-    expect(text).toMatch(/Your share of this week's order is \$\d+\.\d\d\. Sam's card covered it\.\nPay Sam back: \S+\nOr add a card/);
+    // Each text lists what the person paid for; these lines add up to their share.
+    expect(text).toMatch(/charged to your card ending 1881\.\n• [^\n]+\n(• [^\n]+\n)*• Air fryer \(approved by Sam\) \$32\.00/);
+    expect(text).toMatch(/Your share of this week's order is \$10\.15\. Sam's card covered it\.\n(• [^\n]+ \$\d+\.\d\d\n)+Pay Sam back: \S+\nOr add a card/);
     expect(db.debts.size).toBe(1);
   });
 

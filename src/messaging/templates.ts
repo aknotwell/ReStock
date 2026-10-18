@@ -1,4 +1,5 @@
 // Owner: Person 1. Wording follows the design note (PLAN.md).
+import type { ShareLine } from "../core/split.js";
 import type { Cents, Household, Member, OrderResult, SplitRule } from "../types.js";
 
 export const fmt = (c: Cents) => `$${(c / 100).toFixed(2)}`;
@@ -15,22 +16,62 @@ export function groupSummary(h: Household, r: OrderResult): string {
   return `Ordered! ${r.items.length} items, ${fmt(r.order.totalCents)}, ${ruleText[r.order.rule]}.\n${lines}\nArrives ${r.order.eta ?? "soon"}.${budget}`;
 }
 
-export function ownerReceipt(owner: Member, share: Cents, coveredForOthers: Cents): string {
-  let t = `Receipt: your share is ${fmt(share)}, charged to your Visa ending ${owner.cardLast4 ?? "????"}.`;
+/** Most item lines shown in one text; the rest are summed into one "…and N more" line. */
+export const MAX_ITEM_LINES = 8;
+
+/**
+ * "\n• Air fryer $32.00\n• Dish soap, 3 pack (split 3 ways) $2.83", or "" when there's nothing to list.
+ * Lines worth 0¢ (a tiny item split many ways) are left out.
+ */
+export function itemList(lines: ShareLine[] = []): string {
+  const shown = lines.filter((l) => l.cents > 0);
+  const out = shown.slice(0, MAX_ITEM_LINES).map((l) => `\n• ${l.name}${l.splitWays > 1 ? ` (split ${l.splitWays} ways)` : ""} ${fmt(l.cents)}`);
+  const rest = shown.slice(MAX_ITEM_LINES);
+  if (rest.length) {
+    const cents = rest.reduce((sum, l) => sum + l.cents, 0);
+    out.push(`\n• …and ${rest.length} more item${rest.length === 1 ? "" : "s"} ${fmt(cents)}`);
+  }
+  return out.join("");
+}
+
+/** Who the owner's card covered, e.g. "Priya" or "Priya ($10.15) and David ($2.12)". */
+function coveredNames(covered: { name: string; cents: Cents }[]): string {
+  if (covered.length === 1) return covered[0]!.name;
+  const parts = covered.map((c) => `${c.name} (${fmt(c.cents)})`);
+  return `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
+}
+
+/** `lines`: the owner's own items. `covered`: who their card paid for, so the receipt can name them. */
+export function ownerReceipt(
+  owner: Member,
+  share: Cents,
+  coveredForOthers: Cents,
+  lines?: ShareLine[],
+  covered?: { name: string; cents: Cents }[],
+): string {
+  let t = `Receipt: your share is ${fmt(share)}, charged to your Visa ending ${owner.cardLast4 ?? "????"}.${itemList(lines)}`;
   if (coveredForOthers > 0) {
-    t += `\nYour card also covered ${fmt(coveredForOthers)} for roommates without a card. I'll remind them to pay you back.`;
+    const who = covered?.length ? coveredNames(covered) : "roommates without a card";
+    t += `\nYour card also covered ${fmt(coveredForOthers)} for ${who}. I'll remind them to pay you back.`;
   }
   return t;
 }
 
-export function memberReceipt(member: Member, share: Cents): string {
-  return `Receipt: your share is ${fmt(share)}, charged to your card ending ${member.cardLast4 ?? "????"}.`;
+export function memberReceipt(member: Member, share: Cents, lines?: ShareLine[]): string {
+  return `Receipt: your share is ${fmt(share)}, charged to your card ending ${member.cardLast4 ?? "????"}.${itemList(lines)}`;
 }
 
 /** `totalOwed`: everything they owe the owner, this order included. The pay link pays all of it. */
-export function youOwe(owner: Member, share: Cents, payLink: string, cardLink: string, totalOwed: Cents = share): string {
+export function youOwe(
+  owner: Member,
+  share: Cents,
+  payLink: string,
+  cardLink: string,
+  totalOwed: Cents = share,
+  lines?: ShareLine[],
+): string {
   const total = totalOwed > share ? `\nWith earlier orders, you owe ${owner.name} ${fmt(totalOwed)} in total. This link pays all of it.` : "";
-  return `Your share of this week's order is ${fmt(share)}. ${owner.name}'s card covered it.${total}\nPay ${owner.name} back: ${payLink}\nOr add a card so it's paid automatically next time: ${cardLink}`;
+  return `Your share of this week's order is ${fmt(share)}. ${owner.name}'s card covered it.${itemList(lines)}${total}\nPay ${owner.name} back: ${payLink}\nOr add a card so it's paid automatically next time: ${cardLink}`;
 }
 
 export function helpMessage(): string {

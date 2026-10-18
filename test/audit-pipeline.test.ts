@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-vi.mock("../src/ai/client.js", () => ({ anthropic: undefined, MODEL: "test" }));
+vi.mock("../src/ai/client.js", () => ({ gemini: undefined, MODEL: "test" }));
 import { PROBES } from "../scripts/veyzl-probes.js";
 import { handleInbound } from "../src/messaging/inbound.js";
 import { captureOutbound } from "../src/messaging/photon.js";

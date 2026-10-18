@@ -5,6 +5,7 @@
 import { randomUUID } from "node:crypto";
 import { ApiError, Photon } from "@photon-ai/api";
 import { config } from "../config.js";
+import { registerState } from "../core/persist.js";
 
 export type LineAssignment = { assignmentId: string; line: string }; // line: the Restock number to text, E.164
 
@@ -17,8 +18,33 @@ const photon =
 
 export const CONSOLE_LINE = "+16285550100"; // used only when Photon isn't configured
 
+// Restock's own numbers seen so far: lines handed out at sign-up, and every line a text arrived on.
+// Used so a "save restock as a contact" card is only ever made for a real Restock number.
+const knownLines = new Set<string>();
+registerState("restock-lines", {
+  dump: () => [...knownLines],
+  load: (data) => {
+    knownLines.clear();
+    for (const line of data as string[]) knownLines.add(line);
+  },
+});
+
+/** Note a number as one of Restock's lines (an assigned line, or the line a text arrived on). */
+export function rememberRestockLine(line: string | undefined): void {
+  if (line && /^\+\d{10,15}$/.test(line)) knownLines.add(line);
+}
+
+/** Whether this number is one of Restock's own lines. Without Photon, the fake console line counts. */
+export function isRestockLine(line: string): boolean {
+  return knownLines.has(line) || (!photon && line === CONSOLE_LINE);
+}
+
 type Assignment = { assignmentId: string; assignedPhoneNumber: string; handle: string; releasedAt?: string | undefined };
-const toLine = (a: Assignment): LineAssignment => ({ assignmentId: a.assignmentId, line: a.assignedPhoneNumber });
+// Every line we hand out is one of Restock's own numbers (see rememberRestockLine).
+const toLine = (a: Assignment): LineAssignment => {
+  rememberRestockLine(a.assignedPhoneNumber);
+  return { assignmentId: a.assignmentId, line: a.assignedPhoneNumber };
+};
 const problemCode = (err: ApiError) => (err.body as { code?: unknown } | undefined)?.code;
 
 /**

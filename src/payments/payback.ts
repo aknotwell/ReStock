@@ -11,7 +11,7 @@ import { config } from "../config.js";
 import { markDebtPaid, openDebtsFor } from "../core/ledger.js";
 import { db, findMember } from "../core/store.js";
 import { registerState } from "../core/persist.js";
-import { sendPrivate } from "../messaging/photon.js";
+import { canTextPrivately, sendPrivate } from "../messaging/photon.js";
 import { fmt, paidBack } from "../messaging/templates.js";
 import type { Debt, Member } from "../types.js";
 import { claimDebtsForNewPage, ensureStripeCustomer, registerPayBackPage } from "./links.js";
@@ -52,15 +52,49 @@ export function findMemberByHandle(input: string): Member | undefined {
 }
 
 /**
+ * Make a fresh login code for this member and hand the text carrying it to `send`. The new code replaces
+ * any earlier one, but if sending fails the earlier code is put back, so a code they already have keeps working.
+ */
+export async function sendLoginCode(member: Member, send: (text: string) => Promise<unknown>, now = Date.now()): Promise<void> {
+  const previous = codes.get(member.id);
+  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+  const entry = { code: hash(code), expiresAt: now + CODE_TTL_MS, tries: 0 };
+  codes.set(member.id, entry);
+  try {
+    await send(`Your Restock code is ${code}. It expires in 10 minutes. Don't share it with anyone.`);
+  } catch (err) {
+    if (codes.get(member.id) === entry) {
+      if (previous) codes.set(member.id, previous);
+      else codes.delete(member.id);
+    }
+    throw err;
+  }
+}
+
+/**
  * Text a login code to the member with this phone number. Says nothing about whether the number
- * belongs to anyone, so the site can't be used to look people up.
+ * belongs to anyone, so the site can't be used to look people up. Restock can't text someone first, so
+ * if they've never texted it one-on-one the code isn't held for later (it would expire and the group would
+ * be nudged); the page tells them to text "code" instead, and that reply carries one.
  */
 export async function startLogin(handle: string, now = Date.now()): Promise<void> {
   const member = findMemberByHandle(handle);
-  if (!member) return;
-  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
-  codes.set(member.id, { code: hash(code), expiresAt: now + CODE_TTL_MS, tries: 0 });
-  await sendPrivate(member.id, `Your Restock code is ${code}. It expires in 10 minutes. Don't share it with anyone.`, `login:${member.id}:${now}`);
+  if (!member) {
+    console.log("login code: no member with that number");
+    return;
+  }
+  const last4 = member.phone.slice(-4);
+  if (!canTextPrivately(member.phone)) {
+    console.log(`login code: not sent to …${last4}, no one-on-one chat with Restock yet (or they texted STOP). They can text "code".`);
+    return;
+  }
+  try {
+    await sendLoginCode(member, (text) => sendPrivate(member.id, text, `login:${member.id}:${now}`), now);
+  } catch (err) {
+    console.log(`login code: failed to send to …${last4}: ${err instanceof Error ? err.message : String(err)}`);
+    throw err;
+  }
+  console.log(`login code: sent to …${last4}`);
 }
 
 /** Check the code. Returns a session token on success. A code works once and only for a few tries. */

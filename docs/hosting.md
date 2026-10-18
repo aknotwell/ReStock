@@ -23,7 +23,7 @@ The deploy runs at **https://restock.select**. The original Railway address, htt
 | Stripe webhook | `POST /webhooks/stripe` | Stripe (register this URL in the Stripe dashboard) |
 | VEYZL audit endpoint | `POST /api/agent` | VEYZL (its Backend URL is the root URL above) |
 
-People sign up on the web (`/start`, or an owner's `/join/<code>` link) and activate by texting "hi" to the Restock number they're given. The texted login code only reaches people who have texted their Restock number at least once, because Photon's shared lines can't text first.
+People sign up on the web (`/start`, or an owner's `/join/<code>` link) and activate by texting "hi" to the Restock number they're given. The website's "Text me a code" only reaches people who have texted their Restock number one-on-one at least once, because Photon's shared lines can't text first. Anyone can text **code** to their Restock number instead, and the reply carries a login code. The deploy logs show one `login code:` line per request (sent, not sent and why, or no member with that number), with only the last 4 digits.
 
 ## Real-user checklist
 

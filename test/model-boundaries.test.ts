@@ -36,7 +36,28 @@ describe("untrusted model responses", () => {
       model.mockRejectedValue(new Error("PRIVATE_PROVIDER_PAYLOAD"));
       expect((await parseMessage("we need stuff", "Sam"))[0]?.type).toBe("unknown");
       expect(await matchItem("stuff")).toBeUndefined();
-      expect(logs).toEqual([["AI parse failed; using command parser."], ["AI match failed; using keyword match."]]);
+      // Only the kind of failure is logged, never the provider's message or the member's text.
+      expect(logs).toEqual([["AI parse failed: Error. Using the command parser."], ["AI match failed: Error. Using keyword match."]]);
+      expect(JSON.stringify(logs)).not.toContain("PRIVATE_PROVIDER_PAYLOAD");
+    } finally { console.warn = original; }
+  });
+  it("logs an API error's status, type, hint and request id, but not its message", async () => {
+    const { default: Anthropic } = await import("@anthropic-ai/sdk");
+    const original = console.warn;
+    const logs: unknown[][] = [];
+    console.warn = (...args: unknown[]) => { logs.push(args); };
+    try {
+      const err = Anthropic.APIError.generate(
+        401,
+        { type: "error", error: { type: "authentication_error", message: "PRIVATE_PROVIDER_PAYLOAD" } },
+        "PRIVATE_PROVIDER_PAYLOAD",
+        new Headers({ "request-id": "req_test_123" }),
+      );
+      model.mockRejectedValue(err);
+      await parseMessage("we need stuff", "Sam");
+      const line = String(logs[0]?.[0]);
+      expect(line).toMatch(/^AI parse failed: 401 authentication_error \(the API key is wrong or revoked; check ANTHROPIC_API_KEY\), request req_test_123\./);
+      expect(line).not.toContain("PRIVATE_PROVIDER_PAYLOAD");
     } finally { console.warn = original; }
   });
   it("uses calculated restock reasons instead of model prose", async () => {

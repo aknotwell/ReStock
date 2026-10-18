@@ -8,7 +8,7 @@ import { randomBytes } from "node:crypto";
 import { addMember, ALREADY_USES_RESTOCK, cleanName, createHousehold, MembershipError, normalizePhone } from "./households.js";
 import { registerState } from "./persist.js";
 import { db, householdsForPhone } from "./store.js";
-import { assignLine, releaseLine, releaseLinesForHandle } from "../messaging/photonLines.js";
+import { assignLine, isLineActive, releaseLine, releaseLinesForHandle } from "../messaging/photonLines.js";
 import type { Household, Member } from "../types.js";
 
 export const SIGNUP_TTL_MS = 24 * 60 * 60 * 1000;
@@ -98,8 +98,11 @@ export async function startSignup(input: { name: string; phone: string; inviteCo
   if (!existing && pending.size >= MAX_OPEN_SIGNUPS) {
     throw new SignupError("Restock is at capacity for new sign-ups right now. Please try again later.");
   }
-  // Reuse the line already reserved for this phone (signing up twice shouldn't use two seats).
-  const assignment = existing ?? lines.get(phone) ?? (await assignLine(phone, name, signupKey(phone, now)));
+  // Reuse the line already reserved for this phone (signing up twice shouldn't use two seats), but only while
+  // Photon still has it: texts to a released line get Photon's "not connected" reply and never reach us.
+  const saved = existing ?? lines.get(phone);
+  const assignment =
+    saved && (await isLineActive(saved.assignmentId)) ? saved : await assignLine(phone, name, signupKey(phone, now));
   pending.set(phone, {
     phone,
     name,

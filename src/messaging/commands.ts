@@ -1,5 +1,6 @@
 // Owner: Person 1. Simple command parser used when the LLM is unavailable.
 import type { Intent } from "../ai/intent.js";
+import { casualItems } from "./casualAdd.js";
 
 const none = { itemName: null, quantity: null, shared: null } as const;
 
@@ -24,6 +25,10 @@ export function parseCommand(text: string): Intent[] {
   if (add?.[1]) {
     return [{ type: "add_item", itemName: add[1], quantity: null, shared: add[2] ? false : null }];
   }
+
+  // "we're out of TP", "we need dish soap", "can we get oat milk?": only for real catalog items.
+  const casual = casualItems(text);
+  if (casual) return casual.map((itemName) => ({ type: "add_item" as const, itemName, quantity: null, shared: null }));
 
   if (t === "personal" || t === "shared") return [{ type: "set_shared", itemName: null, quantity: null, shared: t === "shared" }];
   const remove = /^remove\s+(.+)$/.exec(t);

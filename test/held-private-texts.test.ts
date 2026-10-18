@@ -60,7 +60,8 @@ beforeEach(() => {
 
 describe("private texts for people who haven't DM'd the agent yet", () => {
   it("order now still works, tells the sender who's missing, and holds their texts", async () => {
-    await text(SAM, "order now"); // only Sam has ever texted the agent; there's no group chat
+    await text(SAM, "order now");
+    await text(SAM, "yes"); // only Sam has ever texted the agent; there's no group chat
 
     const samDm = textsIn(dm(SAM));
     expect(samDm).toMatch(/Ordered! 6 items, \$72\.75/);
@@ -71,6 +72,7 @@ describe("private texts for people who haven't DM'd the agent yet", () => {
 
   it("delivers the held pay-back link the moment that person texts the agent", async () => {
     await text(SAM, "order now");
+    await text(SAM, "yes");
     await text(PRIYA, "help");
 
     const priyaDm = textsIn(dm(PRIYA));
@@ -84,6 +86,7 @@ describe("private texts for people who haven't DM'd the agent yet", () => {
 
   it("delivers Jake's held receipt too, and each person only gets their own", async () => {
     await text(SAM, "order now");
+    await text(SAM, "yes");
     await text(JAKE, "hi");
     const jakeDm = textsIn(dm(JAKE));
     expect(jakeDm).toMatch(/Receipt: your share is \$46\.95/);
@@ -98,6 +101,7 @@ describe("when the group chat or one person can't be reached", () => {
     for (const m of h.members) if (m.paymentMethodId) m.stripeCustomerId = `cus_${m.id}`;
 
     await text(SAM, "order now");
+    await text(SAM, "yes");
     expect(textsIn(dm(SAM))).toMatch(/Ordered! 6 items/);
   });
 
@@ -108,6 +112,7 @@ describe("when the group chat or one person can't be reached", () => {
     sent.length = 0;
 
     await text(SAM, "order now");
+    await text(SAM, "yes");
     expect(textsIn(dm(PRIYA))).toMatch(/Pay Sam back:/);
     expect(textsIn(dm(SAM))).toMatch(/Receipt: your share is \$15\.65/);
   });

@@ -177,7 +177,7 @@ You own what judges see outside the texts, the VEYZL audit evidence, and you mak
   - Order total: $72.75
 - [ ] **Demo script** that shows both payment paths, using the `smart` rule:
   1. Roommates add items in the group chat.
-  2. "order now" sends the group summary.
+  2. "order now" shows the cart grouped by who pays; "yes" places it and sends the group summary.
   3. Sam's and Jake's private receipts arrive.
   4. Priya gets "you owe Sam" with a pay link.
   5. Priya taps the link and pays, and the debt is marked paid.

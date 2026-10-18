@@ -49,6 +49,12 @@ Restock:  Added Dish soap, 3 pack (shared, $8.49). Reply "personal" to change.
 Jake:     personal            (about his tortilla chips)
 Restock:  Tortilla chips is now personal (just Jake).
 Sam:      order now
+Restock:  Order for your household (you, Jake and Priya)? 6 items, $72.75.
+          Shared (everyone): Toilet paper, 12 rolls $11.99; Dish soap, 3 pack $8.49; Paper towels, 6 rolls $9.99
+          Personal (just you): Oat milk $5.49
+          Personal (Jake): Air fryer (approved by Sam) $32.00; Tortilla chips $4.79
+          Reply "yes" to order or "no" to cancel.
+Sam:      yes
 Restock:  Ordered! 6 items, $72.75, shared items split evenly, personal items paid by whoever added them.
           Sam $15.65 · Jake $46.95 · Priya $10.15
           Arrives Thursday. Household budget left: $112.40
@@ -78,7 +84,7 @@ Natural phrasing like "we're out of dish soap" is understood by Claude. Without 
 | `add member Amber 425-555-0123` | Owner only: adds a roommate (no card needed) |
 | "we're out of TP" / `add dish soap` | AI matches it to the catalog. Three options, ranked by price per unit, with the best value labeled. |
 | `personal` / `shared` | Flips your last item between split-with-everyone and just-you |
-| `order now` | Places the order (explicit command only) and charges everyone's share |
+| `order now` | Shows the cart grouped by who pays (shared, personal, split) and asks "yes"; the "yes" places the order and charges everyone's share. In several groups, it first asks which cart |
 | `what do I owe?` | Your balance, privately |
 | `add card` | A private, secure Stripe link. Card numbers never go through chat. |
 | `members`, `remove member …`, `help` | Household management and an AI disclosure |
@@ -129,7 +135,7 @@ Our first audits failed **8 metrics**. We fixed each finding in code, got VEYZL 
 
 The AI understands messages. **Code** handles money, membership and safety.
 
-- **The AI never moves money.** Charges happen only after an explicit `order now`, and only for the cart everyone can see. Expensive personal items need the owner's approval.
+- **The AI never moves money.** Charges happen only after an explicit `order now` and a "yes" to the breakdown it shows, and only for the cart everyone can see. Expensive personal items need the owner's approval.
 - **Money math is deterministic:** integer cents, split per item, with remainders assigned in a fixed way so shares always add up exactly ([`src/core/split.ts`](src/core/split.ts)).
 - **No card numbers, ever.** A card-number guard runs before the AI or the database sees a message. Cards are added only on Stripe-hosted pages, and we store only Stripe IDs and the last 4 digits.
 - **Guardrails before the model:** fixed responses for self-harm, disallowed content, injection and exfiltration, fabrication, and sensitive IDs ([`src/safety/`](src/safety)).

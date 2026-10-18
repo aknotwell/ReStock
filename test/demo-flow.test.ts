@@ -45,6 +45,7 @@ describe("demo flow over chat", () => {
     await say(PRIYA, "hi", "direct"); // Priya has a DM with the agent, so her private text can reach her
     logs = [];
     await say(JAKE, "order now");
+    await say(JAKE, "yes");
     const text = out();
     expect(text).toMatch(/Ordered! 6 items, \$72\.75/);
     expect(text).toMatch(/Receipt: your share is \$\d+\.\d\d, charged to your Visa ending 4242\./);
@@ -60,6 +61,7 @@ describe("demo flow over chat", () => {
     await say(SAM, "help");
     await say(PRIYA, "hi", "direct");
     await say(JAKE, "order now");
+    await say(JAKE, "yes");
     logs = [];
     await say(PRIYA, "what do I owe?", "direct");
     expect(out()).toMatch(/You owe Sam \$\d+\.\d\d\./);

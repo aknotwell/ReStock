@@ -7,7 +7,9 @@ import { cartSummary } from "./cart.js";
 
 const PICK_TTL_MS = 10 * 60 * 1000;
 
-type Pending = { householdIds: string[]; expires: number };
+/** "list": show the chosen group's cart. "order": start checking out the chosen group's cart. */
+export type PickPurpose = "list" | "order";
+type Pending = { householdIds: string[]; expires: number; purpose?: PickPurpose };
 const pending = new Map<string, Pending>(); // phone -> the groups we asked them to pick from
 
 registerState("list-picks", {
@@ -33,14 +35,15 @@ export function groupsToPick(phone: string): Household[] | undefined {
   return mine.length > 1 ? mine : undefined;
 }
 
-/** Ask "Which list?" and remember the question for a few minutes. */
-export function askWhichList(phone: string, households: Household[]): string {
-  pending.set(phone, { householdIds: households.map((h) => h.id), expires: Date.now() + PICK_TTL_MS });
+/** Ask "Which list?" (or "Which cart should I order?") and remember the question for a few minutes. */
+export function askWhichList(phone: string, households: Household[], purpose: PickPurpose = "list"): string {
+  pending.set(phone, { householdIds: households.map((h) => h.id), expires: Date.now() + PICK_TTL_MS, purpose });
   const lines = households.map((h, i) => `\n${i + 1}. ${groupName(h, phone)}`);
-  return `Which list?${lines.join("")}\nReply with a number, or "cancel".`;
+  const question = purpose === "order" ? "Which cart should I order?" : "Which list?";
+  return `${question}${lines.join("")}\nReply with a number, or "cancel".`;
 }
 
-export type ListPick = { kind: "shown"; text: string } | { kind: "cancelled" };
+export type ListPick = { kind: "shown"; text: string } | { kind: "cancelled" } | { kind: "order"; household: Household };
 
 /**
  * A reply to "Which list?": "2", "Sam's", "personal" or "cancel". Returns undefined when nothing is pending or
@@ -70,6 +73,7 @@ export function resolveListPick(phone: string, text: string): ListPick | undefin
     return undefined;
   }
   pending.delete(phone);
+  if (ask.purpose === "order") return { kind: "order", household: chosen };
   const me = chosen.members.find((m) => m.phone === phone)!;
   return { kind: "shown", text: `${groupName(chosen, phone)}:\n${cartSummary(pendingItems(chosen.id), chosen, me.id)}` };
 }

@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { config } from "../config.js";
 import { fmt } from "../messaging/templates.js";
-import { openCardSetupLink, openPayBackLink } from "../payments/links.js";
-import { householdView } from "./appState.js";
+import { createCardSetupLink, openCardSetupLink, openPayBackLink } from "../payments/links.js";
+import { householdView, ownRecord, spacesView } from "./appState.js";
 import { rateLimiter } from "./rateLimit.js";
 import { householdForInvite, inviteCodeFor, resetInvite, SignupError, startSignup, INVITE_TTL_MS } from "../core/signups.js";
 import { findMember } from "../core/store.js";
@@ -109,6 +109,31 @@ webRoutes.get("/app/api/state", (req, res) => {
   }
   res.json(state);
 });
+// All of the person's spaces (personal and group) for the dashboard's Personal and Groups pages.
+webRoutes.get("/app/api/spaces", (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  const member = sessionMember(payToken(req));
+  if (!member) {
+    res.status(401).json({ error: "Please log in." });
+    return;
+  }
+  res.json({ spaces: spacesView(member) });
+});
+// "Set up card" on the dashboard: the same Stripe add-card link "add card" texts. Only for your own records.
+webRoutes.post("/app/api/card-link", async (req, res) => {
+  const member = sessionMember(payToken(req));
+  const target = member && ownRecord(member, text(req.body?.memberId, 80) || member.id);
+  if (!target) {
+    res.status(401).json({ error: "Please log in." });
+    return;
+  }
+  try {
+    res.json({ url: await createCardSetupLink(target.id) });
+  } catch (err) {
+    console.error("dashboard card link failed:", err instanceof Error ? err.message : err);
+    res.status(502).json({ error: "We couldn't open the card page. Try again in a minute." });
+  }
+});
 
 // ---------- Web sign-up and invite links ----------
 // Start a household at /start, or join one at /join/<code>. Either way the person gets a Restock number to
@@ -180,3 +205,4 @@ webRoutes.get("/card/success", (_req, res) => res.sendFile(path.join(publicDir, 
 webRoutes.get("/pay/success", (_req, res) => res.sendFile(path.join(publicDir, "pay-success.html")));
 webRoutes.get("/cancel", (_req, res) => res.sendFile(path.join(publicDir, "cancel.html")));
 webRoutes.get("/dashboard", (_req, res) => res.sendFile(path.join(publicDir, "dashboard.html")));
+webRoutes.get("/", (_req, res) => res.sendFile(path.join(publicDir, "landing.html")));

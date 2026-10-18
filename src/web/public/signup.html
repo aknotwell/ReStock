@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Join Restock</title>
+<style>
+  :root {
+    color-scheme: light;
+    --ink: #202a24; --muted: #6f786f; --line: #e3e8e0; --canvas: #f6f7f4; --surface: #ffffff;
+    --green: #28734e; --green-soft: #edf5ef; --alert: #a24a1f;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { color-scheme: dark; --ink: #e6ebe6; --muted: #98a299; --line: #2d342e; --canvas: #141815; --surface: #1c211d; --green: #5fb487; --green-soft: #213328; --alert: #e59a6f; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--canvas); color: var(--ink); display: grid; place-items: center; padding: 24px 16px; }
+  button, input { font: inherit; }
+  .card { width: 100%; max-width: 420px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 28px; }
+  h1 { font-size: 26px; margin: 0 0 6px; }
+  p { color: var(--muted); line-height: 1.5; margin: 0 0 18px; }
+  label { display: grid; gap: 6px; font-size: 14px; color: var(--muted); margin-bottom: 14px; }
+  input[type=text], input[type=tel] { padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--canvas); color: var(--ink); }
+  .check { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.4; }
+  .check input { margin-top: 2px; }
+  a { color: var(--green); }
+  .btn { display: block; width: 100%; text-align: center; padding: 13px; border: 0; border-radius: 10px; background: var(--green); color: #fff; font-weight: 600; cursor: pointer; text-decoration: none; }
+  .btn[disabled] { opacity: .6; cursor: default; }
+  .error { color: var(--alert); font-size: 14px; margin: 10px 0 0; }
+  .number { font-size: 30px; font-weight: 700; letter-spacing: .5px; margin: 6px 0 18px; color: var(--ink); }
+  .note { background: var(--green-soft); border-radius: 10px; padding: 12px; font-size: 13px; color: var(--ink); margin-top: 16px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main class="card">
+  <section id="form-view">
+    <h1 id="title">Start your household</h1>
+    <p id="lead">Restock is an AI assistant you text to keep shared supplies stocked and split the bill. You'll be the budget owner, and you can invite roommates after.</p>
+    <form id="form">
+      <label>First name<input id="name" type="text" maxlength="30" autocomplete="given-name" required></label>
+      <label>Mobile number (iMessage)<input id="phone" type="tel" autocomplete="tel" placeholder="(425) 555-0123" required></label>
+      <label class="check"><input id="consent" type="checkbox" required>
+        <span>I agree to the <a href="/privacy" target="_blank">terms and privacy notice</a>, and to get texts from Restock (an AI assistant). Reply STOP anytime to stop. This is a demo: orders are simulated and payments use Stripe test mode.</span></label>
+      <button class="btn" id="submit" type="submit">Get my Restock number</button>
+      <p class="error" id="error" hidden></p>
+    </form>
+  </section>
+
+  <section id="done-view" hidden>
+    <h1>Almost there!</h1>
+    <p>Text <b>hi</b> to your Restock number to activate<span id="done-house"></span>:</p>
+    <div class="number" id="line"></div>
+    <a class="btn" id="sms" href="#">Open Messages</a>
+    <div class="note">Text from the same phone you entered. Restock can't text you first; your "hi" starts the conversation. This number is saved for 24 hours.</div>
+  </section>
+
+  <section id="bad-invite" hidden>
+    <h1>Invite link expired</h1>
+    <p id="bad-invite-text">This invite link has expired or was reset. Ask whoever invited you for a new one, or <a href="/start">start your own household</a>.</p>
+  </section>
+</main>
+<script>
+  const $ = (s) => document.querySelector(s);
+  const code = (location.pathname.match(/^\/join\/([A-Za-z0-9_-]+)/) || [])[1] || null;
+  const pretty = (e164) => { const d = e164.replace(/\D/g, "").replace(/^1/, ""); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : e164; };
+  const showError = (m) => { $("#error").textContent = m; $("#error").hidden = !m; };
+
+  if (code) {
+    $("#title").textContent = "Join a household";
+    fetch(`/signup/api/invite/${code}`).then(async (r) => {
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { $("#form-view").hidden = true; $("#bad-invite").hidden = false; return; }
+      $("#title").textContent = `Join ${data.householdName}`;
+      $("#lead").textContent = "Restock is an AI assistant your household texts to keep shared supplies stocked and split the bill fairly. You don't need a card to join.";
+    }).catch(() => {});
+  }
+
+  $("#form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    showError("");
+    $("#submit").disabled = true;
+    try {
+      const r = await fetch("/signup/api/start", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: $("#name").value, phone: $("#phone").value, consent: $("#consent").checked, inviteCode: code }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) return showError(data.error || "Something went wrong. Please try again.");
+      $("#line").textContent = pretty(data.line);
+      $("#sms").href = data.smsLink;
+      $("#done-house").textContent = data.householdName ? ` and join ${data.householdName}` : "";
+      $("#form-view").hidden = true;
+      $("#done-view").hidden = false;
+    } catch {
+      showError("Couldn't reach Restock. Check your connection and try again.");
+    } finally {
+      $("#submit").disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

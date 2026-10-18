@@ -1,0 +1,150 @@
+// Owner: Person 3. The pay-back site (/pay) for members who owe the main card and have no card on file.
+//
+// 1. Log in: they type their phone number and we text a 6-digit code through Restock. No passwords.
+// 2. They see only their own open debts.
+// 3. Paying opens a Stripe Checkout `payment` session. The card is typed on Stripe's page, never ours.
+//    They can also save the card so their share is charged automatically from the next order on.
+// 4. Stripe's webhook marks the debt paid and texts the person who was paid back.
+import { randomInt, randomBytes, timingSafeEqual } from "node:crypto";
+import type Stripe from "stripe";
+import { config } from "../config.js";
+import { markDebtPaid, openDebtsFor } from "../core/ledger.js";
+import { db, findMember } from "../core/store.js";
+import { sendPrivate } from "../messaging/photon.js";
+import { fmt } from "../messaging/templates.js";
+import type { Debt, Member } from "../types.js";
+import { ensureStripeCustomer } from "./links.js";
+import { requireStripe } from "./stripe.js";
+
+export const CODE_TTL_MS = 10 * 60 * 1000;
+export const SESSION_TTL_MS = 30 * 60 * 1000;
+export const MAX_CODE_TRIES = 5;
+
+// TODO(P2/P3): move into the database with the rest of the store.
+const codes = new Map<string, { code: string; expiresAt: number; tries: number }>(); // memberId -> code
+const sessions = new Map<string, { memberId: string; expiresAt: number }>(); // session token -> member
+
+/** Match what someone typed to a member: phone numbers by their last 10 digits, iMessage emails exactly. */
+export function findMemberByHandle(input: string): Member | undefined {
+  const typed = input.trim().toLowerCase();
+  const digits = typed.replace(/\D/g, "");
+  for (const household of db.households.values()) {
+    for (const m of household.members) {
+      const handle = m.phone.toLowerCase();
+      if (typed.includes("@") ? handle === typed : digits.length >= 10 && handle.replace(/\D/g, "").endsWith(digits.slice(-10))) return m;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Text a login code to the member with this phone number. Says nothing about whether the number
+ * belongs to anyone, so the site can't be used to look people up.
+ */
+export async function startLogin(handle: string, now = Date.now()): Promise<void> {
+  const member = findMemberByHandle(handle);
+  if (!member) return;
+  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+  codes.set(member.id, { code, expiresAt: now + CODE_TTL_MS, tries: 0 });
+  await sendPrivate(member.id, `Your Restock code is ${code}. It expires in 10 minutes. Don't share it with anyone.`, `login:${member.id}:${now}`);
+}
+
+/** Check the code. Returns a session token on success. A code works once and only for a few tries. */
+export function verifyLogin(handle: string, code: string, now = Date.now()): string | undefined {
+  const member = findMemberByHandle(handle);
+  const entry = member && codes.get(member.id);
+  if (!member || !entry || entry.expiresAt < now) return undefined;
+  entry.tries += 1;
+  if (entry.tries > MAX_CODE_TRIES) {
+    codes.delete(member.id);
+    return undefined;
+  }
+  const given = Buffer.from(code.trim());
+  const want = Buffer.from(entry.code);
+  if (given.length !== want.length || !timingSafeEqual(given, want)) return undefined;
+  codes.delete(member.id);
+  const token = randomBytes(24).toString("base64url");
+  sessions.set(token, { memberId: member.id, expiresAt: now + SESSION_TTL_MS });
+  return token;
+}
+
+export function sessionMember(token: string | undefined, now = Date.now()): Member | undefined {
+  const s = token ? sessions.get(token) : undefined;
+  if (!s || s.expiresAt < now) return undefined;
+  return findMember(s.memberId)?.member;
+}
+
+export function logout(token: string | undefined): void {
+  if (token) sessions.delete(token);
+}
+
+export type DebtView = { id: string; to: string; cents: number; amount: string; orderDate?: string };
+
+/** The logged-in member's open debts, with who they owe. Nothing about anyone else. */
+export function myDebts(member: Member): DebtView[] {
+  return openDebtsFor(member.id).map((d) => ({
+    id: d.id,
+    to: findMember(d.creditorId)?.member.name ?? "your household",
+    cents: d.cents,
+    amount: fmt(d.cents),
+    orderDate: db.orders.get(d.orderId)?.createdAt,
+  }));
+}
+
+/** Stripe Checkout session for one of the member's own open debts. Returns the URL to send them to. */
+export async function createPayBackCheckout(member: Member, debtId: string, saveCard: boolean): Promise<string> {
+  const debt = db.debts.get(debtId);
+  if (!debt || debt.debtorId !== member.id || debt.status !== "open") throw new Error("That pay-back isn't open for you.");
+  const creditor = findMember(debt.creditorId)?.member;
+  const customer = await ensureStripeCustomer(member);
+  const metadata = { debtId: debt.id, memberId: member.id };
+  const session = await requireStripe().checkout.sessions.create({
+    mode: "payment",
+    customer,
+    client_reference_id: member.id,
+    line_items: [{ quantity: 1, price_data: { currency: "usd", unit_amount: debt.cents, product_data: { name: `Pay ${creditor?.name ?? "your household"} back` } } }],
+    payment_intent_data: { metadata, ...(saveCard ? { setup_future_usage: "off_session" as const } : {}) },
+    metadata: { ...metadata, saveCard: saveCard ? "1" : "0" },
+    success_url: `${config.publicBaseUrl}/pay/success`,
+    cancel_url: `${config.publicBaseUrl}/pay`,
+  });
+  if (!session.url) throw new Error("Stripe returned a Checkout session without a URL");
+  return session.url;
+}
+
+/**
+ * Webhook: a pay-back Checkout session finished. Marks the debt paid, saves the card if they asked,
+ * and texts the person who was paid back. Idempotent: a repeated event finds the debt already paid.
+ */
+export async function settlePayBack(session: Stripe.Checkout.Session): Promise<"paid" | "already_paid" | "unknown_debt"> {
+  const debtId = session.metadata?.debtId;
+  const debt: Debt | undefined = debtId ? db.debts.get(debtId) : undefined;
+  if (!debt || session.metadata?.memberId !== debt.debtorId) return "unknown_debt";
+  if (debt.status === "paid") return "already_paid";
+  markDebtPaid(debt.id);
+
+  const debtor = findMember(debt.debtorId)?.member;
+  if (debtor && session.metadata?.saveCard === "1" && session.payment_intent) {
+    const intentId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent.id;
+    const intent = await requireStripe().paymentIntents.retrieve(intentId, { expand: ["payment_method"] });
+    const pm = intent.payment_method;
+    if (pm && typeof pm !== "string" && pm.card) {
+      // TODO(P2): replace with an updateMember() in store.ts once there is one.
+      if (typeof session.customer === "string") debtor.stripeCustomerId = session.customer;
+      debtor.paymentMethodId = pm.id;
+      debtor.cardLast4 = pm.card.last4;
+    }
+  }
+  if (debtor) {
+    await sendPrivate(debt.creditorId, `${debtor.name} paid you back ${fmt(debt.cents)}.`, `paid-back:${debt.id}`).catch((err) =>
+      console.warn("paid-back text failed:", err instanceof Error ? err.message : err),
+    );
+  }
+  return "paid";
+}
+
+/** Test helper. */
+export function resetPayBack(): void {
+  codes.clear();
+  sessions.clear();
+}

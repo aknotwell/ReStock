@@ -53,7 +53,7 @@ export async function openCardSetupLink(token: string, now = Date.now()): Promis
 }
 
 /** Create the member's Stripe Customer the first time we need it. We send Stripe only their name. */
-async function ensureStripeCustomer(member: Member): Promise<string> {
+export async function ensureStripeCustomer(member: Member): Promise<string> {
   if (member.stripeCustomerId) return member.stripeCustomerId;
   const customer = await requireStripe().customers.create(
     { name: member.name, metadata: { memberId: member.id } },
@@ -81,8 +81,10 @@ export function resetCardLinks(): void {
   cardLinkTokens.clear();
 }
 
-/** Link to a Stripe Checkout `payment` session for an open debt. */
-export async function createPayBackLink(debtId: string): Promise<string> {
-  // TODO(P3): create the Checkout session and return a short redirect URL (/p/:token)
-  return `${config.publicBaseUrl}/p/${encodeURIComponent(debtId)}`;
+/**
+ * Link texted to someone who owes money. It opens the pay-back site, which makes them log in with a
+ * texted code before showing what they owe (see payments/payback.ts). The link itself carries nothing.
+ */
+export async function createPayBackLink(_debtId: string): Promise<string> {
+  return `${config.publicBaseUrl}/pay`;
 }

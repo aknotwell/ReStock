@@ -75,14 +75,15 @@ describe("demo flow over chat", () => {
     expect(soap()).toBeUndefined();
   });
 
-  it("only the owner can approve items waiting for approval", async () => {
+  it("only people the owner allows can approve items waiting for approval", async () => {
     await say(SAM, "help");
     pendingItems("demo-house")[0]!.needsApproval = true;
+    db.households.get("demo-house")!.members.find((m) => m.id === "jake")!.canApprove = false;
     logs = [];
     await say(JAKE, "yes");
-    expect(out()).toMatch(/Only the budget owner can approve/);
+    expect(out()).toMatch(/Only Sam or Priya can approve that/);
     await say(SAM, "yes");
-    expect(out()).toMatch(/Approved: /);
+    expect(out()).toMatch(/Approved by Sam: /);
     expect(pendingItems("demo-house").some((i) => i.needsApproval)).toBe(false);
   });
 });

@@ -27,12 +27,20 @@ export const photonEnabled = () => photon !== undefined;
 const agentBySpace = new Map<string, string>();
 const dmByHandle = new Map<string, string>();
 
-// When set, outbound texts are collected here instead of sent (used by POST /api/agent).
-const capture = new AsyncLocalStorage<string[]>();
+/** A text that was captured instead of sent. Private texts carry `memberId`; the rest carry the space they were for. */
+export type CapturedText = { text: string; spaceId?: string; memberId?: string };
+
+// When set, outbound texts are collected here instead of sent (used by POST /api/agent and the dev test chat).
+const capture = new AsyncLocalStorage<CapturedText[]>();
 
 /** Run `fn` and return every text it would have sent, without sending anything. */
 export async function captureOutbound(fn: () => Promise<void>): Promise<string[]> {
-  const out: string[] = [];
+  return (await captureOutboundDetailed(fn)).map((c) => c.text);
+}
+
+/** Like captureOutbound, but also says where each text was going. */
+export async function captureOutboundDetailed(fn: () => Promise<void>): Promise<CapturedText[]> {
+  const out: CapturedText[] = [];
   await capture.run(out, fn);
   return out;
 }
@@ -46,7 +54,7 @@ async function send(spaceId: string, rawText: string, idempotencyKey: string): P
   const text = redact(rawText); // V-002: no personal data or secrets leave the service
   const captured = capture.getStore();
   if (captured) {
-    captured.push(text);
+    captured.push({ text, spaceId });
     return;
   }
   if (!photon || !config.photonProjectId) {
@@ -79,7 +87,7 @@ export async function sendPrivate(memberId: string, rawText: string, key: string
   const text = redact(rawText); // V-002
   const captured = capture.getStore();
   if (captured) {
-    captured.push(text);
+    captured.push({ text, memberId });
     return;
   }
   const found = findMember(memberId);

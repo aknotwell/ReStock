@@ -31,7 +31,7 @@ What the AI in Restock does, what data it uses, and what controls keep it safe. 
 
 ## Human oversight and controls
 
-1. **No autonomous spending.** The AI can't place an order or charge anyone. Charges happen only after a member explicitly texts "order now", and only for the cart everyone can see. Expensive personal items need the budget owner to approve them.
+1. **No autonomous spending.** The AI can't place an order or charge anyone. Charges happen only after a member explicitly texts "order now", and only for the cart everyone can see. Items from someone who isn't allowed to approve (for example, kids in a family) wait until an approver texts "yes": the owner, or a member the owner allowed (`canApprove`). Items over the household's `approvalOverCents` wait even when an approver added them, and the person who added one can't approve it themselves. The rules are deterministic code in `src/core/approvals.ts`; the model can't approve anything.
 2. **The money math is deterministic.** Shares are computed by `computeShares` in `src/core/split.ts`, in integer cents, never by the model.
 3. **Transparent results.** Every change the AI makes is echoed back, e.g. "Added Dish soap, 3 pack (shared, $8.49). Reply 'personal' to change." Users can correct or undo it with a text.
 4. **Output validation.** Every model response must match a Zod schema, and product IDs must exist in the catalog. Low-confidence matches, refusals, malformed output, and API errors all fall back to deterministic code.

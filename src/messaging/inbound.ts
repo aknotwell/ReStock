@@ -3,6 +3,7 @@ import { answerQuestion, OFFLINE_REPLY } from "../ai/answerQuestion.js";
 import { matchItem } from "../ai/matchItem.js";
 import { parseMessage } from "../ai/parseMessage.js";
 import { addItem, db, findHouseholdByGroupChat, findMemberByPhone, householdsForPhone, pendingItems, UNBOUND_GROUP } from "../core/store.js";
+import { approvableBy, approverNames, needsApproval } from "../core/approvals.js";
 import { openDebtsFor, owedTo } from "../core/ledger.js";
 import { OrderError, placeOrder } from "../core/orders.js";
 import { createCardSetupLink } from "../payments/links.js";
@@ -83,16 +84,25 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
         await respond("I couldn’t find that in the demo catalog. Try another household item name?");
         continue;
       }
+      const waits = needsApproval(household, member, match.product.cents);
       const item = addItem({
         householdId: household.id,
         name: match.product.name,
         addedBy: member.id,
         cents: match.product.cents,
         shared: intent.shared ?? match.product.defaultShared,
+        ...(waits ? { needsApproval: true } : {}),
       });
-      await respond(
-        `Added ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}). Reply "${item.shared ? "personal" : "shared"}" to change.`,
-      );
+      if (waits) {
+        // Show the best match and ask the people who can approve. A DM request is also shown in the group so they see it.
+        const ask = `${member.name} asked for ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}). ${approverNames(household, member.id)}: reply "yes" to add it to the cart.`;
+        await respond(msg.spaceKind === "direct" ? `Best match: ${item.name} (${fmt(item.cents)}). I've asked ${approverNames(household, member.id)} to approve it.` : ask);
+        if (msg.spaceKind === "direct" && household.groupChatId !== UNBOUND_GROUP) await sendGroup(household.id, ask, `${msg.messageId}:ask:${item.id}`);
+      } else {
+        await respond(
+          `Added ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}). Reply "${item.shared ? "personal" : "shared"}" to change.`,
+        );
+      }
     } else if (intent.type === "question") {
       await respond(await answerQuestion(msg.text, member.name));
     } else if (intent.type === "set_shared" || intent.type === "remove_item") {
@@ -126,13 +136,14 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       else await sendPrivate(member.id, text, `balance:${msg.messageId}`);
     } else if (intent.type === "approve") {
       const waiting = pendingItems(household.id).filter((i) => i.needsApproval);
-      if (member.id !== household.ownerId) {
-        if (waiting.length) await respond("Only the budget owner can approve that.");
-      } else if (waiting.length === 0) {
+      const mine = approvableBy(household, member, waiting);
+      if (waiting.length === 0) {
         await respond("Nothing is waiting for approval.");
+      } else if (mine.length === 0) {
+        await respond(`Only ${approverNames(household, member.id)} can approve that.`);
       } else {
-        for (const i of waiting) i.needsApproval = false;
-        await respond(`Approved: ${waiting.map((i) => i.name).join(", ")}. They'll be in the next order.`);
+        for (const i of mine) i.needsApproval = false;
+        await respond(`Approved by ${member.name}: ${mine.map((i) => i.name).join(", ")}. They'll be in the next order.`);
       }
     } else if (intent.type === "add_card") {
       // The secure Stripe link goes only to the member, privately, and only when they ask for it.

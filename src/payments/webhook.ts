@@ -5,6 +5,7 @@ import { config } from "../config.js";
 import { findMember } from "../core/store.js";
 import { sendPrivate } from "../messaging/photon.js";
 import { cardAdded } from "../messaging/templates.js";
+import { settlePayBack } from "./payback.js";
 import { requireStripe } from "./stripe.js";
 
 export async function stripeWebhook(req: Request, res: Response): Promise<void> {
@@ -27,7 +28,7 @@ export async function stripeWebhook(req: Request, res: Response): Promise<void> 
     switch (event.type) {
       case "checkout.session.completed":
         if (event.data.object.mode === "setup") await saveCardFromSetupSession(event.data.object);
-        // TODO(P3): payment mode -> markDebtPaid(debtId) from core/ledger.ts
+        else if (event.data.object.mode === "payment" && event.data.object.payment_status === "paid") await settlePayBack(event.data.object);
         break;
       default:
         break;

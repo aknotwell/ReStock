@@ -10,6 +10,9 @@ The deploy runs at **https://restock-production-daab.up.railway.app**.
 
 | Page | URL | Who uses it |
 |---|---|---|
+| Sign up: start a household | `/start` | New people: get a Restock number, then text "hi" to activate |
+| Sign up: join with an invite | `/join/<code>` | Roommates invited by the owner |
+| Terms and privacy | `/privacy` | Linked from the sign-up consent box |
 | Dashboard (texted-code login) | `/dashboard` | Members: a live, read-only view of their household |
 | Pay back (texted-code login) | `/pay` | Members who owe: settle on Stripe's page |
 | Add-card / pay-back links | `/c/<token>`, `/p/<token>` | Opened from Restock's texts; they redirect to Stripe |
@@ -18,7 +21,14 @@ The deploy runs at **https://restock-production-daab.up.railway.app**.
 | Stripe webhook | `POST /webhooks/stripe` | Stripe (register this URL in the Stripe dashboard) |
 | VEYZL audit endpoint | `POST /api/agent` | VEYZL (its Backend URL is the root URL above) |
 
-There's no sign-up page: people sign up by texting Restock (`start household as <name>`; see the README's **Try it live**). The texted login code only reaches people who have texted their Restock number at least once, because Photon's shared lines can't text first.
+People sign up on the web (`/start`, or an owner's `/join/<code>` link) and activate by texting "hi" to the Restock number they're given. The texted login code only reaches people who have texted their Restock number at least once, because Photon's shared lines can't text first.
+
+## Real-user checklist
+
+- **Photon key needs `platforms:write`** (as well as `project:read` and `project:write`), so web sign-up can assign each person a Restock line. Without it, sign-up shows "Restock can't create new lines right now".
+- **Attach a Railway volume** to the service (any mount path). The server then saves to `<mount>/restock.db` automatically (`RAILWAY_VOLUME_MOUNT_PATH`), so deploys and restarts keep households.
+- **Capacity:** each person uses one Photon shared-line seat (25 on the free plan, 100 on Pro). Sign-ups that never text "hi" are freed after 24 hours, and at most 20 can be waiting at once.
+- **Limits:** sign-up is limited to 10 per IP and 5 per phone per hour, and `/api/agent` to 60 requests per IP per minute.
 
 ## One-time setup (a human does this: Claude can't create accounts or enter keys)
 

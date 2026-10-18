@@ -13,7 +13,7 @@ import { db, findMember } from "../core/store.js";
 import { sendPrivate } from "../messaging/photon.js";
 import { fmt, paidBack } from "../messaging/templates.js";
 import type { Debt, Member } from "../types.js";
-import { ensureStripeCustomer } from "./links.js";
+import { claimDebtsForNewPage, ensureStripeCustomer, registerPayBackPage } from "./links.js";
 import { requireStripe } from "./stripe.js";
 
 export const CODE_TTL_MS = 10 * 60 * 1000;
@@ -95,6 +95,9 @@ export function myDebts(member: Member): DebtView[] {
 export async function createPayBackCheckout(member: Member, debtId: string, saveCard: boolean): Promise<string> {
   const debt = db.debts.get(debtId);
   if (!debt || debt.debtorId !== member.id || debt.status !== "open") throw new Error("That pay-back isn't open for you.");
+  // Cancel any other open page that could pay this debt (a texted pay link, or an earlier click here).
+  const [claimable] = await claimDebtsForNewPage([debt.id]);
+  if (!claimable) throw new Error("That pay-back was just paid.");
   const creditor = findMember(debt.creditorId)?.member;
   const customer = await ensureStripeCustomer(member);
   const metadata = { debtId: debt.id, memberId: member.id };
@@ -109,6 +112,7 @@ export async function createPayBackCheckout(member: Member, debtId: string, save
     cancel_url: `${config.publicBaseUrl}/pay`,
   });
   if (!session.url) throw new Error("Stripe returned a Checkout session without a URL");
+  registerPayBackPage(session.id, [debt.id]);
   return session.url;
 }
 

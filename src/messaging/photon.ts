@@ -28,6 +28,16 @@ export const photonEnabled = () => photon !== undefined;
 const agentBySpace = new Map<string, string>();
 const dmByHandle = new Map<string, string>();
 
+// People who texted STOP: no texts until they text START. Saved so it survives restarts.
+const muted = new Set<string>(); // phone handles
+registerState("muted", { dump: () => [...muted], load: (data) => { muted.clear(); for (const p of data as string[]) muted.add(p); } });
+export const isMuted = (phone: string) => muted.has(phone);
+export const mute = (phone: string) => void muted.add(phone);
+export const unmute = (phone: string) => void muted.delete(phone);
+export function resetMuted(): void {
+  muted.clear();
+}
+
 /** A text that was captured instead of sent. Private texts carry `memberId`; the rest carry the space they were for. */
 export type CapturedText = { text: string; spaceId?: string; memberId?: string };
 
@@ -122,6 +132,7 @@ export async function sendPrivate(memberId: string, rawText: string, key: string
   }
   const found = findMember(memberId);
   if (!found) throw new Error(`Unknown member ${memberId}`);
+  if (muted.has(found.member.phone)) return "sent"; // they texted STOP: drop it silently
   const dm = dmByHandle.get(found.member.phone);
   if (dm) {
     await send(dm, text, `restock-dm:${key}`);

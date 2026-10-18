@@ -8,7 +8,8 @@ export type ShareLine = { itemId: string; name: string; cents: Cents; splitWays:
  * Each member's share, item by item, in integer cents. computeShares is the sum of these lines,
  * so receipts that list items always add up to what was charged.
  *
- * - smart: shared items split evenly across all members, personal items to whoever added them
+ * - smart: shared items split evenly across all members, personal items to whoever added them,
+ *          and items with `splitWith` split evenly between exactly those members
  * - even:  every item split evenly
  * - adder: every item to whoever added it
  *
@@ -25,17 +26,20 @@ export function computeShareLines(items: Item[], members: Member[], rule: SplitR
     if (!Number.isInteger(item.cents) || item.cents < 0) {
       throw new Error(`computeShares: ${item.name} has an invalid price (${item.cents}); prices are whole cents`);
     }
-    const toAdder = rule === "adder" || (rule === "smart" && !item.shared);
+    // smart: an item split between some people goes to exactly them (anyone who left is skipped).
+    const group = rule === "smart" && item.splitWith?.length ? members.filter((m) => item.splitWith!.includes(m.id)) : [];
+    const toAdder = !group.length && (rule === "adder" || (rule === "smart" && !item.shared));
     // An item added by someone no longer in the household is split evenly rather than dropped.
     if (toAdder && item.addedBy in lines) {
       lines[item.addedBy]!.push({ itemId: item.id, name: item.name, cents: item.cents, splitWays: 1 });
       continue;
     }
-    const base = Math.floor(item.cents / members.length);
-    const remainder = item.cents - base * members.length;
-    members.forEach((m, i) => {
+    const payers = group.length ? group : members;
+    const base = Math.floor(item.cents / payers.length);
+    const remainder = item.cents - base * payers.length;
+    payers.forEach((m, i) => {
       const cents = base + (i < remainder ? 1 : 0);
-      lines[m.id]!.push({ itemId: item.id, name: item.name, cents, splitWays: members.length });
+      lines[m.id]!.push({ itemId: item.id, name: item.name, cents, splitWays: payers.length });
     });
   }
   return lines;

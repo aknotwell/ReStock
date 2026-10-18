@@ -34,6 +34,8 @@ export type Item = {
   addedBy: MemberId;
   cents: Cents;
   shared: boolean;
+  /** Split between exactly these members (household order). Absent: everyone if shared, else the adder. */
+  splitWith?: MemberId[];
   status: "pending" | "ordered";
   needsApproval?: boolean; // waiting for a "yes" from an approver (see core/approvals.ts)
 };

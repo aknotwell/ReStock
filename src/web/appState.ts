@@ -8,7 +8,7 @@ export type HouseholdView = {
   me: { id: string; name: string; role: Member["role"]; cardLast4: string | null };
   household: { name: string; budgetCents: number | null; spentCents: number; approvalOverCents: number | null };
   members: { id: string; name: string; role: Member["role"]; hasCard: boolean; isMe: boolean }[];
-  items: { id: string; name: string; cents: number; shared: boolean; addedBy: string; needsApproval: boolean }[];
+  items: { id: string; name: string; cents: number; shared: boolean; splitWith: string[] | null; addedBy: string; needsApproval: boolean }[]; // splitWith: names, when it's split between some people
   sharesIfOrderedNow: Record<string, number>; // member name -> cents
   openDebts: { from: string; to: string; cents: number }[];
 };
@@ -28,7 +28,7 @@ export function householdView(me: Member): HouseholdView | undefined {
     me: { id: me.id, name: me.name, role: me.role, cardLast4: me.paymentMethodId ? (me.cardLast4 ?? null) : null },
     household: { name: `${owner?.name ?? "Your"}'s household`, budgetCents: household.budgetCents ?? null, spentCents: household.spentCents, approvalOverCents: household.approvalOverCents ?? null },
     members: household.members.map((m) => ({ id: m.id, name: m.name, role: m.role, hasCard: !!m.paymentMethodId, isMe: m.id === me.id })),
-    items: items.map((i) => ({ id: i.id, name: i.name, cents: i.cents, shared: i.shared, addedBy: nameOf(i.addedBy), needsApproval: !!i.needsApproval })),
+    items: items.map((i) => ({ id: i.id, name: i.name, cents: i.cents, shared: i.shared, splitWith: i.splitWith?.length ? i.splitWith.map(nameOf) : null, addedBy: nameOf(i.addedBy), needsApproval: !!i.needsApproval })),
     sharesIfOrderedNow: Object.fromEntries(Object.entries(shares).map(([id, cents]) => [nameOf(id), cents])),
     openDebts: [...db.debts.values()]
       .filter((d) => d.status === "open" && inHousehold.has(d.debtorId))

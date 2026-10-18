@@ -15,6 +15,8 @@ const PICK_TTL_MS = 10 * 60 * 1000;
 export type Choice = {
   options: Product[];
   shared: boolean | null;
+  /** Who it's split between, if they said ("for me and Jake"): carried through to the pick. */
+  splitWith?: string[];
   lastBoughtId?: string;
   bestValueId?: string;
   /** Options that would take the household over its monthly budget: picking one needs the owner's OK. */
@@ -203,7 +205,7 @@ export function isCancel(text: string): boolean {
 }
 
 export type PickResult =
-  | { kind: "picked"; product: Product; shared: boolean | null; next?: string; overBudget?: { ownerName: string } }
+  | { kind: "picked"; product: Product; shared: boolean | null; splitWith?: string[]; next?: string; overBudget?: { ownerName: string } }
   | { kind: "invalid"; prompt: string }
   | { kind: "cancelled"; next?: string };
 
@@ -221,6 +223,7 @@ export function resolvePick(householdId: string, memberId: string, reply: number
   if (reply === "cancel") return { kind: "cancelled", next };
   const product = choice.options[reply - 1]!;
   const result: Extract<PickResult, { kind: "picked" }> = { kind: "picked", product, shared: choice.shared, next };
+  if (choice.splitWith?.length) result.splitWith = choice.splitWith;
   if (choice.overBudgetIds?.includes(product.id)) result.overBudget = { ownerName: choice.ownerName ?? "the budget owner" };
   return result;
 }

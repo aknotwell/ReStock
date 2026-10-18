@@ -18,7 +18,7 @@ describe('"order now" when the charge can\'t go through', () => {
     const logs: string[] = [];
     vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => void logs.push(a.join(" ")));
     let n = 0;
-    for (const text of ["help", "order now"]) {
+    for (const text of ["help", "order now", "yes"]) {
       const msg = { messageId: `c${++n}`, spaceId: "pho_spc_group", spaceKind: "group" as const, fromPhone: "+15550000002", text, agentUserId: "pho_usr_agent" };
       rememberInbound(msg);
       await handleInbound(msg);

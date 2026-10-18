@@ -10,7 +10,7 @@ Restock is an AI assistant that lives in your household's iMessage group chat. T
 
 - Roommates text in plain language: *"we're out of TP and dish soap."* Restock turns that into cart items and offers up to three options, ranked by price per unit, comparing live store listings with its own catalog.
 - Anyone can steer it: *"cheapest TP under \$15 from Target"*, *"make the chips personal"*, *"what do I owe?"*
-- When someone texts "order now", Restock checks out the shared cart and splits the bill. Shared items are split evenly, and personal items go to whoever wanted them.
+- When someone texts "order now", Restock shows the cart grouped by who pays and checks it out on their "yes", splitting the bill. Shared items are split evenly, and personal items go to whoever wanted them.
 - Each roommate's card is charged their own share automatically. Anyone without a card on file gets a private *"you owe Sam \$10.15"* text with a one-tap pay link.
 - Card numbers never touch the chat. Cards are added only through Stripe's hosted pages, and if someone pastes a card number anyway, Restock refuses it.
 

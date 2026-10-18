@@ -104,7 +104,7 @@ describe("owner card gate in the chat (console mode)", () => {
 
   it('a roommate\'s "order now" stops, tells the group, and DMs Sam the link', async () => {
     const { out, household: h } = await orderNowWithoutOwnerCard(JAKE, "group");
-    expect(out).toMatch(/Sam needs to add a card before I can order\. Sam, I've texted you a secure link\./);
+    expect(out).toMatch(/I can't order for Sam's household \(Sam, you and Priya\) yet\. Sam is the budget owner[^\n]*I've texted Sam a secure link to add one\. Nothing was charged and the cart is saved/);
     expect(out).toMatch(/→ Sam \(private\)\]\nYou're the budget owner[^\n]*\/c\/[A-Za-z0-9]{20,}/);
     expect(db.orders.size).toBe(0);
     expect(h.spentCents).toBe(0);

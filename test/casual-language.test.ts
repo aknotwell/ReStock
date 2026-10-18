@@ -56,7 +56,7 @@ afterEach(() => vi.useRealTimers());
 describe("casual checkout needs an explicit yes", () => {
   it("'ok let's just order everything' asks first; 'yes' places the order", async () => {
     await dm(SAM, "ok let's just order everything", [intent("checkout")]);
-    expect(out()).toMatch(/Place the order now\? 6 items, \$72\.75\. Reply "yes"/);
+    expect(out()).toMatch(/Order for Your household \(you, Jake and Priya\)\? 6 items, \$72\.75\.[\s\S]*Reply "yes" to order or "no" to cancel\./i);
     expect(db.orders.size).toBe(0);
     await dm(SAM, "yes");
     expect(db.orders.size).toBe(1);
@@ -85,8 +85,10 @@ describe("casual checkout needs an explicit yes", () => {
     expect(db.orders.size).toBe(0);
   });
 
-  it("the exact 'order now' command still orders immediately", async () => {
+  it("the exact 'order now' command shows who pays for what, and 'yes' places it", async () => {
     await dm(SAM, "order now", [intent("order_now")]);
+    expect(db.orders.size).toBe(0);
+    await dm(SAM, "yes");
     expect(db.orders.size).toBe(1);
   });
 });

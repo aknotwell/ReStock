@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Restock terms and privacy</title>
+<style>
+  :root { color-scheme: light dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  body { margin: 0 auto; max-width: 680px; padding: 32px 18px; line-height: 1.6; }
+  h1 { font-size: 26px; } h2 { font-size: 18px; margin-top: 28px; }
+</style>
+</head>
+<body>
+<h1>Restock: terms and privacy</h1>
+<p><b>Restock is a hackathon demo (DubHacks '26).</b> Orders are simulated: nothing is shipped, and payments use Stripe's test mode, so no real money moves.</p>
+
+<h2>What Restock is</h2>
+<p>Restock is an AI assistant you text. It uses Anthropic's Claude to understand messages. Anything that spends money or changes who's in your household needs your explicit "yes".</p>
+
+<h2>What we store</h2>
+<ul>
+  <li>Your first name and phone number, and the household you're in.</li>
+  <li>Your cart, orders, each person's share, and who owes whom.</li>
+  <li>If you add a card: only Stripe's reference to it and its last 4 digits. Card numbers go only to Stripe's own page.</li>
+</ul>
+<p>We don't store message text. Server logs show only the last 4 digits of a phone number. Restock blocks and won't repeat card numbers, ID numbers, or other people's contact details.</p>
+
+<h2>Who we share it with</h2>
+<p>Photon (to deliver texts), Anthropic (to understand messages; phone numbers are removed first), and Stripe (cards and payments). Other members of your household see your name, what you added, and what you owe. They never see your phone number.</p>
+
+<h2>Texts</h2>
+<p>You'll get texts about your household's cart, orders, receipts and balances. Reply <b>STOP</b> to stop texts, <b>HELP</b> for help, or <b>delete my data</b> to leave and delete your data.</p>
+
+<h2>Contact</h2>
+<p>Questions: ask the Restock team at DubHacks '26.</p>
+</body>
+</html>

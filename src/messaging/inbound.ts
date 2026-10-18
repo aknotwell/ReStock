@@ -36,6 +36,7 @@ import {
 } from "./options.js";
 import type { Product } from "../core/catalog.js";
 import { searchSpecFor } from "../ai/searchSpec.js";
+import { askForDetails, clearDetails, NO_PREFERENCE, namedDetails, pendingDetails, thinResults } from "./details.js";
 import { sendLoginCode } from "../payments/payback.js";
 
 const LOGIN_CODE = /^(?:(?:send|text|give) me (?:a |my |the )?|get (?:a |my )?)?(?:log ?in |dashboard |verification )?code[.!?]*$|^log ?in[.!?]*$/i;
@@ -60,7 +61,8 @@ function resolveHousehold(msg: InboundMessage): Household | undefined {
   return mine.length === 1 ? mine[0] : undefined; // TODO(P1): pick a household when someone is in several
 }
 
-export async function handleInbound(msg: InboundMessage): Promise<void> {
+/** `refined`: this message is a member's answer to "Any brand or size?", so it won't be asked again. */
+export async function handleInbound(msg: InboundMessage, opts: { refined?: boolean } = {}): Promise<void> {
   let part = 0;
   const respond = (text: string) => reply(msg, text, part++);
 
@@ -362,6 +364,31 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     }
   }
 
+  // An answer to "Any brand or size?". "any" shows what was found, "cancel" drops it, a short answer
+  // ("Charmin, 24 rolls") is searched again with the item, and anything else (a command, a new request) moves on.
+  const details = pendingDetails(household.id, member.id);
+  if (details) {
+    const answer = msg.text.trim();
+    clearDetails(household.id, member.id);
+    if (NO_PREFERENCE.test(answer)) {
+      const prompt = details.found.options.length ? queueChoices(household.id, member.id, [details.found]) : undefined;
+      await respond(prompt ?? `OK. Text "add ${details.requested.toLowerCase()}" with a brand or size anytime.`);
+      return;
+    }
+    if (isCancel(answer)) {
+      await respond(`OK, I didn't add ${details.requested.toLowerCase()}.`);
+      return;
+    }
+    const isCommand = parseCommand(answer).some((i) => i.type !== "unknown") || !!membership || !!parseSplitCommand(answer, household, member);
+    // Greetings, "yes" and questions aren't brand or size answers: they're handled as usual below.
+    const notAnAnswer = isCommand || isGreetingOnly(answer) || isYes(answer) || /\?\s*$/.test(answer);
+    if (!notAnAnswer && answer.split(/\s+/).length <= 8) {
+      const forMe = details.shared === false ? " for me" : "";
+      await handleInbound({ ...msg, messageId: `${msg.messageId}:details`, text: `add ${answer} ${details.requested}${forMe}` }, { refined: true });
+      return;
+    }
+  }
+
   // "contact" / "save contact": a link to save this Restock number as "restock", with the logo.
   if (isContactRequest(msg.text)) {
     await respond(contactReply(msg.agentLine ?? lineFor(msg.fromPhone)));
@@ -390,6 +417,19 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     return;
   }
   const choices: Choice[] = [];
+  // A thin store search for something they didn't describe: ask for a brand or size instead of showing it
+  // (once per message, and never for an answer to that question).
+  let askedDetails = false;
+  const offerChoice = async (choice: Choice, requested: string, product: Product | undefined, shared: boolean | null) => {
+    // Not when their own limits ("under $15", "from Costco") made the list short: that's what they asked for.
+    if (!opts.refined && !askedDetails && !hasFilters(dealOptions) && choice.checkedAt && thinResults(choice) && !namedDetails(requested, product)) {
+      askedDetails = true;
+      const item = (product?.name.split(",")[0] ?? requested).toLowerCase();
+      await respond(askForDetails(household.id, member.id, requested, item, shared, choice));
+      return;
+    }
+    choices.push(choice);
+  };
   // "cheapest TP under $15 from Costco": deal preferences come from the member's own words, read by code.
   const dealOptions = parseDealRequest(msg.text);
   // "add oat milk for me and Jake": who it's for also comes from their own words, read by code.
@@ -431,7 +471,7 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
         const options = deals.map((d) => listingProduct(d.offer, dealBase, d.at));
         const choice = buildChoice(household.id, dealBase, intent.shared, dealOptions, options, member.id);
         if (payers) choice.splitWith = payers;
-        choices.push(choice);
+        await offerChoice(choice, requested, dealBase, intent.shared);
         continue;
       }
       if (deals && !match) {
@@ -456,7 +496,8 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
           if (usualListing) choice.note = `Your usual, ${usualListing.name}, isn't listed right now. Here are today's store prices.`;
           else if (usual) choice.note = `I don't see an earlier order for ${requested}, so here are the options.`;
           if (payers) choice.splitWith = payers;
-          choices.push(choice);
+          if (usual) choices.push(choice);
+          else await offerChoice(choice, requested, offCatalog, intent.shared);
         } else {
           await respond(liveDealsEnabled()
             ? "I couldn’t find store listings for that right now. Try another household item name?"
@@ -505,7 +546,8 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
         const choice = await buildDealChoice(household.id, match.product, intent.shared, itemOptions, member.id);
         withSizeNote(choice);
         if (payers) choice.splitWith = payers;
-        choices.push(choice);
+        if (usual) choices.push(choice);
+        else await offerChoice(choice, requested, match.product, intent.shared);
       }
     } else if (intent.type === "question") {
       await respond(await answerQuestion(msg.text, member.name));

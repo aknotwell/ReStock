@@ -71,6 +71,7 @@ What the AI in Restock does, what data it uses, and what controls keep it safe. 
 | A link in the chat leads somewhere unsafe | Only Google Shopping product pages rebuilt from a product id are linked, behind short `/l/` links that expire; the model never writes a URL |
 | Live prices are slow, wrong, or stale | 3-second timeout with catalog fallback; each prompt says when prices were checked; the member sees the exact price before picking, and that price is what's charged |
 | A member's brand or size words steer the store search somewhere odd | The AI can only return words the member typed (checked in code); guardrails run on them; listings must contain the brand; a size must fit how the product is sold ("12 oz" of toilet paper is dropped and the reply says so); with no listings from that brand, the reply says so and shows other listings. Searches with the member's words are logged by a hash only |
+| A thin store search shows a poor single option | Code (not the model) asks "Any brand or size?" only when fewer than two store listings came back, the member named no brand, size or deal limit, and store prices are working (`src/messaging/details.ts`). Their answer goes back through the guardrails, the parser and the brand/size check like any new message, and is never asked about twice. "any" shows what was found, "cancel" drops it, and a command, greeting or question moves on |
 | A loop spends the free search quota | Results are cached for 12 hours and searches are capped per day (`DEALS_DAILY_LIMIT`) |
 
 ## Evaluation

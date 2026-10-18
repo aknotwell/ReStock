@@ -3,7 +3,7 @@ import { answerQuestion, OFFLINE_REPLY } from "../ai/answerQuestion.js";
 import { matchItem } from "../ai/matchItem.js";
 import { parseMessage } from "../ai/parseMessage.js";
 import { addItem, db, findHouseholdByGroupChat, findMemberByPhone, householdsForPhone, pendingItems, UNBOUND_GROUP } from "../core/store.js";
-import { approvableBy, approverNames, needsApproval } from "../core/approvals.js";
+import { approvableBy, approverNames, approvers, needsApproval } from "../core/approvals.js";
 import { openDebtsFor, owedTo } from "../core/ledger.js";
 import { OrderError, placeOrder } from "../core/orders.js";
 import { createCardSetupLink } from "../payments/links.js";
@@ -210,12 +210,38 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     if (waits) {
       const budgetNote = exceedsBudget ? " It would exceed this month's budget." : "";
       const ask = `${member.name} asked for ${item.name} (${splitLabel(item, household)}, ${fmt(item.cents)}).${budgetNote} ${approverNames(household, member.id)}: reply "yes" to add it to the cart.`;
+      if (household.groupChatId === UNBOUND_GROUP) {
+        // No shared group chat: each approver gets the request in their own Restock thread. Send first, then tell
+        // the requester who was actually reached: an approver who hasn't texted Restock yet only has it queued.
+        const privateAsk = `${member.name} asked for ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}).${budgetNote} Reply "yes" to add it to the cart.`;
+        const reached: string[] = [];
+        const queued: string[] = [];
+        for (const approver of approvers(household)) {
+          if (approver.id === member.id) continue;
+          const result = await sendPrivate(approver.id, privateAsk, `ask:${item.id}:${approver.id}`).catch((err) => {
+            console.warn("approval request failed:", err instanceof Error ? err.message : err);
+            return undefined;
+          });
+          if (result === "sent") reached.push(approver.name);
+          else if (result === "queued") queued.push(approver.name);
+        }
+        const asked = reached.length ? ` I've asked ${joinNames(reached)} to approve it.` : "";
+        await respond(msg.spaceKind === "direct" ? `Best match: ${item.name} (${fmt(item.cents)}).${budgetNote}${asked}` : ask);
+        if (queued.length) {
+          const verb = queued.length === 1 ? "hasn't" : "haven't";
+          await respond(
+            `${joinNames(queued)} ${verb} texted me directly yet, so I couldn't send your request. ` +
+              `Ask ${queued.length === 1 ? "them" : "each of them"} to text me, and they'll get it right away.`,
+          );
+        }
+        return;
+      }
       await respond(
         msg.spaceKind === "direct"
           ? `Best match: ${item.name} (${fmt(item.cents)}).${budgetNote} I've asked ${approverNames(household, member.id)} to approve it.`
           : ask,
       );
-      if (msg.spaceKind === "direct" && household.groupChatId !== UNBOUND_GROUP) {
+      if (msg.spaceKind === "direct") {
         await sendGroup(household.id, ask, `${msg.messageId}:ask:${item.id}`);
       }
       return;
@@ -439,6 +465,14 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       } else {
         for (const i of mine) i.needsApproval = false;
         await respond(`Approved by ${member.name}: ${mine.map((i) => i.name).join(", ")}. They'll be in the next order.`);
+        // Tell each person who asked that their item was approved.
+        for (const requesterId of new Set(mine.map((i) => i.addedBy))) {
+          if (requesterId === member.id || !household.members.some((m) => m.id === requesterId)) continue;
+          const theirs = mine.filter((i) => i.addedBy === requesterId).map((i) => i.name).join(", ");
+          await sendPrivate(requesterId, `${member.name} approved ${theirs}. It'll be in the next order.`, `approved:${msg.messageId}:${requesterId}`).catch((err) =>
+            console.warn("approval notice failed:", err instanceof Error ? err.message : err),
+          );
+        }
       }
     } else if (intent.type === "add_card") {
       // The secure Stripe link goes only to the member, privately, and only when they ask for it.
@@ -524,6 +558,11 @@ async function welcome({ household, member, joined }: Activation, respond: (text
       `Text what you need ("we're out of TP"), "what do I owe?", or "help". No card needed to join; text "add card" anytime.`,
   );
   await relayToOthers(household, member.id, `${member.name} joined the household.`, `joined:${member.id}`);
+}
+
+/** "Alex", "Alex and Sam", "Alex, Sam and Jo". */
+function joinNames(names: string[]): string {
+  return names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
 
 /** "Abdul hasn't texted me…" / "Abdul and David haven't texted me…" */

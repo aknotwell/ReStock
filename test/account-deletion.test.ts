@@ -6,6 +6,7 @@ const photonLines = vi.hoisted(() => ({
   assignLine: vi.fn(async (phone: string) => ({ assignmentId: `asg-${phone}`, line: "+16285550100" })),
   releaseLine: vi.fn(async (_id: string) => true),
   releaseLinesForHandle: vi.fn(async (_phone: string) => true),
+  isLineActive: vi.fn(async (_id: string) => true),
 }));
 vi.mock("../src/messaging/photonLines.js", async (orig) => ({ ...(await orig<object>()), ...photonLines }));
 const fakeStripe = vi.hoisted(() => ({ customers: { del: vi.fn(async (id: string) => ({ id, deleted: true })) } }));
@@ -158,5 +159,21 @@ describe("account deletion reaches Stripe", () => {
     expect(await mod.deleteStripeCustomer("cus_later")).toBe(false);
     expect(mod.pendingCustomerDeletions()).toEqual(["cus_later"]);
     vi.doUnmock("../src/payments/stripe.js");
+  });
+});
+
+describe("signing up again reuses a saved number only while Photon still has it", () => {
+  it("a pending sign-up whose line was released gets a new line", async () => {
+    await startSignup({ name: "Amber", phone: AMBER });
+    photonLines.isLineActive.mockResolvedValueOnce(false);
+    photonLines.assignLine.mockResolvedValueOnce({ assignmentId: "asg-fresh", line: "+16285550199" });
+    const again = await startSignup({ name: "Amber", phone: AMBER }, Date.now() + 2 * 60_000);
+    expect(again.line).toBe("+16285550199");
+  });
+
+  it("a live saved line is reused without a new assignment", async () => {
+    await startSignup({ name: "Amber", phone: AMBER });
+    await startSignup({ name: "Amber", phone: AMBER });
+    expect(photonLines.assignLine.mock.calls.filter(([p]) => p === AMBER)).toHaveLength(1);
   });
 });

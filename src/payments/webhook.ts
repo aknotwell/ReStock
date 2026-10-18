@@ -96,6 +96,18 @@ export async function markDebtPaidFromSession(
 }
 
 /**
+ * Stripe sent the member back to /card/success?session_id=…: ask Stripe for that session and save its card now,
+ * instead of waiting for the webhook. If the webhook is slow, misconfigured, or pointed at an old deploy, the card
+ * still shows up right away. We trust only what Stripe returns for the ID (our own secret key), never the page,
+ * and only sessions we created carry a memberId, so an ID from anywhere else saves nothing.
+ */
+export async function confirmCardSetup(sessionId: string): Promise<"saved" | "unknown_member" | "no_card" | "not_complete"> {
+  const session = await requireStripe().checkout.sessions.retrieve(sessionId);
+  if (session.mode !== "setup" || session.status !== "complete") return "not_complete";
+  return saveCardFromSetupSession(session);
+}
+
+/**
  * A member finished the add-card page. Save the card's Stripe ID and last 4 digits on the Member.
  * Idempotent: if Stripe delivers the same event twice, we save the same values twice.
  * Returns what happened so tests and logs can tell the cases apart.
@@ -121,6 +133,8 @@ export async function saveCardFromSetupSession(
 
   // TODO: replace with an updateMember() in store.ts once there is one.
   const { member } = found;
+  // Saved already (the success page and the webhook both land here): don't text "card added" twice.
+  if (member.paymentMethodId === paymentMethod.id) return "saved";
   if (typeof session.customer === "string") member.stripeCustomerId = session.customer;
   member.paymentMethodId = paymentMethod.id;
   member.cardLast4 = paymentMethod.card.last4;

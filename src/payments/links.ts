@@ -47,7 +47,8 @@ export async function openCardSetupLink(token: string, now = Date.now()): Promis
     client_reference_id: member.id,
     metadata: { memberId: member.id },
     setup_intent_data: { metadata: { memberId: member.id } },
-    success_url: `${config.publicBaseUrl}/card/success`,
+    // Stripe fills in {CHECKOUT_SESSION_ID}; the success page uses it to save the card right away (confirmCardSetup).
+    success_url: `${config.publicBaseUrl}/card/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${config.publicBaseUrl}/cancel`,
   });
   if (!session.url) throw new Error("Stripe returned a Checkout session without a URL");

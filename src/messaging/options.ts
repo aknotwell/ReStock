@@ -5,6 +5,7 @@
 // chooses for them. Options are ranked by price per unit in code, and the cheapest is labelled "best value".
 import { alternativesFor, getProductByName, groupOf, unitCents, type Product } from "../core/catalog.js";
 import { registerState } from "../core/persist.js";
+import { ensureBudgetMonth } from "../core/households.js";
 import { db, getHousehold, pendingItems } from "../core/store.js";
 import { liveDealsEnabled, liveOptionsFor, pickedByName, rememberPicked } from "../deals/live.js";
 import { applyFilters, bestValueId, describeFilters, hasFilters, optionCount, rankOptions, type DealOptions } from "../deals/rank.js";
@@ -95,6 +96,7 @@ export function namedSpecifically(requested: string, product: Product): boolean 
 function budgetLeft(householdId: string): number {
   const h = getHousehold(householdId);
   if (h.budgetCents === undefined) return Number.POSITIVE_INFINITY;
+  ensureBudgetMonth(h);
   return h.budgetCents - h.spentCents - pendingItems(householdId).reduce((sum, i) => sum + i.cents, 0);
 }
 

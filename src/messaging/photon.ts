@@ -70,7 +70,9 @@ const pendingByHandle = new Map<string, { text: string; key: string }[]>();
 // Polling position. Saved so texts that arrive during a restart are answered once, not twice or never.
 const POLL_RESUME_LIMIT_MS = 10 * 60 * 1000; // after a longer outage, skip the backlog instead of replaying it
 const SEEN_KEEP = 500;
+const MAX_POLL_ATTEMPTS = 3;
 const poll = { since: "", seen: [] as string[] };
+const pollAttempts = new Map<string, number>(); // message id -> failed handler tries. In memory only.
 
 registerState("photon", {
   dump: () => ({ agentBySpace: [...agentBySpace], dmByHandle: [...dmByHandle], since: poll.since, seen: poll.seen }),
@@ -87,6 +89,60 @@ registerState("photon", {
 export function pollStart(now = Date.now()): string {
   const saved = Date.parse(poll.since);
   return Number.isFinite(saved) && now - saved <= POLL_RESUME_LIMIT_MS ? poll.since : new Date(now - 5_000).toISOString();
+}
+
+/** The saved poll cursor. Tests use this to check a failed handler did not advance it. */
+export function pollCursor(): { since: string; seen: readonly string[] } {
+  return { since: poll.since, seen: poll.seen };
+}
+
+/** Test helper: forget the poll cursor and handler retries. */
+export function resetPollDelivery(): void {
+  poll.since = "";
+  poll.seen = [];
+  pollAttempts.clear();
+}
+
+function noteSeen(id: string, createdAt: string, seen: Set<string>, cursor: { since: string }): void {
+  seen.add(id);
+  if (createdAt > cursor.since) cursor.since = createdAt;
+  poll.since = cursor.since;
+  if (!poll.seen.includes(id)) poll.seen.push(id);
+  if (poll.seen.length > SEEN_KEEP) poll.seen.splice(0, poll.seen.length - SEEN_KEEP);
+}
+
+/**
+ * Handle one polled message. A text is marked seen only after `run` resolves, so a throw can be tried
+ * again without moving the cursor past it. After 3 failures it is marked seen, so one bad text cannot
+ * block the inbox. A non-text is marked seen immediately. "retry" means stop this page and try later.
+ */
+export async function handlePolledItem(
+  item: { id: string; createdAt: string; msg: InboundMessage | undefined },
+  run: (msg: InboundMessage) => Promise<void>,
+  seen: Set<string>,
+  cursor: { since: string },
+): Promise<"ok" | "retry" | "skip"> {
+  if (seen.has(item.id)) return "skip";
+  if (!item.msg) {
+    noteSeen(item.id, item.createdAt, seen, cursor);
+    return "ok";
+  }
+  try {
+    await run(item.msg);
+    pollAttempts.delete(item.id);
+    noteSeen(item.id, item.createdAt, seen, cursor);
+    return "ok";
+  } catch (err) {
+    const tries = (pollAttempts.get(item.id) ?? 0) + 1;
+    pollAttempts.set(item.id, tries);
+    console.error("handler failed:", err instanceof Error ? err.message : err);
+    if (tries >= MAX_POLL_ATTEMPTS) {
+      pollAttempts.delete(item.id);
+      noteSeen(item.id, item.createdAt, seen, cursor);
+      return "ok";
+    }
+    return "retry";
+  }
 }
 // When set, outbound texts are collected here instead of sent (used by POST /api/agent).
 // When set, outbound texts are collected here instead of sent (used by POST /api/agent).
@@ -244,7 +300,7 @@ export function startPolling(handle: (msg: InboundMessage) => Promise<void>, int
   }
   const projectId = config.photonProjectId;
   const seen = new Set<string>(poll.seen);
-  let since = pollStart();
+  const cursor = { since: pollStart() };
   let stopped = false;
 
   const tick = async () => {
@@ -254,7 +310,7 @@ export function startPolling(handle: (msg: InboundMessage) => Promise<void>, int
         const page = await photon.projects.listMessages({
           path: { id: projectId },
           query: {
-            createdSince: since,
+            createdSince: cursor.since,
             direction: "received",
             order: "asc",
             pageSize: 100,
@@ -262,21 +318,28 @@ export function startPolling(handle: (msg: InboundMessage) => Promise<void>, int
             ...(pageToken ? { pageToken } : {}),
           },
         });
+        let retryLater = false;
         for (const m of page.items) {
           if (!isKnown(m) || seen.has(m.id)) continue;
-          seen.add(m.id);
-          if (m.createdAt > since) since = m.createdAt;
-          poll.since = since;
-          poll.seen.push(m.id);
-          if (poll.seen.length > SEEN_KEEP) poll.seen.splice(0, poll.seen.length - SEEN_KEEP);
           const msg = toInbound(m);
-          if (!msg) continue;
-          rememberInbound(msg);
-          // Traffic log for debugging live tests: chat type and the sender's last 4 digits only, never content.
-          console.log(`[photon] received ${msg.spaceKind} message from …${msg.fromPhone.slice(-4)}`);
-          await deliverPending(msg); // receipts and links held until they texted us directly
-          await handle(msg).catch((err) => console.error("handler failed:", err instanceof Error ? err.message : err));
+          const outcome = await handlePolledItem(
+            { id: m.id, createdAt: m.createdAt, msg },
+            async (inbound) => {
+              rememberInbound(inbound);
+              // Traffic log for debugging live tests: chat type and the sender's last 4 digits only, never content.
+              console.log(`[photon] received ${inbound.spaceKind} message from …${inbound.fromPhone.slice(-4)}`);
+              await deliverPending(inbound); // receipts and links held until they texted us directly
+              await handle(inbound);
+            },
+            seen,
+            cursor,
+          );
+          if (outcome === "retry") {
+            retryLater = true;
+            break;
+          }
         }
+        if (retryLater) break;
         pageToken = page.nextPageToken;
       } while (pageToken);
     } catch (err) {

@@ -21,14 +21,14 @@ import { stripIntensifiers } from "./casualAdd.js";
 import { balanceSummary, CARD_NUMBER_WARNING, fmt, groupSummary, helpMessage, inviteToAddCard } from "./templates.js";
 import { sendOrderTexts } from "./afterOrder.js";
 import { handleMembershipCommand, parseMembershipCommand } from "./membership.js";
-import { clearAction, isNo, isYes, peekAction, proposeAction } from "./confirm.js";
+import { clearAction, clearOrderConfirmation, isNo, isYes, peekAction, proposeAction } from "./confirm.js";
 import {
   activateFromFirstText, inviteCodeIn, invitedTo, inviteCodeFor, isPendingSignup, joinWithInvite, lineFor, SignupError, type Activation,
 } from "../core/signups.js";
 import { isRestockLine } from "./photonLines.js";
 import { CONTACT_NAME, contactLink } from "../web/contactCard.js";
 import { config } from "../config.js";
-import { activeHousehold, adoptCards, cleanName, findPhone, householdName, MembershipError, personalSpaceFor, setActiveHousehold } from "../core/households.js";
+import { activeHousehold, adoptCards, cleanName, ensureBudgetMonth, findPhone, householdName, MembershipError, personalSpaceFor, setActiveHousehold } from "../core/households.js";
 import { answerDestination, askWhichHousehold, askWhoFor, namedHousehold, newPersonalNamed, splitStated, withoutHousehold } from "./destination.js";
 import { handleOnboarding, setupInProgress } from "./onboarding.js";
 import { parseDealRequest, stripDealWords } from "../deals/request.js";
@@ -181,7 +181,8 @@ export async function handleInbound(
       }
     };
     const dest = answerDestination(msg.fromPhone, msg.text, (h) => findMemberByPhone(h, msg.fromPhone));
-    if (dest) {
+    if (dest?.kind === "pass") clearOrderConfirmation(msg.fromPhone);
+    else if (dest) {
       if (dest.kind === "cancelled") await respond("OK, I didn't add it.");
       else if (dest.kind === "newPersonal") await toNewPersonal(dest.text);
       else if (dest.kind === "ask") await respond(dest.prompt);
@@ -217,6 +218,7 @@ export async function handleInbound(
       return;
     }
     if (pick) {
+      clearOrderConfirmation(msg.fromPhone);
       await respond(pick.kind === "cancelled" ? "OK, never mind." : pick.text);
       return;
     }
@@ -225,6 +227,7 @@ export async function handleInbound(
     // A household they named ("order now for we da fam") was already chosen above, so don't ask again.
     const groups = (isShowCart(msg.text) || ordering) && !opts.destinationChosen ? groupsToPick(msg.fromPhone) : undefined;
     if (groups) {
+      clearOrderConfirmation(msg.fromPhone);
       await respond(askWhichList(msg.fromPhone, groups, ordering ? "order" : "list"));
       return;
     }
@@ -261,6 +264,9 @@ export async function handleInbound(
       return;
     }
     confirmedOrder = true; // runs below, once the household context is set up
+  } else if (pendingAction?.kind === "order") {
+    // They texted something else. A later "yes" must not buy the cart they moved on from.
+    clearAction(msg.fromPhone);
   }
 
   // 2. Household membership commands (start / add member / remove member / members). Plain code, never the AI.
@@ -335,6 +341,7 @@ export async function handleInbound(
   // using the same approval flow as expensive personal items (placeOrder skips it until then).
   // `payers`: who it's split between, when they said ("for me and Jake"); otherwise shared/personal as usual.
   const addToCart = async (product: Product, shared: boolean | null, prefix = "Added", overBudget?: { ownerName: string }, payers?: string[]) => {
+    ensureBudgetMonth(household);
     const budget = household.budgetCents;
     const committed = household.spentCents + pendingItems(household.id).reduce((sum, item) => sum + item.cents, 0);
     const exceedsBudget = overBudget ?? (budget !== undefined && committed + product.cents > budget
@@ -447,7 +454,7 @@ export async function handleInbound(
 
   const runOrder = async () => {
     try {
-      const result = await placeOrder(household.id);
+      const result = await placeOrder(household.id, "smart", `checkout:${msg.messageId}`);
       await announce(groupSummary(household, result));
       const { waiting } = await sendOrderTexts(household, result);
       if (waiting.length) {
@@ -557,10 +564,12 @@ export async function handleInbound(
   const adds = intents.filter((i) => i.type === "add_item" && i.itemName);
   if (msg.spaceKind === "direct" && adds.length && !opts.refined) {
     if (!opts.destinationChosen && householdsForPhone(msg.fromPhone).length > 1) {
+      clearOrderConfirmation(msg.fromPhone);
       await respond(askWhichHousehold(msg.fromPhone, msg.text));
       return;
     }
     if (opts.askSplit && adds.length === 1 && household.members.length > 1 && !splitStated(msg.text, household, member)) {
+      clearOrderConfirmation(msg.fromPhone);
       await respond(askWhoFor(msg.fromPhone, msg.text, household, member));
       return;
     }

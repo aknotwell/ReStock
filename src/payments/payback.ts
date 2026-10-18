@@ -8,7 +8,7 @@
 import { createHash, randomInt, randomBytes, timingSafeEqual } from "node:crypto";
 import type Stripe from "stripe";
 import { config } from "../config.js";
-import { markDebtPaid, openDebtsFor } from "../core/ledger.js";
+import { markDebtPaid } from "../core/ledger.js";
 import { shareCard } from "../core/households.js";
 import { db, findMember, formerMembers } from "../core/store.js";
 import { registerState } from "../core/persist.js";
@@ -137,27 +137,46 @@ export function logout(token: string | undefined): void {
 
 export type DebtView = { id: string; to: string; cents: number; amount: string; orderDate?: string };
 
-/** The logged-in member's open debts, with who they owe. Nothing about anyone else. */
+/**
+ * Every member record for this person: one per household, plus a removed record kept for an open debt.
+ * Login returns whichever record it finds first. Debts and pay-back use all of them.
+ */
+function memberIdsFor(member: Member): Set<string> {
+  const ids = new Set<string>([member.id]);
+  const samePerson = (phone: string) => phone === member.phone;
+  for (const household of db.households.values()) {
+    for (const other of household.members) if (samePerson(other.phone)) ids.add(other.id);
+  }
+  for (const { member: former } of formerMembers.values()) if (samePerson(former.phone)) ids.add(former.id);
+  return ids;
+}
+
+/** The logged-in person's open debts, in every household they belong to. Nothing about anyone else. */
 export function myDebts(member: Member): DebtView[] {
-  return openDebtsFor(member.id).map((d) => ({
-    id: d.id,
-    to: findMember(d.creditorId)?.member.name ?? "your household",
-    cents: d.cents,
-    amount: fmt(d.cents),
-    orderDate: db.orders.get(d.orderId)?.createdAt,
-  }));
+  const ids = memberIdsFor(member);
+  return [...db.debts.values()]
+    .filter((d) => d.status === "open" && ids.has(d.debtorId))
+    .map((d) => ({
+      id: d.id,
+      to: findMember(d.creditorId)?.member.name ?? "your household",
+      cents: d.cents,
+      amount: fmt(d.cents),
+      orderDate: db.orders.get(d.orderId)?.createdAt,
+    }));
 }
 
 /** Stripe Checkout session for one of the member's own open debts. Returns the URL to send them to. */
 export async function createPayBackCheckout(member: Member, debtId: string, saveCard: boolean): Promise<string> {
   const debt = db.debts.get(debtId);
-  if (!debt || debt.debtorId !== member.id || debt.status !== "open") throw new Error("That pay-back isn't open for you.");
+  // The session is one of their member records. The debt may belong to another household of the same phone.
+  if (!debt || debt.status !== "open" || !memberIdsFor(member).has(debt.debtorId)) throw new Error("That pay-back isn't open for you.");
   // Cancel any other open page that could pay this debt (a texted pay link, or an earlier click here).
   const [claimable] = await claimDebtsForNewPage([debt.id]);
   if (!claimable) throw new Error("That pay-back was just paid.");
   const creditor = findMember(debt.creditorId)?.member;
-  const customer = await ensureStripeCustomer(member);
-  const metadata = { debtId: debt.id, memberId: member.id };
+  const debtor = findMember(debt.debtorId)?.member ?? member;
+  const customer = await ensureStripeCustomer(debtor);
+  const metadata = { debtId: debt.id, memberId: debtor.id };
   const session = await requireStripe().checkout.sessions.create({
     mode: "payment",
     customer,

@@ -3,401 +3,355 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#f6f7f4">
-<title>Household spending | Restock</title>
+<meta name="theme-color" content="#f7f6f3">
+<title>Restock</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28'%3E%3Crect width='28' height='28' rx='7' fill='%23111'/%3E%3Cpath d='M19.64 16.05A6 6 0 1 1 18.6 10.14' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round'/%3E%3Cpath d='M18.34 7.15L18.6 10.14L15.7 9.36' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Crect x='11.5' y='11.5' width='5' height='5' rx='1.2' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap">
 <style>
+  /* Warm monochrome. Color only means something: blue = personal, green = groups, red = money owed or over. */
   :root {
     color-scheme: light;
-    --ink: #202a24;
-    --muted: #707a71;
-    --line: #e5e9e2;
-    --canvas: #f6f7f4;
+    --canvas: #f7f6f3;
     --surface: #ffffff;
-    --green: #28734e;
-    --green-soft: #edf5ef;
-    --blue: #4f66ab;
-    --blue-soft: #eef1fa;
-    --alert: #a24a1f;
-    --alert-soft: #fbefe7;
-    --alert-line: #efcdb8;
-    --track: #eceee9;
-    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --ink: #2f3437;
+    --black: #111111;
+    --muted: #787774;
+    --line: #eaeaea;
+    --track: #efeee9;
+    --green: #346538;
+    --green-soft: #edf3ec;
+    --blue: #1f6c9f;
+    --blue-soft: #e1f3fe;
+    --red: #9f2f2d;
+    --red-soft: #fdebec;
+    --serif: "Newsreader", Georgia, "Times New Roman", serif;
+    --sans: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", sans-serif;
   }
 
   * { box-sizing: border-box; }
-  body { min-width: 320px; margin: 0; background: var(--canvas); color: var(--ink); }
-  button, input { font: inherit; }
-  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent, var(--green)); outline-offset: 2px; }
-  .shell { width: min(1240px, calc(100% - 56px)); margin: 0 auto; }
-  header { border-bottom: 1px solid var(--line); background: var(--surface); }
-  .topbar { display: flex; height: 64px; align-items: center; justify-content: space-between; }
-  .brand { display: flex; align-items: center; gap: 9px; font-size: 17px; font-weight: 750; letter-spacing: -.5px; }
-  .brand-mark { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 9px; background: var(--green); color: #fff; }
-  .text-button { flex: none; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: #59655d; cursor: pointer; font-size: 11px; font-weight: 650; }
-  .text-button:hover { border-color: var(--accent, var(--green)); color: var(--accent, var(--green)); }
-  .text-button[hidden] { display: none; }
+  body { min-width: 320px; margin: 0; background: var(--canvas); color: var(--ink); font-family: var(--sans); font-size: 14px; line-height: 1.5; }
+  button, input { font: inherit; color: inherit; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--black); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+  .shell { width: min(1120px, calc(100% - 48px)); margin: 0 auto; }
 
-  /* Personal is blue, group chats are green. Color marks which side you're on; strong color is saved for alerts. */
   .is-personal { --accent: var(--blue); --accent-soft: var(--blue-soft); }
   .is-group { --accent: var(--green); --accent-soft: var(--green-soft); }
 
-  main { padding: 30px 0 60px; }
-  .workspace { display: grid; grid-template-columns: 210px minmax(0, 1fr); align-items: start; gap: 32px; }
-  .sidebar { position: sticky; top: 24px; display: grid; gap: 6px; }
-  .side-item { display: flex; width: 100%; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: #5f6a62; cursor: pointer; text-align: left; }
-  .side-item:hover { background: #eef1ec; }
-  .side-item[aria-current="page"] { border-color: var(--line); background: var(--surface); color: var(--ink); box-shadow: 0 2px 6px rgba(24,39,28,.04); }
-  .side-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
-  .side-name { display: block; font-size: 13px; font-weight: 700; }
-  .side-sub { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-  .side-sub.alert { color: var(--alert); font-weight: 650; }
+  header { border-bottom: 1px solid var(--line); background: var(--surface); }
+  .topbar { display: flex; height: 64px; align-items: center; justify-content: space-between; gap: 16px; }
+  .brand { display: flex; align-items: center; gap: 10px; color: var(--black); font-family: var(--serif); font-size: 22px; font-weight: 600; letter-spacing: -.02em; }
+  .logo { width: 28px; height: 28px; color: var(--black); }
+  .account { display: flex; align-items: center; gap: 14px; color: var(--muted); }
+  .link-button { padding: 0; border: 0; background: none; color: var(--ink); cursor: pointer; font-weight: 600; }
+  .link-button:hover { color: var(--black); text-decoration: underline; }
+
+  .btn { padding: 9px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); cursor: pointer; font-weight: 600; }
+  .btn:hover { border-color: #d6d5d0; }
+  .btn:active { transform: scale(.98); }
+  .btn.primary { border-color: var(--black); background: var(--black); color: #fff; }
+  .btn.primary:hover { background: #333; }
+  .btn:disabled { cursor: default; opacity: .5; }
+
+  /* Login */
+  .login { display: grid; min-height: calc(100vh - 65px); place-items: center; padding: 24px 0; }
+  .login-card { width: min(380px, 100%); padding: 32px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+  .login-card .logo { width: 40px; height: 40px; margin-bottom: 20px; }
+  .login-card h1 { margin: 0 0 20px; }
+  .field { display: grid; gap: 6px; margin-bottom: 14px; color: var(--muted); font-size: 13px; }
+  .field input { padding: 11px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font-size: 16px; }
+  .field input.code { letter-spacing: .4em; font-variant-numeric: tabular-nums; }
+  .login-card .btn { width: 100%; padding: 12px; }
+  .login-actions { display: flex; justify-content: space-between; margin-top: 14px; color: var(--muted); font-size: 13px; }
+  .error { margin: 12px 0 0; color: var(--red); font-size: 13px; }
+
+  /* App */
+  main.app { padding: 36px 0 72px; }
+  .workspace { display: grid; grid-template-columns: 180px minmax(0, 1fr); align-items: start; gap: 40px; }
+  .sidebar { position: sticky; top: 24px; display: grid; gap: 4px; }
+  .side-item { display: flex; width: 100%; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; text-align: left; font-size: 15px; font-weight: 600; }
+  .side-item:hover { color: var(--ink); }
+  .side-item[aria-current="page"] { border-color: var(--line); background: var(--surface); color: var(--black); }
+  .side-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 
   .content { min-width: 0; }
-  .view[hidden], .intro[hidden], .card[hidden], .row-add[hidden] { display: none; }
-  .eyebrow { margin: 0 0 6px; color: var(--accent); font-size: 10px; font-weight: 750; letter-spacing: 1.3px; text-transform: uppercase; }
-  h1 { margin: 0; font-size: clamp(23px, 3vw, 29px); letter-spacing: -1px; }
-  .summary { margin: 8px 0 0; color: #4c574f; font-size: 13px; font-variant-numeric: tabular-nums; }
-  .summary strong { color: var(--ink); }
-  .summary .alert { color: var(--alert); font-weight: 700; }
-  .head { margin-bottom: 18px; }
-
-  /* "Needs you": the only loud thing on the page. */
-  .needs { display: grid; gap: 8px; margin-bottom: 18px; padding: 13px 14px; border: 1px solid var(--alert-line); border-radius: 14px; background: var(--alert-soft); }
-  .needs[hidden] { display: none; }
-  .needs-title { color: var(--alert); font-size: 11px; font-weight: 750; letter-spacing: .4px; text-transform: uppercase; }
-  .need { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; width: 100%; padding: 9px 11px; border: 0; border-radius: 10px; background: var(--surface); color: var(--ink); cursor: pointer; text-align: left; font-size: 12px; }
-  .need:hover { box-shadow: inset 0 0 0 1px var(--alert-line); }
-  .need-main { font-weight: 680; }
-  .need-where { color: var(--muted); font-size: 11px; }
-  .need-go { margin-left: auto; color: var(--alert); font-size: 11px; font-weight: 700; }
+  h1 { margin: 0 0 24px; color: var(--black); font-family: var(--serif); font-size: clamp(30px, 4vw, 40px); font-weight: 500; letter-spacing: -.03em; line-height: 1.1; }
+  .back { margin-bottom: 16px; padding: 0; border: 0; background: none; color: var(--muted); cursor: pointer; font-weight: 600; }
+  .back:hover { color: var(--black); }
 
   .rows { display: grid; gap: 8px; }
-  .space-row { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(200px, 2.1fr) 110px 18px; align-items: center; gap: 20px; width: 100%; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); cursor: pointer; text-align: left; }
-  .space-row:hover { border-color: var(--accent); }
-  .space-row.flagged { border-color: var(--alert-line); }
-  .row-name { display: flex; min-width: 0; align-items: center; gap: 11px; }
-  .row-icon { display: grid; flex: none; width: 34px; height: 34px; place-items: center; border-radius: 11px; background: var(--accent-soft); color: var(--accent); font-size: 16px; }
-  .row-text { display: block; min-width: 0; }
-  .row-title { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 730; }
-  .row-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row-sub { display: block; margin-top: 3px; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-  .status { flex: none; padding: 2px 7px; border-radius: 99px; background: var(--track); color: #59655d; font-size: 9px; font-weight: 750; white-space: nowrap; }
-  .status.alert { background: var(--alert-soft); color: var(--alert); }
-  .row-left { display: block; text-align: right; font-size: 17px; font-weight: 760; letter-spacing: -.4px; font-variant-numeric: tabular-nums; }
-  .row-left small { display: block; color: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: 0; }
-  .row-left.alert { color: var(--alert); }
-  .chevron { color: var(--muted); font-size: 18px; }
+  .space-row { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(160px, 2fr) 110px 12px; align-items: center; gap: 24px; width: 100%; padding: 18px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); cursor: pointer; text-align: left; transition: border-color .2s ease; }
+  .space-row:hover { border-color: #d6d5d0; }
+  .row-name { display: flex; min-width: 0; align-items: center; gap: 12px; color: var(--black); font-size: 15px; font-weight: 600; }
+  .row-name b { overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .mono { display: grid; flex: none; width: 36px; height: 36px; place-items: center; border-radius: 8px; background: var(--accent-soft); color: var(--accent); font-family: var(--serif); font-size: 18px; font-weight: 600; }
+  .row-amount { text-align: right; color: var(--black); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .over { color: var(--red); }
+  .chevron { color: var(--muted); }
 
-  /* Budget bar: spent (solid), cart waiting to be ordered (light), and a tick where spending should be today. */
-  .bar { position: relative; display: block; height: 10px; border-radius: 99px; background: var(--track); }
-  .bar-fill { position: absolute; top: 0; bottom: 0; left: 0; display: flex; overflow: hidden; border-radius: 99px; }
-  .bar-spent { height: 100%; background: var(--accent); }
-  .bar-cart { height: 100%; background: var(--accent); opacity: .3; }
-  .bar.over .bar-spent { background: var(--alert); }
-  .bar-pace { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--ink); }
-  .bar-caption { display: block; margin-top: 7px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-  .bar-caption .alert { color: var(--alert); font-weight: 650; }
-  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; color: var(--muted); font-size: 10px; }
-  .legend span { display: inline-flex; align-items: center; gap: 5px; }
-  .legend i { display: inline-block; width: 10px; height: 6px; border-radius: 3px; background: var(--accent); }
-  .legend i.cart { opacity: .3; }
-  .legend i.pace { width: 2px; height: 10px; background: var(--ink); }
+  .bar { display: block; height: 8px; overflow: hidden; border-radius: 99px; background: var(--track); }
+  .bar span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+  .bar.is-over span { background: var(--red); }
 
-  .row-add { margin-top: 8px; }
-  .add-group { width: 100%; padding: 13px 16px; border: 1px dashed #cfd6cf; border-radius: 14px; background: transparent; color: #59655d; cursor: pointer; text-align: left; font-size: 12px; font-weight: 650; }
-  .add-group:hover { border-color: var(--accent); color: var(--accent); }
-  .add-group[hidden], .add-group-form[hidden] { display: none; }
-  .add-group-form { display: flex; flex-wrap: wrap; gap: 8px; max-width: 460px; }
-  .add-group-form input { flex: 1; min-width: 160px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 9px; font-size: 12px; }
-  .add-group-form button { padding: 9px 13px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: #59655d; cursor: pointer; font-size: 12px; font-weight: 650; }
-  .add-group-form button[type="submit"] { border-color: var(--accent); background: var(--accent); color: #fff; }
+  .add-group { width: 100%; margin-top: 8px; padding: 16px 20px; border: 1px dashed #d6d5d0; border-radius: 12px; background: transparent; color: var(--muted); cursor: pointer; text-align: left; font-weight: 600; }
+  .add-group:hover { color: var(--black); border-color: var(--black); }
+  .add-group-form { display: flex; flex-wrap: wrap; gap: 8px; max-width: 460px; margin-top: 8px; }
+  .add-group-form input { flex: 1; min-width: 180px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
 
-  .back { margin-bottom: 14px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: #59655d; cursor: pointer; font-size: 11px; font-weight: 650; }
-  .back:hover { border-color: var(--accent); color: var(--accent); }
-
-  .settings-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(300px, .85fr); align-items: start; gap: 16px; }
+  .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 16px; }
   .settings-column { display: grid; gap: 16px; min-width: 0; }
-  .card { min-width: 0; border: 1px solid var(--line); border-radius: 15px; background: var(--surface); }
-  .card.alerting { border-color: var(--alert-line); }
-  .card-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 16px 18px 13px; border-bottom: 1px solid #eff1ed; }
-  .card-heading h2 { margin: 0; font-size: 13px; font-weight: 730; }
-  .card.alerting .card-heading h2 { color: var(--alert); }
-  .card-heading p { margin: 5px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
-  .card-body { padding: 16px 18px; }
-  .budget-top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
-  .big { font-size: 28px; font-weight: 760; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
-  .big.alert { color: var(--alert); }
-  .big small { margin-left: 4px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: 0; }
-  .field { display: grid; gap: 6px; color: #5b665e; font-size: 11px; font-weight: 650; }
-  .money-input { display: inline-flex; width: 140px; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid #dfe5df; border-radius: 9px; background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 680; }
-  .money-input input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: inherit; font-variant-numeric: tabular-nums; }
+  .card { min-width: 0; padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  .card h2 { margin: 0; color: var(--black); font-family: var(--serif); font-size: 20px; font-weight: 500; letter-spacing: -.01em; }
+  .big { color: var(--black); font-family: var(--serif); font-size: 34px; font-weight: 500; letter-spacing: -.02em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .big small { margin-left: 6px; color: var(--muted); font-family: var(--sans); font-size: 14px; font-weight: 500; letter-spacing: 0; }
+  .budget-body { display: grid; gap: 16px; }
+  .budget-line { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 16px; }
+  .money-input { display: inline-flex; width: 120px; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); font-weight: 600; }
+  .money-input input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; font-variant-numeric: tabular-nums; }
 
-  .rule { display: flex; align-items: start; justify-content: space-between; gap: 18px; padding: 14px 0; border-bottom: 1px solid #f0f2ee; }
-  .rule:first-child { padding-top: 0; }
-  .rule:last-child { padding-bottom: 0; border-bottom: 0; }
-  .rule-title { font-size: 12px; font-weight: 680; }
-  .rule-text { max-width: 46ch; margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.5; }
-  .rule-amount { display: inline-flex; align-items: center; gap: 4px; margin-top: 9px; padding: 6px 9px; border: 1px solid #dfe5df; border-radius: 8px; font-size: 12px; font-weight: 680; }
-  .rule-amount[hidden] { display: none; }
-  .rule-amount input { width: 60px; border: 0; outline: 0; color: var(--ink); }
-  .switch { position: relative; flex: none; width: 38px; height: 22px; margin-top: 1px; }
+  .line { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 48px; border-top: 1px solid var(--line); }
+  .line:first-child { border-top: 0; }
+  .line-label { color: var(--ink); font-weight: 500; }
+  .line-value { flex: none; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .line.total .line-label, .line.total .line-value { color: var(--black); font-weight: 650; }
+  .inline { display: flex; align-items: center; gap: 12px; }
+  .line .money-input { width: 96px; padding: 6px 9px; }
+
+  .switch { position: relative; flex: none; width: 36px; height: 20px; }
   .switch input { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
-  .switch span { position: absolute; inset: 0; border-radius: 99px; background: #d6ddd5; transition: background .15s ease; }
-  .switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform .15s ease; }
-  .switch input:checked + span { background: var(--accent); }
+  .switch input:disabled { cursor: default; }
+  .switch span { position: absolute; inset: 0; border-radius: 99px; background: #dcdbd6; transition: background .2s ease; }
+  .switch span::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .2s ease; }
+  .switch input:checked + span { background: var(--black); }
+  .switch input:disabled + span { opacity: .45; }
   .switch input:checked + span::after { transform: translateX(16px); }
-  .switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .lock { flex: none; padding: 5px 9px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); font-size: 10px; font-weight: 700; }
+  .switch input:focus-visible + span { outline: 2px solid var(--black); outline-offset: 2px; }
 
-  .action-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 0; border-bottom: 1px solid #f0f2ee; font-size: 12px; }
-  .action-row:first-child { padding-top: 0; }
-  .action-row:last-child { padding-bottom: 0; border-bottom: 0; }
-  .action-row small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
-  .action-buttons { display: flex; gap: 6px; }
-  .act { padding: 7px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: #4c574f; cursor: pointer; font-size: 11px; font-weight: 700; }
-  .act.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
-  .act:disabled { cursor: default; opacity: .55; }
+  .tag { padding: 3px 10px; border-radius: 99px; background: var(--track); color: var(--ink); font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .tag.red { background: var(--red-soft); color: var(--red); }
+  .tag.green { background: var(--green-soft); color: var(--green); }
+  .segmented { display: inline-flex; gap: 2px; margin-bottom: 8px; padding: 3px; border-radius: 8px; background: var(--track); }
+  .segmented button { padding: 6px 12px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; font-weight: 600; }
+  .segmented button[aria-pressed="true"] { background: var(--surface); color: var(--black); }
 
-  .split-bar { display: flex; height: 10px; overflow: hidden; border-radius: 99px; background: var(--track); }
-  .split-bar span { height: 100%; }
-  .split-bar span + span { border-left: 2px solid var(--surface); }
-  .split-status { margin: 8px 0 4px; color: var(--muted); font-size: 11px; }
-  .split-status.warn { color: var(--alert); }
-  .member { display: grid; grid-template-columns: 30px minmax(0, 1fr) 112px; align-items: center; gap: 4px 11px; padding: 12px 0; border-bottom: 1px solid #f0f2ee; }
-  .member:last-child { padding-bottom: 0; border-bottom: 0; }
-  .avatar { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 50%; background: #f2f4f0; font-size: 11px; font-weight: 700; }
-  .member-name { font-size: 12px; font-weight: 680; }
-  .member-role { margin-top: 2px; color: var(--muted); font-size: 11px; }
-  .member .money-input { width: 112px; padding: 7px 9px; font-size: 12px; }
-  .member-bar { grid-column: 2 / -1; }
-  .member-bar .bar { height: 6px; }
-  .member-bar .bar-caption { margin-top: 5px; font-size: 10px; }
-
-  .line { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f0f2ee; font-size: 12px; }
-  .line:first-child { padding-top: 0; }
-  .line:last-child { padding-bottom: 0; border-bottom: 0; }
-  .line small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
-  .line > span:last-child { flex: none; font-weight: 650; font-variant-numeric: tabular-nums; }
-  .line.total { font-weight: 730; }
-  .footnote { margin: 18px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal { animation: rise .6s cubic-bezier(.16, 1, .3, 1) both; animation-delay: calc(var(--i, 0) * 70ms); }
+    @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+  }
 
   /* Test chat (local server only) */
   .chat-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(280px, .75fr); align-items: start; gap: 16px; }
-  .chat-notice { margin: 0 0 14px; padding: 11px 13px; border: 1px solid var(--alert-line); border-radius: 12px; background: var(--alert-soft); color: var(--alert); font-size: 11px; line-height: 1.5; }
-  .chat-notice[hidden] { display: none; }
-  .chat-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 18px; border-bottom: 1px solid #eff1ed; }
+  .chat-card { padding: 0; overflow: hidden; }
+  .chat-notice { margin: 0 0 14px; padding: 12px 14px; border-radius: 8px; background: var(--red-soft); color: var(--red); font-size: 13px; }
+  .chat-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--line); }
   .pill-group { display: flex; flex-wrap: wrap; gap: 5px; }
-  .pill { padding: 6px 10px; border: 1px solid #dfe5df; border-radius: 99px; background: var(--surface); color: #59655d; cursor: pointer; font-size: 11px; font-weight: 650; }
-  .pill[aria-pressed="true"] { border-color: var(--green); background: var(--green-soft); color: var(--green); }
-  .pill[data-mode="direct"][aria-pressed="true"] { border-color: var(--blue); background: var(--blue-soft); color: var(--blue); }
-  .thread { display: flex; flex-direction: column; gap: 11px; height: 440px; overflow-y: auto; padding: 16px 18px; background: #fbfcfa; }
+  .chat-pill { padding: 5px 11px; border: 1px solid var(--line); border-radius: 99px; background: var(--surface); color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 600; }
+  .chat-pill[aria-pressed="true"] { border-color: var(--black); color: var(--black); }
+  .thread { display: flex; flex-direction: column; gap: 11px; height: 440px; overflow-y: auto; padding: 18px 20px; background: #fbfbfa; }
   .msg { max-width: 82%; }
   .msg.out { align-self: flex-end; text-align: right; }
   .msg.system { align-self: center; max-width: 92%; text-align: center; }
-  .msg-meta { margin-bottom: 4px; color: var(--muted); font-size: 10px; font-weight: 650; }
-  .msg-body { display: inline-block; padding: 9px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); font-size: 12px; line-height: 1.5; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .msg.out .msg-body { border-color: var(--green); background: var(--green); color: #fff; }
-  .msg.private .msg-body { border-color: #dfe3f3; background: var(--blue-soft); }
+  .msg-meta { margin-bottom: 4px; color: var(--muted); font-size: 11px; font-weight: 600; }
+  .msg-body { display: inline-block; padding: 9px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font-size: 13px; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.out .msg-body { border-color: var(--black); background: var(--black); color: #fff; }
+  .msg.private .msg-body { border-color: transparent; background: var(--blue-soft); color: var(--ink); }
   .msg.out.private .msg-body { border-color: var(--blue); background: var(--blue); color: #fff; }
-  .msg.system .msg-body { border-color: var(--alert-line); background: var(--alert-soft); color: var(--alert); font-size: 11px; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 18px 0; }
-  .chip { padding: 5px 9px; border: 1px dashed #cfd6cf; border-radius: 99px; background: transparent; color: #59655d; cursor: pointer; font-size: 10px; font-weight: 650; }
-  .chip:hover { border-color: var(--green); color: var(--green); }
-  .composer { display: flex; gap: 8px; padding: 11px 18px 16px; }
-  .composer input { flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid #dfe5df; border-radius: 10px; font-size: 12px; }
-  .composer button { padding: 0 16px; border: 0; border-radius: 10px; background: var(--green); color: #fff; cursor: pointer; font-size: 12px; font-weight: 700; }
-  .composer button:disabled, .chip:disabled { cursor: default; opacity: .5; }
-  .tag { margin-left: 6px; padding: 2px 6px; border-radius: 99px; background: var(--green-soft); color: var(--green); font-size: 9px; font-weight: 700; }
-  .tag.personal { background: var(--blue-soft); color: var(--blue); }
-  .tag.waiting { background: var(--alert-soft); color: var(--alert); }
-  .cart-preview { display: grid; }
-  .cart-line { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f0f2ee; font-size: 11px; }
-  .cart-line:last-child { border-bottom: 0; }
-  .cart-line span:last-child { font-weight: 650; }
-  .cart-line small { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; font-weight: 500; }
-  .cart-line.total-line { font-weight: 700; }
+  .msg.system .msg-body { border-color: transparent; background: var(--red-soft); color: var(--red); font-size: 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 20px 0; }
+  .chip { padding: 5px 10px; border: 1px dashed #d6d5d0; border-radius: 99px; background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 600; }
+  .composer { display: flex; gap: 8px; padding: 12px 20px 18px; }
+  .composer input { flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+  .chip:disabled, .composer button:disabled { cursor: default; opacity: .5; }
+  .cart-line { display: flex; justify-content: space-between; gap: 12px; min-height: 44px; align-items: center; border-top: 1px solid var(--line); font-size: 13px; }
+  .cart-line:first-child { border-top: 0; }
+  .cart-line small { display: block; color: var(--muted); font-size: 12px; }
+  .cart-line .tag { margin-left: 6px; font-size: 11px; }
+  .cart-line.total-line { font-weight: 650; }
 
-  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
   @media (max-width: 820px) {
     .shell { width: calc(100% - 32px); }
-    main { padding-top: 18px; }
-    .workspace { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+    main.app { padding-top: 20px; }
+    .workspace { grid-template-columns: minmax(0, 1fr); gap: 20px; }
     .sidebar { position: static; grid-template-columns: 1fr 1fr; }
     .settings-grid, .chat-grid { grid-template-columns: minmax(0, 1fr); }
-    .space-row { grid-template-columns: minmax(0, 1fr) auto 18px; gap: 12px; }
-    .row-bar { grid-column: 1 / -1; grid-row: 2; }
+    .space-row { grid-template-columns: minmax(0, 1fr) auto 12px; gap: 14px; }
+    .space-row .bar-slot { grid-column: 1 / -1; grid-row: 2; }
+    .card { padding: 20px; }
   }
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="logo" viewBox="0 0 28 28">
+    <rect width="28" height="28" rx="7" fill="currentColor"/>
+    <path d="M19.64 16.05A6 6 0 1 1 18.6 10.14" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M18.34 7.15L18.6 10.14L15.7 9.36" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="11.5" y="11.5" width="5" height="5" rx="1.2" fill="#fff"/>
+  </symbol>
+</svg>
+
 <header>
   <div class="shell topbar">
-    <div class="brand"><span class="brand-mark" aria-hidden="true">r</span>restock</div>
-    <button class="text-button" id="chat-tab" type="button" hidden>Test chat</button>
+    <div class="brand"><svg class="logo"><use href="#logo"/></svg>restock</div>
+    <div class="account" id="account" hidden>
+      <button class="link-button" id="chat-tab" type="button" hidden>Test chat</button>
+      <span id="account-name"></span>
+      <button class="link-button" id="logout" type="button">Log out</button>
+    </div>
   </div>
 </header>
 
-<main class="shell workspace">
-  <nav class="sidebar" aria-label="Personal or group chats">
-    <button class="side-item is-personal" id="nav-personal" type="button"><span class="side-dot" aria-hidden="true"></span><span><span class="side-name">Personal</span><span class="side-sub" id="sub-personal"></span></span></button>
-    <button class="side-item is-group" id="nav-groups" type="button"><span class="side-dot" aria-hidden="true"></span><span><span class="side-name">Group chats</span><span class="side-sub" id="sub-groups"></span></span></button>
+<main class="shell login" id="login-view">
+  <div class="login-card">
+    <svg class="logo"><use href="#logo"/></svg>
+    <h1>Log in</h1>
+    <form id="phone-form">
+      <label class="field">Phone number<input id="login-phone" type="tel" autocomplete="tel" required></label>
+      <button class="btn primary" type="submit">Text me a code</button>
+    </form>
+    <form id="code-form" hidden>
+      <label class="field">Code<input class="code" id="login-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label>
+      <button class="btn primary" type="submit">Log in</button>
+      <div class="login-actions"><button class="link-button" id="login-back" type="button">Change number</button><button class="link-button" id="login-resend" type="button">Send again</button></div>
+    </form>
+    <p class="error" id="login-error" hidden></p>
+  </div>
+</main>
+
+<main class="shell app workspace" id="app" hidden>
+  <nav class="sidebar" aria-label="Personal or groups">
+    <button class="side-item is-personal" id="nav-personal" type="button"><span class="side-dot" aria-hidden="true"></span>Personal</button>
+    <button class="side-item is-group" id="nav-groups" type="button"><span class="side-dot" aria-hidden="true"></span>Groups</button>
   </nav>
 
   <div class="content" id="content">
-    <section class="view" id="list-view">
-      <div class="head">
-        <p class="eyebrow" id="list-eyebrow">Group chats</p>
-        <h1 id="list-title">Your group chats</h1>
-        <p class="summary" id="list-summary"></p>
-      </div>
+    <section id="list-view">
+      <h1 id="list-title">Groups</h1>
       <div class="rows" id="rows"></div>
-      <div class="legend" aria-hidden="true"><span><i></i>Spent</span><span><i class="cart"></i>In cart, not ordered</span><span><i class="pace"></i>Where spending should be today</span></div>
-      <div class="row-add" id="row-add">
-        <button class="add-group" id="add-group" type="button">＋ Add a group chat</button>
+      <div id="row-add">
+        <button class="add-group" id="add-group" type="button">Add a group</button>
         <form class="add-group-form" id="add-group-form" hidden>
-          <input id="new-group-name" type="text" maxlength="40" placeholder="Group chat name, e.g. Soccer team" aria-label="New group chat name" required>
-          <button type="submit">Create</button><button id="cancel-group" type="button">Cancel</button>
+          <input id="new-group-name" type="text" maxlength="40" placeholder="Group name" aria-label="Group name" required>
+          <button class="btn primary" type="submit">Create</button><button class="btn" id="cancel-group" type="button">Cancel</button>
         </form>
       </div>
     </section>
 
-    <section class="intro" id="detail-intro" hidden>
-      <button class="back" id="back" type="button">← Group chats</button>
-      <div class="head">
-        <p class="eyebrow" id="view-eyebrow">Group chat settings</p>
-        <h1 id="view-title">Maple House</h1>
-        <p class="summary" id="view-copy"></p>
-      </div>
+    <section id="detail-intro" hidden>
+      <button class="back" id="back" type="button">← Groups</button>
+      <h1 id="view-title">Maple House</h1>
     </section>
 
-    <section class="view" id="group-view" hidden>
+    <section id="space-view" hidden>
       <div class="settings-grid">
         <div class="settings-column">
-          <section class="card" aria-labelledby="budget-heading">
-            <div class="card-heading"><div><h2 id="budget-heading">Monthly budget</h2><p id="budget-copy"></p></div></div>
-            <div class="card-body">
-              <div class="budget-top">
-                <div class="big" id="budget-left"></div>
-                <label class="field">Monthly limit<span class="money-input">$<input id="budget-input" type="number" min="0" step="10" aria-label="Monthly budget in dollars"></span></label>
-              </div>
-              <div id="budget-bar"></div>
-            </div>
+          <section class="card reveal" aria-labelledby="pay-heading">
+            <div class="card-head"><h2 id="pay-heading">Payments</h2></div>
+            <div id="pay-list"></div>
           </section>
-          <section class="card" aria-labelledby="rules-heading">
-            <div class="card-heading"><div><h2 id="rules-heading">Restock's rules</h2><p id="rules-copy"></p></div></div>
-            <div class="card-body">
-              <div class="rule">
-                <div><div class="rule-title">Add everyday supplies</div><div class="rule-text" id="routine-text"></div></div>
-                <label class="switch"><input id="routine-toggle" type="checkbox" aria-label="Let Restock add everyday supplies"><span></span></label>
-              </div>
-              <div class="rule">
-                <div>
-                  <div class="rule-title">Check before pricey items</div>
-                  <div class="rule-text" id="approval-text"></div>
-                  <label class="rule-amount" id="approval-amount">Over $<input id="approval-input" type="number" min="0" step="5" aria-label="Ask before items over this many dollars"></label>
-                </div>
-                <label class="switch"><input id="approval-toggle" type="checkbox" aria-label="Ask before pricey items"><span></span></label>
-              </div>
-              <div class="rule">
-                <div><div class="rule-title">Never order without a yes</div><div class="rule-text" id="order-text"></div></div>
-                <span class="lock">Always on</span>
-              </div>
+          <section class="card reveal" style="--i:1" aria-labelledby="budget-heading">
+            <div class="card-head">
+              <h2 id="budget-heading">Monthly budget</h2>
+              <label class="switch"><input id="budget-toggle" type="checkbox" aria-label="Use a monthly budget"><span></span></label>
             </div>
-          </section>
-          <section class="card" id="approvers-card" aria-labelledby="approvers-heading">
-            <div class="card-heading"><div><h2 id="approvers-heading">Who can approve</h2><p>When someone asks for something, Restock texts back the best match. Approvers add it to the cart by replying “yes”. Everyone else's requests wait for them.</p></div></div>
-            <div class="card-body">
-              <div class="pill-group" id="approval-presets" role="group" aria-label="Who can approve">
-                <button class="pill" type="button" data-preset="everyone" aria-pressed="false">Roommates · everyone approves</button>
-                <button class="pill" type="button" data-preset="chosen" aria-pressed="false">Family · only people I pick</button>
-              </div>
-              <div id="approver-list" style="margin-top:14px"></div>
-            </div>
+            <div class="budget-body" id="budget-body"></div>
           </section>
         </div>
         <div class="settings-column">
-          <section class="card" id="members-card" aria-labelledby="members-heading">
-            <div class="card-heading"><div><h2 id="members-heading">Paying back</h2><p id="payback-copy"></p></div></div>
-            <div class="card-body" id="payback-list"></div>
+          <section class="card reveal" style="--i:2" aria-labelledby="rules-heading">
+            <div class="card-head"><h2 id="rules-heading">Rules</h2></div>
+            <div class="line">
+              <span class="line-label">Add everyday supplies</span>
+              <label class="switch"><input id="routine-toggle" type="checkbox" aria-label="Add everyday supplies"><span></span></label>
+            </div>
+            <div class="line">
+              <span class="line-label">Ask first over</span>
+              <span class="inline">
+                <label class="money-input" id="approval-amount">$<input id="approval-input" type="number" min="0" step="5" aria-label="Ask first over this many dollars"></label>
+                <label class="switch"><input id="approval-toggle" type="checkbox" aria-label="Ask first over a price"><span></span></label>
+              </span>
+            </div>
+            <div class="line">
+              <span class="line-label">Order only after “order now”</span>
+              <span class="tag">Always on</span>
+            </div>
           </section>
-          <section class="card" aria-labelledby="cart-heading">
-            <div class="card-heading"><div><h2 id="cart-heading">Cart</h2><p id="cart-copy"></p></div></div>
-            <div class="card-body" id="cart-body"></div>
+          <section class="card reveal" style="--i:3" id="approvers-card" aria-labelledby="approvers-heading">
+            <div class="card-head"><h2 id="approvers-heading">Who can approve</h2></div>
+            <div class="segmented" id="approval-presets" role="group" aria-label="Who can approve">
+              <button type="button" data-preset="everyone" aria-pressed="false">Everyone</button>
+              <button type="button" data-preset="chosen" aria-pressed="false">Only who I pick</button>
+            </div>
+            <div id="approver-list"></div>
+          </section>
+          <section class="card reveal" style="--i:4" aria-labelledby="cart-heading">
+            <div class="card-head"><h2 id="cart-heading">Cart</h2></div>
+            <div id="cart-body"></div>
           </section>
         </div>
       </div>
     </section>
 
-    <section class="view" id="chat-view" hidden>
+    <section id="chat-view" hidden>
       <p class="chat-notice" id="chat-notice" hidden></p>
       <div class="chat-grid">
-        <section class="card" aria-labelledby="thread-heading">
-          <div class="card-heading"><div><h2 id="thread-heading">Synthetic group chat</h2><p>Text as any demo member. Replies come from the real Restock pipeline, and nothing is sent to a phone.</p></div><button class="text-button" id="chat-reset" type="button">Reset demo</button></div>
+        <section class="card chat-card" aria-label="Test chat">
           <div class="chat-controls">
             <div class="pill-group" id="sender-pills" role="group" aria-label="Send as"></div>
             <div class="pill-group" id="mode-pills" role="group" aria-label="Where to send">
-              <button class="pill" type="button" data-mode="group" aria-pressed="true">Group chat</button>
-              <button class="pill" type="button" data-mode="direct" aria-pressed="false">Private DM</button>
+              <button class="chat-pill" type="button" data-mode="group" aria-pressed="true">Group</button>
+              <button class="chat-pill" type="button" data-mode="direct" aria-pressed="false">Private</button>
+              <button class="chat-pill" id="chat-reset" type="button">Reset</button>
             </div>
           </div>
           <div class="thread" id="thread" aria-live="polite"></div>
           <div class="chips" id="chips"></div>
-          <form class="composer" id="composer"><input id="chat-input" type="text" maxlength="500" autocomplete="off" aria-label="Message"><button id="chat-send" type="submit">Send</button></form>
+          <form class="composer" id="composer"><input id="chat-input" type="text" maxlength="500" autocomplete="off" aria-label="Message"><button class="btn primary" id="chat-send" type="submit">Send</button></form>
         </section>
         <div class="settings-column">
           <section class="card" aria-labelledby="live-cart-heading">
-            <div class="card-heading"><div><h2 id="live-cart-heading">Live cart</h2><p>Pending items in the demo household, updated after every message.</p></div></div>
-            <div class="card-body cart-preview" id="live-cart"></div>
+            <div class="card-head"><h2 id="live-cart-heading">Cart</h2></div>
+            <div id="live-cart"></div>
           </section>
           <section class="card" aria-labelledby="live-split-heading">
-            <div class="card-heading"><div><h2 id="live-split-heading">If someone orders now</h2><p>Smart split: shared items split evenly, personal items go to whoever added them.</p></div></div>
-            <div class="card-body cart-preview" id="live-split"></div>
+            <div class="card-head"><h2 id="live-split-heading">If ordered now</h2></div>
+            <div id="live-split"></div>
           </section>
         </div>
       </div>
     </section>
-    <p class="footnote" id="footnote"><strong>Concept preview:</strong> Budgets, carts and balances are demo data saved only in this page. It is not connected to live chats or payments yet.</p>
   </div>
 </main>
 <script>
-  // All money is integer cents, like the rest of Restock.
+  // Demo data. All money is integer cents, like the rest of Restock. budget: null = no monthly limit.
   const personal = {
-    id: "personal", name: "Personal", icon: "↗", budget: 8000, spent: 1847, threshold: 3000, askFirst: true, routine: true,
-    members: [], paidBack: [], debts: [],
-    cart: [{ name: "Oat milk", cents: 549, by: "You" }, { name: "Shampoo", cents: 899, by: "You" }],
+    id: "personal", name: "Personal", budget: null, spent: 1847, threshold: 3000, askFirst: true, routine: true,
+    card: null, members: [], debts: [],
+    cart: [{ name: "Oat milk", cents: 549 }, { name: "Shampoo", cents: 899 }],
   };
   const groups = [
     {
-      id: "maple", name: "Maple House", icon: "⌂", budget: 20000, spent: 5952, threshold: 2500, askFirst: true, routine: true,
-      members: [{ name: "Sam", role: "Budget owner", card: "4242", canApprove: true }, { name: "Jake", role: "Member", card: "1881", canApprove: true }, { name: "Priya", role: "Member", card: null, canApprove: true }],
-      cart: [{ name: "Toilet paper, 12 rolls", cents: 1199, by: "Priya" }, { name: "Dish soap, 3 pack", cents: 849, by: "Jake" }],
-      paidBack: [{ from: "Jake", cents: 1984 }],
+      id: "maple", name: "Maple House", budget: 20000, spent: 5952, threshold: 2500, askFirst: true, routine: true,
+      members: [{ name: "Sam", role: "owner", card: "4242", canApprove: true }, { name: "Jake", card: "1881", canApprove: true }, { name: "Priya", card: null, canApprove: true }],
+      cart: [{ name: "Toilet paper, 12 rolls", cents: 1199 }, { name: "Dish soap, 3 pack", cents: 849 }],
       debts: [{ from: "Priya", cents: 1015 }],
     },
     {
-      id: "family", name: "Garcia Family", icon: "♥", budget: 40000, spent: 21000, threshold: 5000, askFirst: true, routine: true,
-      members: [{ name: "Mom", role: "Budget owner", card: "0005", canApprove: true }, { name: "Dad", role: "Member", card: "3220", canApprove: true }, { name: "Maya", role: "Kid", card: null, canApprove: false }, { name: "Leo", role: "Kid", card: null, canApprove: false }],
-      cart: [{ name: "Laundry detergent, 64 loads", cents: 1499, by: "Mom" }, { name: "Eggs, 18 ct", cents: 549, by: "Dad" }],
-      paidBack: [{ from: "Dad", cents: 10500 }],
+      id: "family", name: "Garcia Family", budget: null, spent: 21000, threshold: 5000, askFirst: true, routine: true,
+      members: [{ name: "Mom", role: "owner", card: null, canApprove: true }, { name: "Dad", card: "3220", canApprove: true }, { name: "Maya", kid: true, canApprove: false }, { name: "Leo", kid: true, canApprove: false }],
+      cart: [{ name: "Laundry detergent, 64 loads", cents: 1499 }, { name: "Eggs, 18 ct", cents: 549 }],
       debts: [],
     },
     {
-      id: "soccer", name: "Soccer Team", icon: "⚽", budget: 12000, spent: 9100, threshold: 4000, askFirst: true, routine: true,
-      members: [{ name: "Alex", role: "Budget owner", card: "4444", canApprove: true }, { name: "You", role: "Member", card: "1117", canApprove: true }, { name: "Jordan", role: "Member", card: null, canApprove: false }, { name: "Taylor", role: "Member", card: "0077", canApprove: false }],
-      cart: [{ name: "Sports drinks", cents: 1400, by: "Jordan" }, { name: "First-aid tape", cents: 2000, by: "Alex" }],
-      paidBack: [{ from: "You", cents: 2275 }, { from: "Taylor", cents: 2275 }],
-      debts: [{ from: "Jordan", cents: 2275 }],
+      id: "soccer", name: "Soccer Team", budget: 12000, spent: 12850, threshold: 4000, askFirst: true, routine: true,
+      members: [{ name: "Alex", role: "owner", card: "4444", canApprove: true }, { name: "You", card: "1117", canApprove: true }, { name: "Jordan", card: null, canApprove: false }, { name: "Taylor", card: "0077", canApprove: false }],
+      cart: [{ name: "Sports drinks", cents: 1400 }, { name: "First-aid tape", cents: 2000 }],
+      debts: [{ from: "Jordan", cents: 3212 }],
     },
   ];
-  const isOwner = (member) => member.role === "Budget owner";
-  const canApprove = (member) => isOwner(member) || member.canApprove === true;
-  const everyoneApproves = (group) => group.members.every(canApprove);
-  // "Sam", "Sam or Jake", "Sam, Jake or Priya": the same wording Restock uses in the chat.
-  function approverNames(group, except) {
-    const names = group.members.filter((m) => canApprove(m) && m.name !== except).map((m) => m.name);
-    if (names.length <= 1) return names[0] ?? "the budget owner";
-    return `${names.slice(0, -1).join(", ")} or ${names.at(-1)}`;
-  }
 
   const $ = (selector) => document.querySelector(selector);
   const make = (tag, className, text) => {
@@ -410,241 +364,187 @@
   const formatCents = (cents) => `$${(cents / 100).toFixed(2)}`;
   const toCents = (value) => Math.max(0, Math.round((Number(value) || 0) * 100));
   const sum = (list, pick) => list.reduce((total, x) => total + pick(x), 0);
-
-  const today = new Date();
-  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-  const dayOfMonth = today.getDate();
-
-  function numbers(space) {
-    const cart = sum(space.cart, (i) => i.cents);
-    const pace = Math.round(space.budget * dayOfMonth / daysInMonth);
-    const projected = Math.round(space.spent * daysInMonth / dayOfMonth);
-    return { cart, pace, projected, left: space.budget - space.spent, afterCart: space.budget - space.spent - cart };
+  const isOwner = (member) => member.role === "owner";
+  const canApprove = (member) => isOwner(member) || member.canApprove === true;
+  const hasBudget = (space) => space.budget !== null;
+  const isOver = (space) => hasBudget(space) && space.spent > space.budget;
+  function amountText(space) {
+    if (!hasBudget(space)) return `${dollars(space.spent)} spent`;
+    const left = space.budget - space.spent;
+    return left < 0 ? `${dollars(-left)} over` : `${dollars(left)} left`;
   }
 
-  // One status per space: over budget, then over pace, then on track.
-  function status(space) {
-    if (space.spent > space.budget) return { rank: 0, alert: true, label: "Over budget" };
-    if (numbers(space).projected > space.budget) return { rank: 1, alert: true, label: "Over pace" };
-    return { rank: 2, alert: false, label: "On track" };
-  }
-
-  function paceText(space) {
-    const n = numbers(space);
-    if (space.spent > space.budget) return { text: `${dollars(space.spent - space.budget)} over budget`, alert: true };
-    if (n.projected > space.budget) return { text: `on pace to go over by about ${dollars(n.projected - space.budget)}`, alert: true };
-    return { text: `${dollars(n.pace - space.spent)} under pace`, alert: false };
-  }
-
-  function budgetBar(space, { caption = true } = {}) {
-    const n = numbers(space);
-    const scale = Math.max(space.budget, space.spent + n.cart) || 1;
-    const wrap = make("span", "row-bar");
-    wrap.style.display = "block";
-    const bar = make("span", `bar${space.spent > space.budget ? " over" : ""}`);
+  function budgetBar(space) {
+    const bar = make("span", `bar${isOver(space) ? " is-over" : ""}`);
     bar.setAttribute("role", "img");
-    bar.setAttribute("aria-label", `${dollars(space.spent)} spent of ${dollars(space.budget)}, ${dollars(n.cart)} in cart`);
-    const fill = make("span", "bar-fill");
-    fill.style.width = `${Math.min(100, (space.spent + n.cart) / scale * 100)}%`;
-    const spent = make("span", "bar-spent");
-    const cart = make("span", "bar-cart");
-    const total = space.spent + n.cart || 1;
-    spent.style.width = `${space.spent / total * 100}%`;
-    cart.style.width = `${n.cart / total * 100}%`;
-    fill.append(spent, cart);
-    const tick = make("span", "bar-pace");
-    tick.style.left = `${Math.min(100, n.pace / scale * 100)}%`;
-    bar.append(fill, tick);
-    wrap.append(bar);
-    if (caption) {
-      const p = paceText(space);
-      const line = make("span", "bar-caption", `${dollars(space.spent)} of ${dollars(space.budget)} used · `);
-      line.append(make("span", p.alert ? "alert" : null, p.text));
-      wrap.append(line);
-    }
-    return wrap;
+    bar.setAttribute("aria-label", `${dollars(space.spent)} of ${dollars(space.budget)} spent`);
+    const fill = make("span");
+    fill.style.width = `${space.budget ? Math.min(100, space.spent / space.budget * 100) : 100}%`;
+    bar.append(fill);
+    return bar;
   }
 
-  // ---------- List (sidebar side + one bar per space) ----------
+  // ---------- Login ----------
+  // Fake for now: any phone number and any 6-digit code logs you in. Nothing is sent or checked.
+  // TODO: swap for the texted-code login the pay-back site uses (payments/payback.ts).
+  function loginError(message) {
+    $("#login-error").textContent = message || "";
+    $("#login-error").hidden = !message;
+  }
+
+  function enterApp(name) {
+    $("#login-view").hidden = true;
+    $("#app").hidden = false;
+    $("#account").hidden = false;
+    $("#account-name").textContent = name;
+    showList("group");
+  }
+
+  function sendCode() {
+    loginError("");
+    $("#phone-form").hidden = true;
+    $("#code-form").hidden = false;
+    $("#login-code").value = "";
+    $("#login-code").focus();
+  }
+
+  $("#phone-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    if ($("#login-phone").value.replace(/\D/g, "").length < 10) return loginError("Enter a 10-digit phone number.");
+    sendCode();
+  });
+  $("#code-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!/^\d{6}$/.test($("#login-code").value.trim())) return loginError("Enter the 6-digit code.");
+    enterApp("Sam");
+  });
+  $("#login-back").addEventListener("click", () => {
+    $("#code-form").hidden = true;
+    $("#phone-form").hidden = false;
+    loginError("");
+  });
+  $("#login-resend").addEventListener("click", sendCode);
+  $("#logout").addEventListener("click", () => location.reload());
+
+  // ---------- List ----------
   let listKind = "group";
   let selectedId = null;
   const content = $("#content");
-  const listView = $("#list-view");
-  const detailIntro = $("#detail-intro");
-  const groupView = $("#group-view");
-  const chatView = $("#chat-view");
-  const chatTab = $("#chat-tab");
-  const footnote = $("#footnote");
   const navPersonal = $("#nav-personal");
   const navGroups = $("#nav-groups");
+  const chatTab = $("#chat-tab");
   const spaceById = (id) => (id === "personal" ? personal : groups.find((g) => g.id === id));
   const sideOf = (space) => (space === personal ? "personal" : "group");
 
-  function renderSidebar(current) {
-    navPersonal.setAttribute("aria-current", current === "personal" ? "page" : "false");
-    navGroups.setAttribute("aria-current", current === "group" ? "page" : "false");
-    const p = status(personal);
-    const subP = $("#sub-personal");
-    subP.textContent = p.alert ? p.label : `${dollars(numbers(personal).left)} left`;
-    subP.className = `side-sub${p.alert ? " alert" : ""}`;
-    const flagged = groups.filter((g) => status(g).alert).length;
-    const subG = $("#sub-groups");
-    subG.textContent = flagged ? `${flagged} of ${groups.length} over pace` : `${groups.length} chat${groups.length === 1 ? "" : "s"} · all on track`;
-    subG.className = `side-sub${flagged ? " alert" : ""}`;
-  }
-
-  function renderSummary(spaces) {
-    const el = $("#list-summary");
-    el.replaceChildren();
-    const budget = sum(spaces, (s) => s.budget);
-    const left = sum(spaces, (s) => s.budget - s.spent);
-    const flagged = spaces.filter((s) => status(s).alert).length;
-    const lead = listKind === "personal" ? "" : `${spaces.length} group chat${spaces.length === 1 ? "" : "s"} · `;
-    el.append(lead);
-    el.append(make("strong", null, `${dollars(left)} left`));
-    el.append(` of ${dollars(budget)} this month · day ${dayOfMonth} of ${daysInMonth}`);
-    if (flagged) {
-      el.append(" · ");
-      el.append(make("span", "alert", listKind === "personal" ? status(personal).label : `${flagged} over pace`));
-    }
+  function markNav(kind) {
+    navPersonal.setAttribute("aria-current", kind === "personal" ? "page" : "false");
+    navGroups.setAttribute("aria-current", kind === "group" ? "page" : "false");
   }
 
   function renderRows() {
-    const spaces = listKind === "personal" ? [personal] : [...groups].sort((a, b) => status(a).rank - status(b).rank);
-    renderSummary(spaces);
-
     const rows = $("#rows");
     rows.replaceChildren();
-    for (const space of spaces) {
-      const isPersonal = space === personal;
-      const st = status(space);
-      const n = numbers(space);
-      const row = make("button", `space-row ${isPersonal ? "is-personal" : "is-group"}${st.alert ? " flagged" : ""}`);
+    (listKind === "personal" ? [personal] : groups).forEach((space, i) => {
+      const row = make("button", `space-row reveal ${space === personal ? "is-personal" : "is-group"}`);
+      row.style.setProperty("--i", i);
       row.type = "button";
-      row.setAttribute("aria-label", `${space.name}: ${st.label}, ${dollars(n.left)} left. Open settings.`);
+      row.setAttribute("aria-label", `${space.name}, ${amountText(space)}`);
       row.addEventListener("click", () => openSpace(space.id));
-
       const name = make("span", "row-name");
-      const icon = make("span", "row-icon", space.icon);
-      icon.setAttribute("aria-hidden", "true");
-      const text = make("span", "row-text");
-      const title = make("span", "row-title");
-      title.append(make("b", null, space.name), make("span", `status${st.alert ? " alert" : ""}`, st.label));
-      text.append(title, make("span", "row-sub", isPersonal ? "Just you" : `${space.members.length} people · ${space.members.map((m) => m.name).join(", ")}`));
-      name.append(icon, text);
-
-      const left = make("span", `row-left${n.left < 0 ? " alert" : ""}`, n.left < 0 ? `-${dollars(-n.left)}` : dollars(n.left));
-      left.append(make("small", null, n.cart ? `left · ${n.afterCart < 0 ? `-${dollars(-n.afterCart)}` : dollars(n.afterCart)} after cart` : "left"));
+      const mono = make("span", "mono", space.name.slice(0, 1));
+      mono.setAttribute("aria-hidden", "true");
+      name.append(mono, make("b", null, space.name));
+      const slot = make("span", "bar-slot");
+      if (hasBudget(space)) slot.append(budgetBar(space));
+      const amount = make("span", `row-amount${isOver(space) ? " over" : ""}`, amountText(space));
       const chevron = make("span", "chevron", "›");
       chevron.setAttribute("aria-hidden", "true");
-      row.append(name, budgetBar(space), left, chevron);
+      row.append(name, slot, amount, chevron);
       rows.append(row);
-    }
+    });
+  }
+
+  function show(view) {
+    $("#list-view").hidden = view !== "list";
+    $("#detail-intro").hidden = view === "list";
+    $("#space-view").hidden = view !== "space";
+    $("#chat-view").hidden = view !== "chat";
+    window.scrollTo(0, 0);
   }
 
   function showList(kind) {
     listKind = kind;
     selectedId = null;
     content.className = `content ${kind === "personal" ? "is-personal" : "is-group"}`;
-    renderSidebar(kind);
-    listView.hidden = false;
-    detailIntro.hidden = true;
-    groupView.hidden = true;
-    chatView.hidden = true;
-    footnote.hidden = false;
+    markNav(kind);
+    $("#list-title").textContent = kind === "personal" ? "Personal" : "Groups";
     $("#row-add").hidden = kind === "personal";
-    $("#list-eyebrow").textContent = kind === "personal" ? "Personal" : "Group chats";
-    $("#list-title").textContent = kind === "personal" ? "Just you" : "Your group chats";
     renderRows();
-    window.scrollTo(0, 0);
+    show("list");
   }
 
-  // ---------- Settings for one space ----------
-  const budgetInput = $("#budget-input");
+  // ---------- One space ----------
   const approvalInput = $("#approval-input");
   const approvalToggle = $("#approval-toggle");
   const routineToggle = $("#routine-toggle");
+  const budgetToggle = $("#budget-toggle");
 
   function renderBudget(space) {
-    const n = numbers(space);
-    const big = $("#budget-left");
-    big.className = `big${n.left < 0 ? " alert" : ""}`;
-    big.replaceChildren(n.left < 0 ? `-${dollars(-n.left)}` : dollars(n.left));
-    big.append(make("small", null, n.cart ? `left · ${dollars(n.afterCart)} after the cart` : "left this month"));
-    $("#budget-bar").replaceChildren(budgetBar(space));
-    if (document.activeElement !== budgetInput) budgetInput.value = space.budget / 100;
-  }
-
-  // The owner's card pays for every order. Everyone else pays their share back to the owner:
-  // automatically from their card on file, or on the pay-back site (/pay) if they haven't added one.
-  function renderPaybacks(group) {
-    const owner = group.members.find(isOwner);
-    const ownerName = owner?.name ?? "the owner";
-    $("#payback-copy").textContent = `${ownerName}'s card${owner?.card ? ` (ending ${owner.card})` : ""} pays for this group's orders. Everyone else pays their share back to ${ownerName}, automatically if they have a card on file. Anyone without one gets a link to the pay-back site.`;
-    const list = $("#payback-list");
-    list.replaceChildren();
-    for (const member of group.members) {
-      if (member === owner) continue;
-      const row = make("div", "action-row");
-      const text = make("div", null, member.name);
-      const owed = sum(group.debts.filter((d) => d.from === member.name), (d) => d.cents);
-      const paid = sum(group.paidBack.filter((d) => d.from === member.name), (d) => d.cents);
-      let note, pill, alert = false;
-      if (member.role === "Kid") {
-        note = `Covered by ${ownerName}. Kids don't pay back.`;
-        pill = "Covered";
-      } else if (owed > 0) {
-        note = `No card on file yet, so ${ownerName}'s card covered it. The pay-back link was texted to ${member.name}.`;
-        pill = `Owes ${formatCents(owed)}`;
-        alert = true;
-      } else if (member.card) {
-        note = `Card ending ${member.card} pays ${ownerName} back automatically.${paid ? ` ${formatCents(paid)} paid back this month.` : ""}`;
-        pill = "Automatic";
-      } else {
-        note = "No card on file yet. They'll get a pay-back link after their next order.";
-        pill = "No card";
-        alert = true;
-      }
-      text.append(make("small", null, note));
-      row.append(text, make("span", `status${alert ? " alert" : ""}`, pill));
-      list.append(row);
+    budgetToggle.checked = hasBudget(space);
+    const body = $("#budget-body");
+    body.replaceChildren();
+    if (!hasBudget(space)) {
+      const big = make("div", "big", dollars(space.spent));
+      big.append(make("small", null, "spent this month"));
+      body.append(big);
+      return;
     }
+    const line = make("div", "budget-line");
+    const big = make("div", `big${isOver(space) ? " over" : ""}`, amountText(space));
+    big.append(make("small", null, `of ${dollars(space.budget)}`));
+    const box = make("label", "money-input", "$");
+    const input = make("input");
+    input.id = "budget-input";
+    input.type = "number";
+    input.min = "0";
+    input.step = "10";
+    input.value = space.budget / 100;
+    input.setAttribute("aria-label", "Monthly budget in dollars");
+    input.addEventListener("input", () => {
+      space.budget = toCents(input.value);
+      big.replaceChildren(amountText(space), make("small", null, `of ${dollars(space.budget)}`));
+      big.className = `big${isOver(space) ? " over" : ""}`;
+      body.lastChild.replaceWith(budgetBar(space));
+    });
+    box.append(input);
+    line.append(big, box);
+    body.append(line, budgetBar(space));
   }
 
   function renderRules(space) {
-    const isPersonal = space === personal;
-    const owner = space.members.find((m) => m.role === "Budget owner")?.name ?? "the budget owner";
     routineToggle.checked = space.routine;
     approvalToggle.checked = space.askFirst;
     approvalInput.value = space.threshold / 100;
-    $("#approval-amount").hidden = !space.askFirst;
-    $("#rules-copy").textContent = isPersonal ? "What Restock can do in your one-on-one chat without asking." : `What Restock can do in ${space.name} without asking.`;
-    $("#routine-text").textContent = isPersonal
-      ? "When you say you're out of something common, like shampoo or coffee, Restock adds it to your cart and texts you."
-      : "When someone says you're out of something common, like paper towels or dish soap, Restock adds it to the cart and says so in the chat.";
-    $("#approval-text").textContent = !space.askFirst ? "Off. Approvers can add items at any price."
-      : isPersonal ? "Restock checks with you before adding anything over this price."
-      : `Anything over this price needs a second person's yes, even when an approver asked for it. ${owner} can always approve.`;
-    $("#order-text").textContent = isPersonal ? "Nothing is bought until you text “order now”." : "Nothing is bought until someone in the chat texts “order now”.";
+    $("#approval-amount").style.visibility = space.askFirst ? "visible" : "hidden";
+  }
+
+  function line(label, right) {
+    const row = make("div", "line");
+    row.append(make("span", "line-label", label), right);
+    return row;
   }
 
   function renderApprovers(group) {
-    const everyone = everyoneApproves(group);
-    for (const pill of document.querySelectorAll("#approval-presets .pill")) {
-      pill.setAttribute("aria-pressed", String(pill.dataset.preset === (everyone ? "everyone" : "chosen")));
+    const everyone = group.members.every(canApprove);
+    for (const b of document.querySelectorAll("#approval-presets button")) {
+      b.setAttribute("aria-pressed", String(b.dataset.preset === (everyone ? "everyone" : "chosen")));
     }
     const list = $("#approver-list");
     list.replaceChildren();
-    group.members.forEach((member, index) => {
-      const row = make("div", "rule");
-      const text = make("div");
-      text.append(make("div", "rule-title", member.name));
-      text.append(make("div", "rule-text", isOwner(member) ? "Budget owner · can always approve"
-        : canApprove(member) ? `${member.role} · approves by texting “yes”` : `${member.role} · requests wait for ${approverNames(group, member.name)}`));
-      const label = make("label", "switch");
+    for (const member of group.members) {
+      const sw = make("label", "switch");
       const input = make("input");
       input.type = "checkbox";
-      input.id = `approver-${index}`;
       input.checked = canApprove(member);
       input.disabled = isOwner(member);
       input.setAttribute("aria-label", `${member.name} can approve`);
@@ -652,89 +552,93 @@
         member.canApprove = input.checked;
         renderApprovers(group);
       });
-      label.append(input, make("span"));
-      row.append(text, label);
-      list.append(row);
-    });
+      sw.append(input, make("span"));
+      list.append(line(member.name, sw));
+    }
   }
-  for (const pill of document.querySelectorAll("#approval-presets .pill")) {
-    pill.addEventListener("click", () => {
+  for (const b of document.querySelectorAll("#approval-presets button")) {
+    b.addEventListener("click", () => {
       const group = spaceById(selectedId);
-      for (const member of group.members) if (!isOwner(member)) member.canApprove = pill.dataset.preset === "everyone";
+      for (const member of group.members) if (!isOwner(member)) member.canApprove = b.dataset.preset === "everyone";
       renderApprovers(group);
     });
   }
 
-  function renderCart(space) {
+  // Fake for now, like the login. TODO: open the member's Stripe add-card page (createCardSetupLink).
+  function setUpCard(holder, rerender) {
+    holder.card = "4242";
+    rerender();
+  }
+
+  // The main card pays for every order. Everyone else pays it back: automatically from a card
+  // on file, or on the pay-back site.
+  function renderPayments(space) {
+    const list = $("#pay-list");
+    list.replaceChildren();
     const isPersonal = space === personal;
-    const n = numbers(space);
-    $("#cart-copy").textContent = isPersonal ? "Waiting for your next order. Only you see this." : "Waiting for this group's next order.";
+    const holder = isPersonal ? space : space.members.find(isOwner);
+    const label = isPersonal ? "Your card" : `Main card · ${holder.name}`;
+    if (holder.card) {
+      list.append(line(label, make("span", "line-value", `Visa ${holder.card}`)));
+    } else {
+      const button = make("button", "btn primary", isPersonal ? "Set up card" : "Set up main card");
+      button.type = "button";
+      button.addEventListener("click", () => setUpCard(holder, () => renderPayments(space)));
+      list.append(line(label, button));
+    }
+    if (isPersonal) return;
+    for (const member of space.members) {
+      if (isOwner(member)) continue;
+      const owed = sum(space.debts.filter((d) => d.from === member.name), (d) => d.cents);
+      const [text, kind] = member.kid ? ["Covered", ""]
+        : owed > 0 ? [`Owes ${formatCents(owed)}`, "red"]
+        : member.card ? [`Auto · ${member.card}`, "green"]
+        : ["No card", "red"];
+      list.append(line(member.name, make("span", `tag ${kind}`, text)));
+    }
+  }
+
+  function renderCart(space) {
     const body = $("#cart-body");
     body.replaceChildren();
-    if (space.cart.length === 0) {
-      body.append(make("div", "line", isPersonal ? "Empty. Text Restock what you need." : "Empty. Anyone in the chat can text Restock what you need."));
-      return;
-    }
-    for (const item of space.cart) {
-      const line = make("div", "line");
-      const label = make("span", null, item.name);
-      if (!isPersonal) label.append(make("small", null, `added by ${item.by}`));
-      line.append(label, make("span", null, formatCents(item.cents)));
-      body.append(line);
-    }
-    const total = make("div", "line total");
-    const label = make("span", null, "Total");
-    label.append(make("small", null, `Budget left after this order: ${formatCents(n.afterCart)}`));
-    total.append(label, make("span", null, formatCents(n.cart)));
+    if (space.cart.length === 0) return void body.append(line("Empty", make("span")));
+    for (const item of space.cart) body.append(line(item.name, make("span", "line-value", formatCents(item.cents))));
+    const total = line("Total", make("span", "line-value", formatCents(sum(space.cart, (i) => i.cents))));
+    total.classList.add("total");
     body.append(total);
   }
 
   function renderSpace() {
     const space = spaceById(selectedId);
     const isPersonal = space === personal;
-    const st = status(space);
     $("#view-title").textContent = space.name;
-    const copy = $("#view-copy");
-    copy.replaceChildren();
-    copy.append(isPersonal ? "Just you · " : `${space.members.length} people · `);
-    copy.append(make("span", st.alert ? "alert" : null, st.label));
-    copy.append(` · day ${dayOfMonth} of ${daysInMonth}`);
-    $("#members-card").hidden = isPersonal;
     $("#approvers-card").hidden = isPersonal;
-    if (!isPersonal) renderApprovers(space);
-    $("#budget-copy").textContent = isPersonal ? "The most you can spend on your own things through Restock each month." : "The most this group can spend through Restock each month.";
+    renderPayments(space);
     renderBudget(space);
     renderRules(space);
-    if (!isPersonal) renderPaybacks(space);
+    if (!isPersonal) renderApprovers(space);
     renderCart(space);
-    renderSidebar(sideOf(space));
   }
 
   function openSpace(id) {
     selectedId = id;
-    const space = spaceById(id);
-    const side = sideOf(space);
+    const side = sideOf(spaceById(id));
     listKind = side;
     content.className = `content ${side === "personal" ? "is-personal" : "is-group"}`;
-    $("#back").textContent = side === "personal" ? "← Personal" : "← Group chats";
-    $("#view-eyebrow").textContent = side === "personal" ? "Personal settings" : "Group chat settings";
-    listView.hidden = true;
-    detailIntro.hidden = false;
-    groupView.hidden = false;
-    chatView.hidden = true;
-    footnote.hidden = false;
+    markNav(side);
+    $("#back").textContent = side === "personal" ? "← Personal" : "← Groups";
     renderSpace();
-    window.scrollTo(0, 0);
+    show("space");
   }
 
   navPersonal.addEventListener("click", () => showList("personal"));
   navGroups.addEventListener("click", () => showList("group"));
   $("#back").addEventListener("click", () => showList(listKind));
-  budgetInput.addEventListener("input", () => {
+  budgetToggle.addEventListener("change", () => {
     const space = spaceById(selectedId);
-    space.budget = toCents(budgetInput.value);
+    if (!budgetToggle.checked) space.lastBudget = space.budget;
+    space.budget = budgetToggle.checked ? (space.lastBudget ?? 20000) : null;
     renderBudget(space);
-    renderSidebar(sideOf(space));
   });
   approvalInput.addEventListener("input", () => { spaceById(selectedId).threshold = toCents(approvalInput.value); });
   approvalToggle.addEventListener("change", () => {
@@ -760,7 +664,7 @@
     event.preventDefault();
     const name = newGroupName.value.trim();
     if (!name) return newGroupName.focus();
-    const group = { id: `group-${Date.now()}`, name, icon: "✳", budget: 10000, spent: 0, threshold: 2500, askFirst: true, routine: true, members: [{ name: "You", role: "Budget owner", card: null, canApprove: true }], cart: [], paidBack: [], debts: [] };
+    const group = { id: `group-${Date.now()}`, name, budget: null, spent: 0, threshold: 2500, askFirst: true, routine: true, members: [{ name: $("#account-name").textContent || "You", role: "owner", card: null, canApprove: true }], cart: [], debts: [] };
     groups.push(group);
     addGroupForm.reset();
     addGroupForm.hidden = true;
@@ -768,10 +672,7 @@
     openSpace(group.id);
   });
 
-  showList("group");
-
-  // Test chat: talks to the local server's /dev routes (DEV_INBOUND=1), which run the real inbound pipeline.
-  // The button only appears when those routes exist, so people using the dashboard never see it.
+  // ---------- Test chat: the local server's /dev routes (DEV_INBOUND=1). Hidden when they don't exist. ----------
   fetch("/dev/state").then((r) => { if ((r.headers.get("content-type") || "").includes("json")) chatTab.hidden = false; }).catch(() => {});
 
   const chat = { state: null, senderId: null, mode: "group", busy: false };
@@ -812,20 +713,19 @@
 
   function updatePlaceholder() {
     const name = memberName(chat.senderId);
-    chatInput.placeholder = chat.mode === "group" ? `Text the group as ${name}…` : `Text Restock privately as ${name}…`;
+    chatInput.placeholder = chat.mode === "group" ? `Text the group as ${name}` : `Text Restock privately as ${name}`;
   }
 
   function renderSenders() {
     const pills = $("#sender-pills");
     pills.replaceChildren();
     for (const member of chat.state.members) {
-      const pill = make("button", "pill", `${member.name}${member.role === "owner" ? " · owner" : ""}${member.hasCard ? "" : " · no card"}`);
+      const pill = make("button", "chat-pill", member.name);
       pill.type = "button";
       pill.setAttribute("aria-pressed", String(member.id === chat.senderId));
       pill.addEventListener("click", () => {
         chat.senderId = member.id;
         renderSenders();
-        updatePlaceholder();
       });
       pills.append(pill);
     }
@@ -833,37 +733,34 @@
   }
 
   function cartLine(left, right, note, tags = []) {
-    const line = make("div", "cart-line");
+    const row = make("div", "cart-line");
     const name = make("span");
     name.append(left);
     for (const [text, kind] of tags) name.append(make("span", `tag ${kind}`, text));
     if (note) name.append(make("small", null, note));
-    line.append(name, make("span", null, right));
-    return line;
+    row.append(name, make("span", null, right));
+    return row;
   }
 
   function renderLive() {
     const { items, members, shares, debts, budgetCents, spentCents } = chat.state;
     const cart = $("#live-cart");
     cart.replaceChildren();
-    if (items.length === 0) cart.append(cartLine("Cart is empty. Try “add dish soap”.", ""));
+    if (items.length === 0) cart.append(cartLine("Empty", ""));
     for (const item of items) {
-      const tags = [[item.shared ? "shared" : "personal", item.shared ? "" : "personal"]];
-      if (item.needsApproval) tags.push(["needs owner yes", "waiting"]);
-      cart.append(cartLine(item.name, formatCents(item.cents), `added by ${memberName(item.addedBy)}`, tags));
+      const tags = [[item.shared ? "shared" : "personal", item.shared ? "green" : ""]];
+      if (item.needsApproval) tags.push(["waiting for yes", "red"]);
+      cart.append(cartLine(item.name, formatCents(item.cents), memberName(item.addedBy), tags));
     }
     const split = $("#live-split");
     split.replaceChildren();
     const total = members.reduce((s, m) => s + (shares[m.id] ?? 0), 0);
-    for (const member of members) {
-      split.append(cartLine(member.name, formatCents(shares[member.id] ?? 0), member.hasCard ? "charged to their own card" : "the owner's card covers it, then they pay back"));
-    }
-    const totalLine = cartLine("Order total", formatCents(total), `Budget left after: ${formatCents(budgetCents - spentCents - total)}`);
+    for (const member of members) split.append(cartLine(member.name, formatCents(shares[member.id] ?? 0)));
+    const left = budgetCents == null ? null : `${formatCents(budgetCents - spentCents - total)} left after`;
+    const totalLine = cartLine("Total", formatCents(total), left);
     totalLine.classList.add("total-line");
     split.append(totalLine);
-    for (const debt of debts) {
-      split.append(cartLine(`${memberName(debt.debtorId)} owes ${memberName(debt.creditorId)}`, formatCents(debt.cents), "open debt from an earlier order", [["unpaid", "waiting"]]));
-    }
+    for (const debt of debts) split.append(cartLine(`${memberName(debt.debtorId)} owes ${memberName(debt.creditorId)}`, formatCents(debt.cents)));
   }
 
   async function loadChat() {
@@ -874,7 +771,6 @@
       renderSenders();
       renderLive();
       setChatEnabled(true);
-      if (!thread.childElementCount) addMessage("system", null, "Pick who's texting, then try a suggestion below. Group replies show to everyone; private texts are labeled with who gets them.");
     } catch (err) {
       showNotice(err.message);
       setChatEnabled(false);
@@ -886,18 +782,18 @@
     if (!text || chat.busy || !chat.senderId) return;
     const sender = memberName(chat.senderId);
     const direct = chat.mode === "direct";
-    addMessage("out", direct ? `${sender} → Restock · private` : `${sender} · group chat`, text, direct);
+    addMessage("out", direct ? `${sender} → Restock` : sender, text, direct);
     chatInput.value = "";
     chat.busy = true;
     setChatEnabled(true);
     try {
       const data = await chatApi("/dev/chat", { memberId: chat.senderId, text, direct });
       for (const reply of data.replies) {
-        if (reply.to === "group") addMessage("in", "Restock · group chat", reply.text);
-        else addMessage("in", `Restock → ${memberName(reply.to)} · only ${memberName(reply.to)} sees this`, reply.text, true);
+        if (reply.to === "group") addMessage("in", "Restock", reply.text);
+        else addMessage("in", `Restock → ${memberName(reply.to)}`, reply.text, true);
       }
       if (data.error) addMessage("system", null, `Server error: ${data.error}`);
-      else if (data.replies.length === 0) addMessage("system", null, "Restock stayed quiet. It ignores casual chat in the group.");
+      else if (data.replies.length === 0) addMessage("system", null, "No reply");
       chat.state = data.state;
       renderLive();
     } catch (err) {
@@ -915,10 +811,10 @@
     chip.addEventListener("click", () => sendChat(text));
     $("#chips").append(chip);
   }
-  for (const pill of document.querySelectorAll("#mode-pills .pill")) {
+  for (const pill of document.querySelectorAll("#mode-pills [data-mode]")) {
     pill.addEventListener("click", () => {
       chat.mode = pill.dataset.mode;
-      for (const other of document.querySelectorAll("#mode-pills .pill")) other.setAttribute("aria-pressed", String(other === pill));
+      for (const other of document.querySelectorAll("#mode-pills [data-mode]")) other.setAttribute("aria-pressed", String(other === pill));
       updatePlaceholder();
     });
   }
@@ -930,7 +826,6 @@
     try {
       chat.state = await chatApi("/dev/reset", {});
       thread.replaceChildren();
-      addMessage("system", null, "Demo household reset: Sam, Jake and Priya with the six PLAN.md items.");
       showNotice(null);
       renderSenders();
       renderLive();
@@ -941,16 +836,10 @@
   });
   chatTab.addEventListener("click", () => {
     content.className = "content is-group";
-    renderSidebar(null);
-    $("#back").textContent = listKind === "personal" ? "← Personal" : "← Group chats";
-    $("#view-eyebrow").textContent = "Test chat";
-    $("#view-title").textContent = "Talk to Restock";
-    $("#view-copy").textContent = "Try the agent the way roommates will: add items, flip them to personal, and order.";
-    listView.hidden = true;
-    detailIntro.hidden = false;
-    groupView.hidden = true;
-    chatView.hidden = false;
-    footnote.hidden = true;
+    markNav(null);
+    $("#back").textContent = listKind === "personal" ? "← Personal" : "← Groups";
+    $("#view-title").textContent = "Test chat";
+    show("chat");
     loadChat();
   });
 </script>

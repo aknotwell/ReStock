@@ -19,7 +19,7 @@ export type Household = {
   id: string;
   groupChatId: string;
   ownerId: MemberId;
-  budgetCents: Cents;
+  budgetCents?: Cents; // optional monthly limit. With none, orders still go on the owner's card
   spentCents: Cents;
   approvalOverCents?: Cents; // items above this need someone else's "yes", even from an approver
   members: Member[];

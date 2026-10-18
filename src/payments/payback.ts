@@ -9,6 +9,7 @@ import { createHash, randomInt, randomBytes, timingSafeEqual } from "node:crypto
 import type Stripe from "stripe";
 import { config } from "../config.js";
 import { markDebtPaid, openDebtsFor } from "../core/ledger.js";
+import { shareCard } from "../core/households.js";
 import { db, findMember, formerMembers } from "../core/store.js";
 import { registerState } from "../core/persist.js";
 import { canTextPrivately, sendPrivate } from "../messaging/photon.js";
@@ -193,6 +194,7 @@ export async function settlePayBack(session: Stripe.Checkout.Session): Promise<"
       if (typeof session.customer === "string") debtor.stripeCustomerId = session.customer;
       debtor.paymentMethodId = pm.id;
       debtor.cardLast4 = pm.card.last4;
+      shareCard(debtor);
     }
   }
   if (debtor) {

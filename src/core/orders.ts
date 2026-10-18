@@ -4,11 +4,13 @@ import { db, getHousehold, newId, pendingItems } from "./store.js";
 import { computeShares } from "./split.js";
 import { chargeOrder } from "../payments/charges.js";
 import { assertOwnerCard } from "../payments/ownerGate.js";
+import { adoptCards } from "./households.js";
 
 export class OrderError extends Error {}
 
 export async function placeOrder(householdId: string, rule: SplitRule = "smart"): Promise<OrderResult> {
   const household = getHousehold(householdId);
+  adoptCards(household); // a card someone added in another of their households counts here too
   assertOwnerCard(household); // throws OwnerCardRequiredError (src/payments/ownerGate.ts)
 
   const items = pendingItems(householdId).filter((i) => !i.needsApproval);

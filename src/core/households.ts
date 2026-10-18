@@ -94,6 +94,45 @@ export const allMemberIds = () => new Set([...db.households.values()].flatMap((h
 
 export type NewHousehold = { name?: string; groupType?: Household["groupType"]; budgetCents?: Cents | null };
 
+// ---------- One card per person ----------
+// Someone in several households has a member record in each, but it's one person with one card. A card added
+// in any of them is used in the others where they haven't added one, so "order now" in another household
+// doesn't ask for a card they already gave us. Only Stripe IDs and the last 4 are copied, never card data.
+
+/** The card this person saved in another of their households, if any. */
+function cardElsewhere(member: Member): Pick<Member, "stripeCustomerId" | "paymentMethodId" | "cardLast4"> | undefined {
+  const other = householdsForPhone(member.phone)
+    .flatMap((h) => h.members)
+    .find((m) => m.phone === member.phone && m.id !== member.id && m.paymentMethodId && m.stripeCustomerId);
+  return other && { stripeCustomerId: other.stripeCustomerId, paymentMethodId: other.paymentMethodId, cardLast4: other.cardLast4 };
+}
+
+/** Give this member record the person's card from another household, if it has none. True if it now has one. */
+export function adoptCard(member: Member): boolean {
+  if (member.paymentMethodId) return true;
+  const card = cardElsewhere(member);
+  if (!card) return false;
+  Object.assign(member, card);
+  return true;
+}
+
+/** Every member of this household who has a card in another household gets it here too. */
+export function adoptCards(household: Household): void {
+  for (const member of household.members) adoptCard(member);
+}
+
+/** A card was just saved on this record: use it in the person's other households that have none. */
+export function shareCard(member: Member): void {
+  for (const h of householdsForPhone(member.phone)) {
+    for (const m of h.members) if (m.phone === member.phone && m.id !== member.id) adoptCard(m);
+  }
+}
+
+/** Whether any member record still uses this Stripe customer (so leaving one household mustn't delete it). */
+export function stripeCustomerInUse(customerId: string): boolean {
+  return [...db.households.values()].some((h) => h.members.some((m) => m.stripeCustomerId === customerId));
+}
+
 /** Start a group household with this person as its budget owner. It becomes their active household. */
 export function createHousehold(ownerName: string, ownerPhone: string, options: NewHousehold = {}): Household {
   if (atSpaceLimit(ownerPhone)) throw new MembershipError(TOO_MANY_SPACES);
@@ -115,6 +154,7 @@ export function createHousehold(ownerName: string, ownerPhone: string, options: 
     members: [owner],
   };
   db.households.set(household.id, household);
+  adoptCard(owner);
   setActiveHousehold(ownerPhone, household.id);
   return household;
 }
@@ -144,6 +184,7 @@ export function addMember(household: Household, name: string, phone: string): Me
   // Same rule as joining in a group chat: everyone can approve requests, except in a family (only the owner).
   const member: Member = { id: memberId(name, allMemberIds()), name, phone, role: "member", ...(household.groupType === "family" ? {} : { canApprove: true }) };
   household.members.push(member);
+  adoptCard(member);
   setActiveHousehold(phone, household.id);
   return member;
 }

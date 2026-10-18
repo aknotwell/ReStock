@@ -1,7 +1,7 @@
 // Owner: Person 1. Chat commands for starting a household and managing who's in it.
 // Deterministic and authorized in code (owner-only changes); the AI never decides membership.
 import {
-  activeHousehold, cleanHouseholdName, cleanName, createHousehold, findMyHousehold, householdName, MembershipError, normalizePhone, removeMember,
+  activeHousehold, cleanHouseholdName, cleanName, knownName, createHousehold, findMyHousehold, householdName, MembershipError, normalizePhone, removeMember,
   setActiveHousehold,
 } from "../core/households.js";
 import { db, householdsForPhone } from "../core/store.js";
@@ -90,8 +90,6 @@ function leave(household: Household, member: Member): void {
   else removeMember(household, member.name);
 }
 
-/** The person's own name, from any household they're in (so starting another one doesn't ask again). */
-const knownName = (phone: string) => householdsForPhone(phone).flatMap((h) => h.members).find((m) => m.phone === phone)?.name;
 
 function householdList(phone: string): string {
   const current = activeHousehold(phone);

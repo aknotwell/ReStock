@@ -8,7 +8,8 @@ import { createCardSetupLink, openCardSetupLink, openPayBackLink } from "../paym
 import { resolveShortLink } from "../deals/links.js";
 import { householdView, ownRecord, spacesView } from "./appState.js";
 import { rateLimiter } from "./rateLimit.js";
-import { householdForInvite, inviteCodeFor, resetInvite, SignupError, startSignup, INVITE_TTL_MS } from "../core/signups.js";
+import { householdForInvite, inviteCodeFor, joinWithInvite, resetInvite, SignupError, startSignup, INVITE_TTL_MS } from "../core/signups.js";
+import { sendPrivate } from "../messaging/photon.js";
 import { findMember } from "../core/store.js";
 import { cleanHouseholdName, createHousehold, householdName, MembershipError } from "../core/households.js";
 import type { Household } from "../types.js";
@@ -179,7 +180,39 @@ webRoutes.get("/signup/api/invite/:code", (req, res) => {
     res.status(404).json({ error: "This invite link has expired or was reset. Ask for a new one." });
     return;
   }
-  res.json({ householdName: householdName(household), members: household.members.length });
+  // Already logged in to Restock (dashboard or pay-back site): offer a one-tap join with the name they use.
+  const me = sessionMember(payToken(req));
+  const joinAs = me && !household.members.some((m) => m.phone === me.phone) ? { name: me.name } : null;
+  const alreadyIn = !!me && household.members.some((m) => m.phone === me.phone);
+  res.json({ householdName: householdName(household), members: household.members.length, joinAs, alreadyIn });
+});
+
+// One-tap join for someone already logged in: their session proves the phone, so no name, number or new line.
+webRoutes.post("/signup/api/join", (req, res) => {
+  const me = sessionMember(payToken(req));
+  if (!me) {
+    res.status(401).json({ error: "Please log in first." });
+    return;
+  }
+  try {
+    const { household, member } = joinWithInvite(text(req.body?.inviteCode, 64), me.phone);
+    void sendPrivate(member.id, `You joined ${householdName(household)}. Texts to me now go there; text "households" to switch.`, `joined:${member.id}`).catch(
+      (err) => console.warn("join notice failed:", err instanceof Error ? err.message : err),
+    );
+    for (const other of household.members) {
+      if (other.id === member.id) continue;
+      void sendPrivate(other.id, `${member.name} joined the household.`, `joined:${member.id}:${other.id}`).catch((err) =>
+        console.warn("join notice failed:", err instanceof Error ? err.message : err),
+      );
+    }
+    res.json({ householdName: householdName(household), name: member.name });
+  } catch (err) {
+    if (err instanceof SignupError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
 });
 
 webRoutes.post("/signup/api/start", async (req, res) => {

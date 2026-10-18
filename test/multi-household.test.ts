@@ -10,7 +10,7 @@ import { parseMembershipCommand } from "../src/messaging/membership.js";
 import { handleInbound } from "../src/messaging/inbound.js";
 import { rememberInbound, resetMuted } from "../src/messaging/photon.js";
 import { resetConfirmations } from "../src/messaging/confirm.js";
-import { resetSignups } from "../src/core/signups.js";
+import { inviteCodeFor, inviteCodeIn, resetSignups } from "../src/core/signups.js";
 import { resetPayBack } from "../src/payments/payback.js";
 import { webRoutes } from "../src/web/routes.js";
 
@@ -151,6 +151,47 @@ describe("over text", () => {
   });
 });
 
+describe("joining another household with an invite, without signing up again", () => {
+  it("reads the code from \"join <code>\" or a pasted invite link", () => {
+    expect(inviteCodeIn("join abcdefghijklmnop")).toBe("abcdefghijklmnop");
+    expect(inviteCodeIn("Join https://restock.example/join/abcdefghijklmnop")).toBe("abcdefghijklmnop");
+    expect(inviteCodeIn("join the household")).toBeUndefined();
+  });
+
+  it("someone who already uses Restock texts \"join <code>\" and is in, under the name they use", async () => {
+    const maple = createHousehold("Alex", ALEX, { name: "Maple House" });
+    const club = createHousehold("Amber", AMBER, { name: "Book Club" });
+    addMember(club, "Alex", ALEX); // a different Alex: Amber's joiner below can't reuse the name
+    await dm(AMBER, "hi");
+    logs = [];
+    await dm(AMBER, `join http://localhost:3000/join/${inviteCodeFor(maple, maple.ownerId)}`);
+    expect(out()).toMatch(/Welcome, Amber! You're in Maple House\. Texts to me now go there/);
+    expect(maple.members.map((m) => m.name)).toEqual(["Alex", "Amber"]);
+    expect(activeHousehold(AMBER)?.id).toBe(maple.id);
+    expect(out()).toMatch(/Amber joined the household/); // relayed to Alex
+
+    logs = [];
+    await dm(AMBER, `join ${inviteCodeFor(maple, maple.ownerId)}`);
+    expect(out()).toMatch(/You're already in Maple House/);
+  });
+
+  it("a name already in the household gets a number instead of a question", async () => {
+    const maple = createHousehold("Alex", ALEX, { name: "Maple House" });
+    createHousehold("Alex", BEA, { name: "Other" }); // another Alex, on another phone
+    await dm(BEA, `join ${inviteCodeFor(maple, maple.ownerId)}`);
+    expect(maple.members.map((m) => m.name)).toEqual(["Alex", "Alex 2"]);
+  });
+
+  it("someone new is sent to the sign-up page", async () => {
+    const maple = createHousehold("Alex", ALEX);
+    const code = inviteCodeFor(maple, maple.ownerId);
+    logs = [];
+    await dm(BEA, `join ${code}`);
+    expect(out()).toContain(`Open the invite link to sign up first: http://localhost:3000/join/${code}`);
+    expect(maple.members).toHaveLength(1);
+  });
+});
+
 describe("dashboard New group", () => {
   let server: Server;
   let base: string;
@@ -186,6 +227,27 @@ describe("dashboard New group", () => {
     // The invite button works per household: this one's link, not the first one's.
     const invite = await (await post("/app/api/invite", { memberId: body.space.me.id }, cookie)).json();
     expect(invite.url).toBe(body.inviteUrl);
+  });
+
+  it("the invite page offers a logged-in person a one-tap join", async () => {
+    const maple = createHousehold("Alex", ALEX, { name: "Maple House" });
+    const code = inviteCodeFor(maple, maple.ownerId);
+    createHousehold("Amber", AMBER);
+    await dm(AMBER, "hi");
+    expect((await post("/signup/api/join", { inviteCode: code })).status).toBe(401); // not logged in
+
+    const cookie = await login(AMBER);
+    const info = await (await fetch(`${base}/signup/api/invite/${code}`, { headers: { cookie } })).json();
+    expect(info).toMatchObject({ householdName: "Maple House", joinAs: { name: "Amber" }, alreadyIn: false });
+    expect(JSON.stringify(info)).not.toContain(AMBER); // no phone numbers on the page
+
+    const res = await post("/signup/api/join", { inviteCode: code }, cookie);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ householdName: "Maple House", name: "Amber" });
+    expect(maple.members.map((m) => m.name)).toEqual(["Alex", "Amber"]);
+    const again = await (await fetch(`${base}/signup/api/invite/${code}`, { headers: { cookie } })).json();
+    expect(again).toMatchObject({ joinAs: null, alreadyIn: true });
+    expect((await post("/signup/api/join", { inviteCode: "x".repeat(16) }, cookie)).status).toBe(400);
   });
 
   it("checks the input and needs a login", async () => {

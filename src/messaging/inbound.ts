@@ -22,7 +22,9 @@ import { balanceSummary, CARD_NUMBER_WARNING, fmt, groupSummary, helpMessage, in
 import { sendOrderTexts } from "./afterOrder.js";
 import { handleMembershipCommand, parseMembershipCommand } from "./membership.js";
 import { clearAction, isNo, isYes, peekAction, proposeAction } from "./confirm.js";
-import { activateFromFirstText, invitedTo, inviteCodeFor, isPendingSignup, lineFor, type Activation } from "../core/signups.js";
+import {
+  activateFromFirstText, inviteCodeIn, invitedTo, inviteCodeFor, isPendingSignup, joinWithInvite, lineFor, SignupError, type Activation,
+} from "../core/signups.js";
 import { isRestockLine } from "./photonLines.js";
 import { CONTACT_NAME, contactLink } from "../web/contactCard.js";
 import { config } from "../config.js";
@@ -172,6 +174,23 @@ export async function handleInbound(msg: InboundMessage, opts: { refined?: boole
       await respond(askWhichList(msg.fromPhone, groups, ordering ? "order" : "list"));
       return;
     }
+  }
+
+  // "join <code>" or a pasted invite link: someone who already uses Restock joins another household by text,
+  // with the name they already use. No sign-up form, no new Restock number. Plain code, never the AI.
+  const joinCode = inviteCodeIn(msg.text);
+  if (joinCode) {
+    if (msg.spaceKind !== "direct") await respond("Text me directly to join another household.");
+    else if (!member) await respond(`Open the invite link to sign up first: ${config.publicBaseUrl}/join/${joinCode}`);
+    else {
+      try {
+        await welcome(joinWithInvite(joinCode, msg.fromPhone), respond);
+      } catch (err) {
+        if (!(err instanceof SignupError)) throw err;
+        await respond(err.message);
+      }
+    }
+    return;
   }
 
   // A "yes"/"no" to a question Restock asked (confirm-to-act). Only the person who was asked can answer.
@@ -741,7 +760,7 @@ async function relayToOthers(household: Household, senderId: string, text: strin
 /** Welcome a newly activated sign-up. The owner gets their invite link; existing members hear who joined. */
 async function welcome({ household, member, joined }: Activation, respond: (text: string) => Promise<void>): Promise<void> {
   const line = lineFor(member.phone);
-  const saveMe = line && isRestockLine(line) ? `\nSave me as "${CONTACT_NAME}" in your contacts: ${contactLink(line)}` : "";
+  const saveMe = line && isRestockLine(line) && householdsForPhone(member.phone).length === 1 ? `\nSave me as "${CONTACT_NAME}" in your contacts: ${contactLink(line)}` : "";
   if (!joined) {
     const link = `${config.publicBaseUrl}/join/${inviteCodeFor(household, member.id)}`;
     await respond(

@@ -5,7 +5,7 @@
 // proves they own the phone and activates them. Unactivated sign-ups expire and free their line.
 // Saved with the rest of the store (persist.ts). We keep names, phones and line IDs; never message text.
 import { randomBytes } from "node:crypto";
-import { addMember, atSpaceLimit, checkCanJoin, cleanName, createHousehold, householdName, MembershipError, normalizePhone, TOO_MANY_SPACES } from "./households.js";
+import { addMember, atSpaceLimit, checkCanJoin, knownName, cleanName, createHousehold, householdName, MembershipError, normalizePhone, TOO_MANY_SPACES } from "./households.js";
 import { registerState } from "./persist.js";
 import { db } from "./store.js";
 import { assignLine, releaseLine, releaseLinesForHandle } from "../messaging/photonLines.js";
@@ -152,6 +152,33 @@ export async function cancelInvite(householdId: string, name: string, now = Date
 }
 
 export type Activation = { household: Household; member: Member; joined: boolean };
+
+/** The invite code in "join <code>" or a pasted invite link (".../join/<code>"). */
+export function inviteCodeIn(text: string): string | undefined {
+  return /^join\s+(?:(?:https?:\/\/)?\S*\/join\/)?([A-Za-z0-9_-]{16})\/?[.!]?$/i.exec(text.trim())?.[1];
+}
+
+/**
+ * Someone who already uses Restock accepts an invite. Their phone is already verified (they're in a household and
+ * reached us from it: a logged-in session or a text from their phone), so there's no sign-up form and no new
+ * Restock number: they join under the name they already use, and it becomes their active household.
+ */
+export function joinWithInvite(code: string, phone: string, now = Date.now()): Activation {
+  const household = householdForInvite(code, now);
+  if (!household) throw new SignupError("This invite link has expired or was reset. Ask for a new one.");
+  const name = knownName(phone);
+  if (!name) throw new SignupError("You don't use Restock yet. Sign up with the invite link instead.");
+  if (household.members.some((m) => m.phone === phone)) throw new SignupError(`You're already in ${householdName(household)}.`);
+  let joinAs = name;
+  // Same first name already there ("Alex"): join as "Alex 2" rather than ask them to type a name.
+  for (let n = 2; household.members.some((m) => m.name.toLowerCase() === joinAs.toLowerCase()); n++) joinAs = `${name} ${n}`;
+  try {
+    return { household, member: addMember(household, joinAs, phone), joined: true };
+  } catch (err) {
+    if (err instanceof MembershipError) throw new SignupError(err.message);
+    throw err;
+  }
+}
 
 /** The first text from a signed-up phone: create their household or add them to the invited one. */
 export function activateFromFirstText(phone: string, now = Date.now()): Activation | undefined {

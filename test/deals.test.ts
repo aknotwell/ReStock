@@ -30,11 +30,11 @@ async function say(fromPhone: string, body: string) {
 const row = (title: string, source: string, price: number) => ({ title, source, extracted_price: price, link: "https://example.com" });
 const TP_RESULTS = {
   shopping_results: [
-    row("Charmin Ultra Soft Toilet Paper, 24 Mega Rolls", "Target", 32.99), // $1.37/roll
-    row("Great Value Ultra Strong Toilet Paper, 32 Mega Rolls", "Walmart", 24.97), // $0.78/roll
+    row("Charmin Ultra Soft Toilet Paper, 24 Rolls", "Target", 32.99), // $1.37/roll
+    row("Great Value Ultra Strong Toilet Paper, 32 Rolls", "Walmart", 24.97), // $0.78/roll
     row("Kirkland Signature Bath Tissue Toilet Paper, 30 Rolls", "Costco", 25.99), // $0.87/roll
     row("Toilet Paper Holder, Brushed Nickel", "Amazon", 14.99), // an accessory, not toilet paper
-    row("Quilted Northern Toilet Paper 12 Double Rolls", "CVS", 13.49), // $1.12/roll
+    row("Quilted Northern Toilet Paper 12 Double Rolls", "CVS", 13.49), // double rolls: no per-roll price
   ],
 };
 
@@ -61,8 +61,16 @@ afterEach(() => {
 
 describe("pack sizes from store titles", () => {
   it.each([
-    ["Charmin Ultra Soft Toilet Paper, 24 Mega Rolls", "roll", 24],
-    ["Bounty Select-A-Size Paper Towels, 6 Double Rolls", "roll", 6],
+    ["Charmin Ultra Soft Toilet Paper, 24 Rolls", "roll", 24],
+    ["Bounty Select-A-Size Paper Towels, 6 Rolls", "roll", 6],
+    // Rolls of a non-standard size aren't comparable per roll with the catalog's regular rolls.
+    ["Charmin Ultra Soft Toilet Paper, 24 Mega Rolls", "roll", undefined],
+    ["Bounty Select-A-Size Paper Towels, 6 Double Rolls", "roll", undefined],
+    ["Make-A-Size Paper Towels - 8 Triple Rolls", "roll", undefined],
+    ["Empress 2 Ply White Jumbo Tissue, 12 Roll", "roll", undefined],
+    // Nor are bottles or cartons that state their own volume.
+    ["Great Value Ultra Dish Liquid, 40 fl oz (3 pack)", "bottle", undefined],
+    ["Oatly Oat Milk, 64 oz, 6 Pack", "carton", undefined],
     ["Cottonelle 2-Ply Mega Rolls", "roll", undefined],
     ["Hefty Strong 13 Gallon Trash Bags, 80 Count", "bag", 80],
     ["Glad 13 gallon trash bags", "bag", undefined],
@@ -216,6 +224,7 @@ describe("SerpApi results", () => {
     const walmart = live!.products[1]!;
     expect(walmart).toMatchObject({ cents: 2497, units: 32, unit: "roll", group: "tp-12", defaultShared: true });
     expect(walmart.name).toMatch(/\(Walmart\)$/);
+    expect(live!.products[3]).not.toHaveProperty("units"); // CVS sells double rolls
   });
 
   it("drops listings priced nothing like the product, and keeps ones without a pack size", async () => {
@@ -250,28 +259,34 @@ describe("SerpApi results", () => {
 });
 
 describe("options with live listings", () => {
-  it("live listings come first, best value on top, and fill all three slots", async () => {
+  it("ranks live listings and catalog options together by price per unit", async () => {
     stubSerpApi();
     const live = (await liveOptionsFor(TP()))!.products;
     const choice = buildChoice(H, TP(), null, {}, live);
-    expect(choice.options.map((p) => p.store)).toEqual(["Walmart", "Costco", "CVS"]);
+    // Walmart $0.78/roll, Costco $0.87, then the catalog's bulk pack at $0.92 beats Target's $1.37
+    expect(choice.options.map((p) => p.store ?? p.id)).toEqual(["Walmart", "Costco", "tp-24"]);
     expect(choice.bestValueId).toBe(choice.options[0]!.id);
     expect(choice.checkedAt).toBeDefined();
   });
 
-  it("the catalog fills open slots when there are few live results", () => {
-    const one: Product = { ...TP(), id: "live-x", name: "Store TP (Target)", store: "Target", cents: 999, units: 12, checkedAt: new Date().toISOString() };
-    const choice = buildChoice(H, TP(), null, {}, [one]);
-    expect(choice.options.map((p) => p.id)).toEqual(["live-x", "tp-24", "tp-12"]);
+  it("a cheaper live listing beats the catalog; a pricier one loses to it", () => {
+    const at = new Date().toISOString();
+    const cheap: Product = { ...TP(), id: "live-x", name: "Store TP (Target)", store: "Target", cents: 999, units: 12, checkedAt: at };
+    expect(buildChoice(H, TP(), null, {}, [cheap]).options.map((p) => p.id)).toEqual(["live-x", "tp-24", "tp-12"]);
+    const pricey: Product = { ...cheap, id: "live-y", cents: 2000 }; // $1.67/roll
+    const choice = buildChoice(H, TP(), null, {}, [pricey]);
+    expect(choice.options.map((p) => p.id)).toEqual(["tp-24", "tp-12", "tp-soft"]);
+    expect(choice.checkedAt).toBeUndefined(); // no live listing shown, so no "checked" line
   });
 
-  it("with fewer than two sized listings, live options go by price", () => {
+  it("options without a comparable size come after sized ones, by price; 'cheapest' ranks everything by price", () => {
     const at = new Date().toISOString();
     const live: Product[] = [
       { ...TP(), id: "live-hd", name: "Jumbo roll (Home Depot)", store: "Home Depot", cents: 2884, units: 12, checkedAt: at },
       { ...TP(), id: "live-t", name: "Bamboo TP (Target)", store: "Target", cents: 1599, units: undefined, unit: undefined, checkedAt: at },
     ];
-    expect(buildChoice(H, TP(), null, {}, live).options.map((p) => p.id)).toEqual(["live-t", "live-hd", "tp-24"]);
+    expect(buildChoice(H, TP(), null, {}, live).options.map((p) => p.id)).toEqual(["tp-24", "tp-12", "tp-soft"]);
+    expect(buildChoice(H, TP(), null, { sort: "cheapest" }, live).options.map((p) => p.id)).toEqual(["tp-12", "tp-soft", "live-t"]);
   });
 
   it("respects count, price caps and stores, and says when nothing matched", async () => {
@@ -280,7 +295,7 @@ describe("options with live listings", () => {
     expect(buildChoice(H, TP(), null, { count: 1 }, live).options).toHaveLength(1);
     expect(buildChoice(H, TP(), null, { stores: ["Costco"] }, live).options.map((p) => p.store)).toEqual(["Costco"]);
     const capped = buildChoice(H, TP(), null, { maxPriceCents: 1500 }, live);
-    expect(capped.options.every((p) => p.cents <= 1500)).toBe(true);
+    expect(capped.options.map((p) => p.store ?? p.id)).toEqual(["tp-12", "CVS"]);
     const none = buildChoice(H, TP(), null, { maxPriceCents: 100 }, live);
     expect(none.note).toBe("Nothing matched under $1.00, so here are the usual options.");
     expect(none.options).toHaveLength(3);
@@ -312,16 +327,16 @@ describe("in the chat", () => {
   it("'add tp' shows live store options and adds the picked price", async () => {
     stubSerpApi();
     await say(SAM, "add tp");
-    expect(out()).toMatch(/Which one\?\n1\. Great Value Ultra Strong Toilet Paper, 32 Mega Rolls \(Walmart\): \$24\.97 \(\$0\.78\/roll, best value\)/);
+    expect(out()).toMatch(/Which one\?\n1\. Great Value Ultra Strong Toilet Paper, 32 Rolls \(Walmart\): \$24\.97 \(\$0\.78\/roll, best value\)\n2\. .*\(Costco\).*\n3\. Toilet paper, 24 rolls \(bulk\): \$21\.99 \(\$0\.92\/roll\)/);
     expect(out()).toMatch(/Store prices checked just now\.\nReply 1, 2 or 3/);
     await say(SAM, "1");
-    expect(pendingItems(H).at(-1)).toMatchObject({ name: "Great Value Ultra Strong Toilet Paper, 32 Mega Rolls (Walmart)", cents: 2497, shared: true });
+    expect(pendingItems(H).at(-1)).toMatchObject({ name: "Great Value Ultra Strong Toilet Paper, 32 Rolls (Walmart)", cents: 2497, shared: true });
   });
 
   it("deal words shape the options and don't break item matching", async () => {
     stubSerpApi();
     await say(SAM, "add tp under $15");
-    expect(out()).toMatch(/1\. Quilted Northern Toilet Paper 12 Double Rolls \(CVS\): \$13\.49/);
+    expect(out()).toMatch(/1\. Toilet paper, 12 rolls: \$11\.99 \(\$1\.00\/roll\)\n2\. Quilted Northern Toilet Paper 12 Double Rolls \(CVS\): \$13\.49\n/);
     expect(out()).not.toMatch(/Walmart|Costco|Target/);
   });
 

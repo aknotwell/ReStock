@@ -1,5 +1,5 @@
 // Owner: Person 1. "Add TP" -> up to three options to pick from, or the household's usual if asked.
-// Options are live store listings when SERPAPI_KEY is set (src/deals/live.ts), topped up from the catalog.
+// When SERPAPI_KEY is set, live store listings (src/deals/live.ts) compete with the catalog for the three slots.
 // Names and prices come from those listings or the catalog, never the model. The member picks; the AI never
 // chooses for them. Options are ranked by price per unit in code, and the cheapest is labelled "best value".
 import { alternativesFor, getProductByName, groupOf, unitCents, type Product } from "../core/catalog.js";
@@ -85,10 +85,11 @@ function budgetLeft(householdId: string): number {
 }
 
 /**
- * Up to `opts.count` (default 3) options for an item. Live listings come first when we have them, and catalog
- * alternatives fill any open slots. Within each, best value (lowest price per unit) first, or lowest price for
- * `sort: "cheapest"`. Filters (price cap, pack size, store) apply to both; if nothing passes, we say so and show
- * the unfiltered options. The household's last purchase still goes to the top, so "the usual" is easy to repeat.
+ * Up to `opts.count` (default 3) options for an item. Live store listings and catalog alternatives are ranked
+ * together: options with a known pack size by price per unit (best value first), then the rest by price; or all
+ * by price for `sort: "cheapest"`. Ties keep live listings first. Filters (price cap, pack size, store) apply to
+ * both; if nothing passes, we say so and show the unfiltered options. The household's last purchase still goes to
+ * the top, so "the usual" is easy to repeat.
  */
 export function buildChoice(
   householdId: string,
@@ -99,16 +100,14 @@ export function buildChoice(
 ): Choice {
   const count = optionCount(opts.count);
   const catalogOptions = alternativesFor(product);
-  // Store titles often leave out the pack size. With fewer than two sized listings there's nothing to compare
-  // per unit, so live listings go by price instead of letting one sized listing jump the queue.
-  const liveSort = live.filter((p) => p.units).length >= 2 ? opts.sort : "cheapest";
-  const pick = (list: Product[], sort = opts.sort, restByPrice = false) =>
-    rankOptions(hasFilters(opts) ? applyFilters(list, opts) : list, sort, { restByPrice });
-  let ranked = [...pick(live, liveSort, true), ...pick(catalogOptions)];
+  // Without live listings, unsized catalog options (hand soap) keep their catalog order, as before.
+  const rank = (list: Product[]) => rankOptions(list, opts.sort, { restByPrice: live.length > 0 });
+  const all = [...live, ...catalogOptions];
+  let ranked = rank(hasFilters(opts) ? applyFilters(all, opts) : all);
   let note: string | undefined;
   if (!ranked.length) {
     note = `Nothing matched ${describeFilters(opts)}, so here are the usual options.`;
-    ranked = [...rankOptions(live, liveSort, { restByPrice: true }), ...rankOptions(catalogOptions, opts.sort)];
+    ranked = rank(all);
   }
 
   // Pin last time's pick unless it fails a filter the member asked for.

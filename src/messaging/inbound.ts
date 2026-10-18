@@ -13,6 +13,7 @@ import type { Debt, Household, Item } from "../types.js";
 import { checkInput, INJECTION_REPLY } from "../safety/guardrails.js";
 import { isMuted, mute, reply, sendGroup, sendPrivate, unmute, type InboundMessage } from "./photon.js";
 import { parseCommand } from "./commands.js";
+import { stripIntensifiers } from "./casualAdd.js";
 import { balanceSummary, CARD_NUMBER_WARNING, fmt, groupSummary, helpMessage, inviteToAddCard } from "./templates.js";
 import { sendOrderTexts } from "./afterOrder.js";
 import { handleMembershipCommand, parseMembershipCommand } from "./membership.js";
@@ -395,6 +396,8 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
 
   // 3. Act.
   for (const intent of intents) {
+    // "fucking dish soap" is dish soap, whether the parser or the model kept the swearing.
+    if (intent.itemName) intent.itemName = stripIntensifiers(intent.itemName) || intent.itemName;
     if (intent.itemName && checkInput(intent.itemName)) {
       await respond("I can only help with ordinary household supplies.");
       continue;

@@ -6,7 +6,7 @@ import { catalog } from "../core/catalog.js";
 
 // "<lead-in> <items>": the lead-in says someone needs something, the rest names it.
 const LEAD_INS: RegExp[] = [
-  /^(?:we(?:'re| are)?|i(?:'m| am)?|we've|i've|we have|i have|you guys are|y'?all are)?\s*(?:all\s+|totally\s+|completely\s+)?(?:out of|ran out of|run out of|running out of|running low on|low on|almost out of|nearly out of|basically out of)\s+(.+)$/,
+  /^(?:we(?:'re| are)?|were|i(?:'m| am)?|im|we've|weve|i've|ive|we have|i have|you guys are|y'?all are)?\s*(?:all\s+|totally\s+|completely\s+)?(?:out of|ran out of|run out of|running out of|running low on|low on|almost out of|nearly out of|basically out of)\s+(.+)$/,
   /^(?:we|i|you guys)\s+(?:need|want|could use|gotta get|should get|have to get|need to get|need to buy|should buy)\s+(.+)$/,
   /^(?:can|could|would|will)\s+(?:we|you|someone|somebody|anyone|u)\s+(?:please\s+)?(?:get|grab|buy|order|pick up|add|restock)\s+(.+)$/,
   /^(?:please\s+)?(?:need|get|grab|buy|order|pick up|restock|reorder)\s+(.+)$/,
@@ -24,12 +24,20 @@ const LEADING = /^(?:the|some|more|a|an|our|any|new|another)\s+/;
 const EMOJI = /\s*[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]+$/u;
 
 function clean(text: string): string {
-  let t = text.trim().toLowerCase().replace(/[’]/g, "'").replace(/[!?.…]+$/, "").replace(EMOJI, "").trim();
+  let t = stripIntensifiers(text.trim().toLowerCase().replace(/[’]/g, "'")).replace(/[!?.…]+$/, "").replace(EMOJI, "").trim();
   for (let prev = ""; prev !== t; ) {
     prev = t;
     t = t.replace(FILLER, "").replace(/^(?:ugh|hey|yo|ok|okay|so|btw|also|oh|um|uh),?\s+/, "").replace(/[!?.,]+$/, "").trim();
   }
   return t;
+}
+
+// Swearing and intensifiers aren't part of an item's name: "out of fucking dish soap" is dish soap.
+const INTENSIFIERS = /\b(?:fucking|fuckin|fking|fkn|effing|freaking|freakin|fricking|frickin|friggin|damn|damned|goddamn|bloody)\b'?/gi;
+
+/** The text without swearing or intensifiers, spaces tidied. */
+export function stripIntensifiers(text: string): string {
+  return text.replace(INTENSIFIERS, " ").replace(/\s+/g, " ").trim();
 }
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

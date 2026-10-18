@@ -1,4 +1,4 @@
-// Owner: Person 4. Tiny in-memory rate limiter for public endpoints (sign-up, the audit endpoint).
+// Tiny in-memory rate limiter for public endpoints (sign-up, the audit endpoint).
 // Per server process; good enough for one Railway instance.
 export function rateLimiter(max: number, windowMs: number) {
   const hits = new Map<string, number[]>();

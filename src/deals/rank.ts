@@ -1,4 +1,4 @@
-// Owner: Person 1. Ranking and filtering the "Which one?" options, in code (never the LLM).
+// Ranking and filtering the "Which one?" options, in code (never the LLM).
 // Works the same for catalog products and live store results: price per unit, filters, best value.
 import type { Product } from "../core/catalog.js";
 

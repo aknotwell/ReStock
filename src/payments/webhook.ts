@@ -1,4 +1,4 @@
-// Owner: Person 3. Stripe webhooks — signature verified, idempotent.
+// Stripe webhooks — signature verified, idempotent.
 import type { Request, Response } from "express";
 import type Stripe from "stripe";
 import { config } from "../config.js";
@@ -119,7 +119,7 @@ export async function saveCardFromSetupSession(
   const paymentMethod = setupIntent.payment_method;
   if (!paymentMethod || typeof paymentMethod === "string" || !paymentMethod.card) return "no_card";
 
-  // TODO(P2): replace with an updateMember() in store.ts once there is one.
+  // TODO: replace with an updateMember() in store.ts once there is one.
   const { member } = found;
   if (typeof session.customer === "string") member.stripeCustomerId = session.customer;
   member.paymentMethodId = paymentMethod.id;

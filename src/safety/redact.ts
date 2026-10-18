@@ -1,4 +1,4 @@
-// Owner: Person 1. Output filter: every outbound text passes through here before it leaves the service (V-002).
+// Output filter: every outbound text passes through here before it leaves the service (V-002).
 // Defense in depth: even if something upstream leaks, personal data and secrets never reach a chat or a log.
 
 import { isRestockLine } from "../messaging/photonLines.js";

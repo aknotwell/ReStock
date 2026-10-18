@@ -1,4 +1,4 @@
-// Owner: Person 1. "We're out of TP" -> the best store listings for it, chosen by Claude.
+// "We're out of TP" -> the best store listings for it, chosen by Claude.
 // Claude writes the store search and reads the listings, but it only ever returns listing numbers. Every name,
 // price, store and link shown in the chat comes from SerpApi's data through code. Any problem returns undefined,
 // and the caller falls back to the word filters in src/deals/live.ts.

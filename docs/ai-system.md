@@ -79,7 +79,7 @@ What the AI in Restock does, what data it uses, and what controls keep it safe. 
 
 - Unit tests: `npm test` (fallback paths, card-number guard, command parser, split engine).
 - VEYZL audits every PR. Findings and fixes are logged in [docs/veyzl.md](veyzl.md).
-- To do (P1): a small labeled set of household messages with expected intents, to measure parsing accuracy.
+- To do: a small labeled set of household messages with expected intents, to measure parsing accuracy.
 
 ## Follow-up audit validation (V-007)
 

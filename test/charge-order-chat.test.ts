@@ -1,7 +1,7 @@
 // A failed charge reaches the group chat as a plain message, and nothing is recorded.
 import { describe, expect, it, vi } from "vitest";
 
-// computeShares is Person 2's and not built yet. Use PLAN.md's expected demo split.
+// The split is mocked to PLAN.md's expected demo shares, so this test only covers the failed charge.
 vi.mock("../src/core/split.js", () => ({ computeShares: () => ({ sam: 1565, jake: 4695, priya: 1015 }) }));
 const fakeStripe = { paymentIntents: { create: vi.fn(), capture: vi.fn(), cancel: vi.fn() }, refunds: { create: vi.fn() } };
 vi.mock("../src/payments/stripe.js", () => ({ requireStripe: () => fakeStripe }));

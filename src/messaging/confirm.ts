@@ -1,4 +1,4 @@
-// Owner: Person 1. Confirm-to-act: when Claude reads a casual message as a sensitive action (placing an
+// Confirm-to-act: when Claude reads a casual message as a sensitive action (placing an
 // order, changing who's in the household), Restock asks back and only the person's explicit "yes" runs it.
 // The model can propose; it can never act. One pending question per phone number, expiring after 10 minutes.
 import { registerState } from "../core/persist.js";

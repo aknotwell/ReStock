@@ -1,4 +1,4 @@
-// Owner: Person 4. What the dashboard may show a logged-in member: their own household, read-only.
+// What the dashboard may show a logged-in member: their own household, read-only.
 // Never phone numbers, and other members' cards only as "has a card" (last 4 digits are yours alone).
 import { computeShares } from "../core/split.js";
 import { db, findMember, householdsForPhone, pendingItems } from "../core/store.js";

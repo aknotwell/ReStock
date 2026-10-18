@@ -1,4 +1,4 @@
-// Owner: Person 2. Expected cents for the demo household (PLAN.md) and remainder handling.
+// Expected cents for the demo household (PLAN.md) and remainder handling.
 import { describe, expect, it } from "vitest";
 import { computeShares } from "../src/core/split.js";
 import { pendingItems } from "../src/core/store.js";

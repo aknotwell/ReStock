@@ -1,4 +1,4 @@
-// Owner: Person 1. "Add TP" -> up to three options to pick from, or the household's usual if asked.
+// "Add TP" -> up to three options to pick from, or the household's usual if asked.
 // Real prices first: when SERPAPI_KEY is set and the search finds store listings (src/deals/live.ts), the options
 // are those listings only. The demo catalog is the fallback, labelled as demo prices when live prices were expected.
 // Names and prices come from those listings or the catalog, never the model. The member picks; the AI never

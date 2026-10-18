@@ -1,4 +1,4 @@
-// Owner: Person 1. "Any brand or size?": asked only when a store search comes back thin and the member didn't
+// "Any brand or size?": asked only when a store search comes back thin and the member didn't
 // say a brand or size. Their answer is searched again; "any" shows what was found; anything else moves on.
 import { leftoverWords } from "../ai/searchSpec.js";
 import type { Product } from "../core/catalog.js";

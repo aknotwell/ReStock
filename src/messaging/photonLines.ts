@@ -1,4 +1,4 @@
-// Owner: Person 1. Giving people a Restock iMessage number: Photon "shared line assignments".
+// Giving people a Restock iMessage number: Photon "shared line assignments".
 // Photon's shared lines only accept texts from assigned handles, so web sign-up assigns the person's phone
 // to a pooled line and shows them which Restock number to text. Without Photon keys (tests, local dev) it
 // hands out a fixed fake number so the rest of the flow still runs.

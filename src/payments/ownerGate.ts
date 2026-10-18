@@ -1,4 +1,4 @@
-// Owner: Person 3. Owner card gate: no order until the budget owner has a card on file.
+// Owner card gate: no order until the budget owner has a card on file.
 // Members without a card are covered by the owner's card, so ordering without it is never safe.
 import type { Household, Member } from "../types.js";
 import { createCardSetupLink } from "./links.js";

@@ -1,4 +1,4 @@
-// Owner: Person 1. Wording follows the design note (PLAN.md).
+// Wording follows the design note (PLAN.md).
 import type { ShareLine } from "../core/split.js";
 import type { Cents, Household, Member, OrderResult, SplitRule } from "../types.js";
 

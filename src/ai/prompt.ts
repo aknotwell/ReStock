@@ -1,4 +1,4 @@
-// Owner: Person 1. Kept in version control so the VEYZL audit can see what the agent does.
+// Kept in version control so the VEYZL audit can see what the agent does.
 // Keep this string stable (no timestamps or per-request data) so it caches well.
 
 export const SYSTEM_PROMPT = `You are Restock, an AI assistant in a household group chat that helps roommates keep shared supplies stocked.
@@ -36,7 +36,7 @@ export function wrapUntrusted(senderName: string, text: string): string {
   return `<chat_message sender="${clean(senderName).replace(/"/g, "'")}">\n${clean(text)}\n</chat_message>`;
 }
 
-// Owner: Person 1. The shopping step (src/ai/findDeals.ts): Claude searches store listings and picks the best
+// The shopping step (src/ai/findDeals.ts): Claude searches store listings and picks the best
 // ones. It only ever returns listing numbers; names, prices, stores and links come from code.
 export const DEALS_PROMPT = `You are Restock's shopping assistant. A household member asked for an item in their group chat.
 Find the best store deals for exactly what they asked for.

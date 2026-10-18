@@ -1,4 +1,4 @@
-// Owner: Person 1 (drafted by Person 3). Why a Claude call failed, for logs, without anything private.
+// Why a Claude call failed, for logs, without anything private.
 // Kept apart from client.ts so tests that fake the client don't need to fake this too.
 import Anthropic from "@anthropic-ai/sdk";
 import { MODEL } from "./client.js";

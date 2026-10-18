@@ -1,4 +1,4 @@
-// Owner: Person 2 (store) / Person 1 (chat). Creating households and managing members.
+// Creating households and managing members.
 // Membership is security-sensitive (it decides who shares a bill), so it's plain code: never the LLM.
 // The persistence layer saves these changes automatically (src/core/persist.ts).
 import type { Cents, Household, Member } from "../types.js";

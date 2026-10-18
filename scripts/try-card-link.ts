@@ -1,4 +1,4 @@
-// Owner: Person 3. Dev helper for testing the add-card flow by hand (see docs/stripe.md).
+// Dev helper for testing the add-card flow by hand (see docs/stripe.md).
 // Loads the demo household, starts the server in this same process (the store is in memory),
 // and prints an add-card link. Usage: npx tsx scripts/try-card-link.ts [memberId]   (default: priya)
 import { seedDemo } from "./seed.js";

@@ -1,4 +1,4 @@
-# Stripe: setup and testing (Person 3)
+# Stripe: setup and testing
 
 How to run and test the payments code in `src/payments/` on your own machine. **Test mode only.** Never use a live key, and never type a real card number anywhere.
 

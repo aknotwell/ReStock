@@ -60,14 +60,14 @@ That's 3 sponsored side tracks, which is the maximum. Don't add another one with
 
 ### Code
 
-- TypeScript, strict mode. Shared types live in one file owned by Person 2 (see the contracts in PLAN.md). Don't fork the types.
+- TypeScript, strict mode. Shared types live in one file, `src/types.ts` (see the contracts in PLAN.md). Don't fork the types, and tell the team before changing them.
 - Use small modules with the interfaces from PLAN.md. Stub other people's modules instead of waiting on them.
 - Every function that touches money needs unit tests. The split engine tests in PLAN.md are required and must pass before merging.
-- Prefer boring and working over clever. The demo path (PLAN.md, Person 4) is the top priority. Polish everything else after it works end to end.
+- Prefer boring and working over clever. The demo path (the demo script in PLAN.md) is the top priority. Polish everything else after it works end to end.
 
 ## Git workflow (VEYZL needs PRs)
 
-- **No direct pushes to `main`** once the code starts. Do all work on a branch (`p1/photon-webhook`, `p3/stripe-setup`, …) and open a PR so the **VEYZL check runs**.
+- **No direct pushes to `main`** once the code starts. Do all work on a branch (`photon-webhook`, `stripe-setup`, …) and open a PR so the **VEYZL check runs**.
 - Keep PRs small and frequent, and merge them often. Don't sit on a big branch overnight.
 - When VEYZL flags something, follow **Tracking VEYZL-driven changes** below. These before/after PRs are the evidence the VEYZL prize asks for.
 - **Merge PRs with "Create a merge commit"**, not squash or rebase, so the before/after commits stay in `main`'s history.
@@ -92,7 +92,7 @@ When the VEYZL check flags something on a PR:
    Use one trailer per finding the commit addresses. Only tag commits that exist **because of** a VEYZL finding.
 4. **Log it in the same PR.** Add a row to the index and a full entry in `docs/veyzl.md` using the template there: the control, **the link to the failing check run**, what VEYZL said, the before and after commits, what changed, and why it matters.
 5. **Mention it in the PR description** under the "VEYZL" heading, e.g. `V-003: fixed missing human confirmation (NIST AI RMF …)`.
-6. Don't merge until the VEYZL check passes. It's a required status check on `main` (Person 4 sets this up in branch protection).
+6. Don't merge until the VEYZL check passes. It's a required status check on `main` (set in branch protection).
 7. If a finding is a false positive or we're accepting the risk, still log it, with status `accepted` and the reason. Don't tag any commit for it.
 
 Before pushing, check the log locally with `npm run veyzl:check`. To list every VEYZL-driven change for the demo or the pitch, run `npm run veyzl:log`, or:
@@ -105,7 +105,6 @@ git log --grep "^VEYZL: " --format="%h %s%n  %(trailers:key=VEYZL,valueonly,sepa
 
 - **If a VEYZL check fails or a VEYZL comment shows up on your PR, follow "Tracking VEYZL-driven changes" exactly.** Tag the commit, log it in `docs/veyzl.md`, and update the PR description. Never fix a VEYZL finding without logging it.
 
-- Stay within the **owner's area** in PLAN.md (Person 1–4) for the task you're given. If you need a change in another area, write a stub or a TODO and say so. Don't rewrite a teammate's module.
 - Don't add new tracks, big features, or new infrastructure that isn't in PLAN.md without asking.
 - Don't push to `main`, force-push, rewrite history, or merge PRs unless a human tells you to.
 - Don't pull in boilerplate generators or copy large external code (because of the 70/30 rule). Write it.

@@ -1,4 +1,4 @@
-// Owner: Person 4 (pages) + Person 3 (redirect targets).
+// Web pages, and the short links texted to members that redirect to Stripe.
 import { Router, type Request } from "express";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -300,7 +300,7 @@ webRoutes.post("/app/api/invite", (req, res) => {
   res.json({ url: inviteUrl(code), expiresInDays: INVITE_TTL_MS / 86_400_000 });
 });
 
-// Landing pages after Stripe Checkout. TODO(P4): branding and polish.
+// Landing pages after Stripe Checkout. TODO: branding and polish.
 webRoutes.get("/card/success", (_req, res) => res.sendFile(path.join(publicDir, "card-success.html")));
 webRoutes.get("/pay/success", (_req, res) => res.sendFile(path.join(publicDir, "pay-success.html")));
 webRoutes.get("/cancel", (_req, res) => res.sendFile(path.join(publicDir, "cancel.html")));

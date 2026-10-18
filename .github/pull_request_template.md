@@ -1,6 +1,6 @@
 ## What
 
-<!-- What changed, and which person's area (P1–P4) -->
+<!-- What changed, and which part of the app it touches -->
 
 ## Checklist
 

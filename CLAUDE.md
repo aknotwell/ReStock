@@ -4,4 +4,4 @@ All project rules for agents live in AGENTS.md. Claude Code loads them through t
 
 @AGENTS.md
 
-See also @PLAN.md for who owns what.
+See also @PLAN.md for what we're building.

@@ -1,4 +1,4 @@
-// Owner: Person 1. "shopping list" / "cart": what's waiting for the next order, built in code (no AI).
+// "shopping list" / "cart": what's waiting for the next order, built in code (no AI).
 import { approverNames } from "../core/approvals.js";
 import type { Household, Item } from "../types.js";
 import { describeParts } from "./splitWith.js";

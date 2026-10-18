@@ -1,4 +1,4 @@
-// Owner: Person 1 (drafted by Person 3). Who pays for an item, from people's own words:
+// Who pays for an item, from people's own words:
 // "add oat milk for me and Jake", "just me and Alex", "split with Abdul", "everyone", "not me".
 // Parsed in code and checked against the household's members. The model never decides who pays,
 // and a name we can't match is asked about, never guessed.

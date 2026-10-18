@@ -1,4 +1,4 @@
-// Owner: Person 3. The pay-back site (/pay) for members who owe the main card and have no card on file.
+// The pay-back site (/pay) for members who owe the main card and have no card on file.
 //
 // 1. Log in: they type their phone number and we text a 6-digit code through Restock. No passwords.
 // 2. They see only their own open debts.
@@ -181,7 +181,7 @@ export async function settlePayBack(session: Stripe.Checkout.Session): Promise<"
     const intent = await requireStripe().paymentIntents.retrieve(intentId, { expand: ["payment_method"] });
     const pm = intent.payment_method;
     if (pm && typeof pm !== "string" && pm.card) {
-      // TODO(P2): replace with an updateMember() in store.ts once there is one.
+      // TODO: replace with an updateMember() in store.ts once there is one.
       if (typeof session.customer === "string") debtor.stripeCustomerId = session.customer;
       debtor.paymentMethodId = pm.id;
       debtor.cardLast4 = pm.card.last4;

@@ -1,4 +1,4 @@
-// Owner: Person 1. Match what someone typed ("tp", "the good coffee") to a catalog product.
+// Match what someone typed ("tp", "the good coffee") to a catalog product.
 // The AI only picks an ID from our catalog; price and name always come from the catalog, never the model.
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";

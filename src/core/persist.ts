@@ -1,4 +1,4 @@
-// Owner: Person 2. Keeps the store on disk so a restart or redeploy doesn't wipe the household.
+// Keeps the store on disk so a restart or redeploy doesn't wipe the household.
 //
 // Approach: the app keeps working on the in-memory store (store.ts) exactly as before. We save a
 // full copy to SQLite whenever it changes (it's a few KB) and load it back at startup. Other

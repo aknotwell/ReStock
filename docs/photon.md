@@ -2,7 +2,7 @@
 
 Restock talks to people through **Photon 2.0**, Photon's Beta platform: the `@photon-ai/api` client and `https://api.photon.codes/v1`. Docs: https://photon.codes/docs/beta. Don't use the older Spectrum SDK (`spectrum-ts`). That's Photon's Stable product, and the track requires 2.0.
 
-## One-time setup (Person 1)
+## One-time setup
 
 1. Open the [Photon Beta dashboard](https://app.beta.photon.codes). Create an organization and a project, then copy the **Project ID** (`pho_prj_…`) from **Settings**.
 2. Under **API keys**, create a key with `project:read` and `project:write`. It's shown only once.

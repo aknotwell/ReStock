@@ -1,4 +1,4 @@
-// Owner: Person 1. What "order now" is about to buy, shown before anything is charged: which cart, and who pays
+// What "order now" is about to buy, shown before anything is charged: which cart, and who pays
 // for what (everyone, just one person, or a few people). Display only: the real split is computed by
 // computeShares when the order is placed, in integer cents.
 import { pendingItems } from "../core/store.js";

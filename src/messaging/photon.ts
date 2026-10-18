@@ -1,4 +1,4 @@
-// Owner: Person 1. Photon 2.0 transport (Beta platform, @photon-ai/api, https://photon.codes/docs/beta).
+// Photon 2.0 transport (Beta platform, @photon-ai/api, https://photon.codes/docs/beta).
 // Without PHOTON_API_KEY + PHOTON_PROJECT_ID it runs in console mode: sends are printed, nothing is received.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { ApiError, Photon } from "@photon-ai/api";
@@ -218,7 +218,7 @@ function toInbound(m: KnownMessage): InboundMessage | undefined {
   if (m.status !== "received" || sentBy.platform === "UNKNOWN" || space.platform === "UNKNOWN") return undefined;
   if (sentBy.kind !== "human") return undefined;
   const c = m.content;
-  if (c.type !== "text") return undefined; // TODO(P1): attachments, reactions
+  if (c.type !== "text") return undefined; // TODO: attachments, reactions
   return {
     messageId: m.id,
     spaceId: space.id,
@@ -233,7 +233,7 @@ function toInbound(m: KnownMessage): InboundMessage | undefined {
 /**
  * Poll Photon for new inbound messages and hand each one to `handle`, oldest first.
  * Polling needs no public URL, so it works from a laptop during the hackathon.
- * TODO(P1): switch to the Socket.IO event stream (photon.codes/docs/beta/websocket) for lower latency.
+ * TODO: switch to the Socket.IO event stream (photon.codes/docs/beta/websocket) for lower latency.
  */
 export function startPolling(handle: (msg: InboundMessage) => Promise<void>, intervalMs = 2000): () => void {
   if (!photon || !config.photonProjectId) {

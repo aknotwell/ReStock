@@ -1,4 +1,4 @@
-// Owner: Person 1. A brand or size the member named ("add Dawn dish soap", "TP, 24 rolls"), so the store search
+// A brand or size the member named ("add Dawn dish soap", "TP, 24 rolls"), so the store search
 // looks for what they asked for instead of the catalog's generic name.
 //
 // Code finds the leftover words and checks any size against how the product is sold. The AI only judges whether

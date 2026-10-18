@@ -1,4 +1,4 @@
-// Owner: Person 1. Short links to store listings ("restock.select/l/ab12cd34"), so options can show where to
+// Short links to store listings ("restock.select/l/ab12cd34"), so options can show where to
 // look without pasting long Google URLs into the chat. Only links productLink rebuilt are ever stored, so a
 // short link can only lead to a Google Shopping product page. They expire after a week.
 import { randomBytes } from "node:crypto";

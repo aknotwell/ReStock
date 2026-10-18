@@ -1,4 +1,4 @@
-// Owner: Person 3 (for Person 4's sign-up page). A contact card (vCard) so people can save their Restock
+// A contact card (vCard) so people can save their Restock
 // number as "restock" in one tap, with the logo as the photo. iOS and Android don't let a website add a
 // contact silently; tapping the link shows a filled-in card, then "Create New Contact" saves it.
 import { deflateSync } from "node:zlib";

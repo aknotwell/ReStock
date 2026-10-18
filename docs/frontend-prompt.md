@@ -2,7 +2,7 @@
 
 How to use this: copy everything in the box below and paste it into Claude (Claude Code works best, opened in this repo). It explains how Restock's payments work and which APIs exist, so the frontend matches the backend.
 
-Written by Person 3 (payments, Amber) on Oct 17, 2026, against `main` at PR #48. If something here disagrees with the code, the code wins: ask Amber.
+Written by Amber (payments) on Oct 17, 2026, against `main` at PR #48. If something here disagrees with the code, the code wins: ask Amber.
 
 ---
 
@@ -10,7 +10,7 @@ Written by Person 3 (payments, Amber) on Oct 17, 2026, against `main` at PR #48.
 I'm building the web frontend for Restock (DubHacks '26). Read AGENTS.md and PLAN.md first, then
 src/web/routes.ts, src/web/appState.ts and the pages in src/web/public/. Below is how payments work,
 so the UI matches what the backend actually does. Ask me before changing anything under
-src/payments/, src/core/ or src/messaging/ (those belong to teammates: payments is Amber, Person 3).
+src/payments/, src/core/ or src/messaging/ (those belong to teammates: payments is Amber).
 
 ## What Restock is
 An AI agent in a household's group chat (iMessage via Photon). Roommates text things like "we're out
@@ -90,7 +90,7 @@ Adding a card:
 - There is NO web endpoint yet for a logged-in member to start adding a card. If the UI needs an "Add
   card" button, the backend needs a small authenticated endpoint (for example `POST /app/api/card-link`)
   that returns `createCardSetupLink(me.id)` from src/payments/links.ts; the browser then just navigates
-  to that URL. Check with Amber (Person 3) before adding it; she can build it quickly.
+  to that URL. Check with Amber before adding it; she can build it quickly.
 
 ## APIs that exist today (src/web/routes.ts)
 Login (shared by /pay and the dashboard): a texted code, then an HttpOnly session cookie.

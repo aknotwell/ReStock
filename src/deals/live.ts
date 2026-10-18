@@ -2,7 +2,8 @@
 //
 // Store results are untrusted web data. We validate them with a schema, drop anything the guardrails object
 // to, and use only a short title, the seller, and the price. They are shown to the member and never sent to
-// the model. One search returns many results, so three options cost one search. Results are cached (and
+// the model. Store prices are the default whenever SERPAPI_KEY is set, including for items that aren't in the
+// demo catalog (offCatalogProduct). One search returns many results, so three options cost one search. Results are cached (and
 // saved with the store) so repeat requests and restarts don't spend the free quota, and a daily cap keeps a
 // runaway loop from spending it all. Any failure falls back to the demo catalog.
 import { createHash } from "node:crypto";
@@ -38,8 +39,9 @@ registerState("live-deals", {
 
 /**
  * One log line per price lookup, so the server logs show what SerpApi did: `[serpapi] "<search>" <outcome> k=v…`.
- * Only the search terms (a catalog product name) and counts are logged: never the request URL (it carries the
- * API key), and nothing about the household or its messages.
+ * Only the search terms of a catalog product and counts are logged. A search for an item that isn't in the catalog
+ * uses the member's own words, so it is logged by a hash ID instead. Never the request URL (it carries the API key),
+ * and nothing about the household or its messages.
  */
 function logSearch(query: string, outcome: string, details: Record<string, string | number | undefined> = {}, warn = false): void {
   const extra = Object.entries(details)
@@ -104,9 +106,12 @@ export function parseOffers(json: unknown): Offer[] {
  * rather than nothing when the search fails or today's cap is used up, and undefined when there's neither.
  */
 export async function searchOffers(
-  query: string,
-  { now = Date.now(), maxAgeHours = DEFAULT_MAX_AGE_HOURS }: { now?: number; maxAgeHours?: number } = {},
+  search: string,
+  { now = Date.now(), maxAgeHours = DEFAULT_MAX_AGE_HOURS, logAs }: { now?: number; maxAgeHours?: number; logAs?: string } = {},
 ): Promise<Cached | undefined> {
+  // What the log and the cache call this search. `search` is what SerpApi gets. Off-catalog searches pass a
+  // hash label, so the member's words are never logged or saved with the cache.
+  const query = logAs ?? search;
   const key = config.serpapiKey;
   if (!key) {
     // Once per process: a missing or misspelled variable otherwise fails silently.
@@ -131,7 +136,7 @@ export async function searchOffers(
   usage.count++;
   const today = `${usage.count}/${config.dealsDailyLimit}`;
 
-  const params = new URLSearchParams({ engine: "google_shopping", q: query, gl: "us", hl: "en", api_key: key });
+  const params = new URLSearchParams({ engine: "google_shopping", q: search, gl: "us", hl: "en", api_key: key });
   if (config.dealsLocation) params.set("location", config.dealsLocation);
   const started = Date.now();
   let status: number | undefined;
@@ -168,19 +173,59 @@ export function searchQuery(product: Product): string {
 }
 
 const ACCESSORY = /\b(?:holders?|dispensers?|stands?|organizers?|storage|covers?|mounts?|caddy|rack)\b/i;
+const OFF_CATALOG = "search-";
+
+/**
+ * The words we send to the store search for something a member asked for: letters, digits and a few joiners,
+ * at most 60 characters. Undefined if nothing usable is left or it trips a guardrail.
+ */
+export function searchTermsFor(requested: string): string | undefined {
+  // Check the raw text too: cleaning would turn "sam@example.com" into words a guardrail no longer sees.
+  if (checkInput(requested)) return undefined;
+  const t = requested.replace(/[^\p{L}\p{N}\s'&.-]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 60).trimEnd();
+  if (!/\p{L}/u.test(t) || checkInput(t)) return undefined;
+  return t;
+}
+
+/**
+ * A stand-in for an item that isn't in the demo catalog ("AA batteries"), so its store listings can be searched,
+ * ranked and picked like any other. Its id comes from the search words, so "the usual" finds the same group again.
+ * It has no price of its own, so listings aren't held to a price band.
+ */
+export function offCatalogProduct(requested: string): Product | undefined {
+  const terms = searchTermsFor(requested);
+  if (!terms) return undefined;
+  return {
+    id: `${OFF_CATALOG}${createHash("sha256").update(terms.toLowerCase()).digest("hex").slice(0, 12)}`,
+    name: terms.charAt(0).toUpperCase() + terms.slice(1),
+    aliases: [],
+    category: "other",
+    cents: 0,
+    defaultShared: true,
+    restockDays: null,
+  };
+}
 
 /**
  * A listing only counts if its title shares a word with the product ("toilet", "paper"), isn't an accessory
- * (a toilet paper holder), and is priced like the product: between a quarter and three times the catalog price,
- * which drops single rolls and commercial cases.
+ * (a toilet paper holder) unless an accessory is what was asked for, and is priced like the product: between a
+ * quarter and three times the catalog price, which drops single rolls and commercial cases. Items that aren't
+ * in the catalog have no price to compare, so only the words count.
  */
 function relevant(offer: Offer, product: Product): boolean {
   const title = offer.title.toLowerCase();
-  const words = [product.name.split(",")[0]!, ...product.aliases]
-    .flatMap((n) => n.toLowerCase().split(/[^a-z]+/))
-    .filter((w) => w.length >= 4);
+  const all = [product.name.split(",")[0]!, ...product.aliases].flatMap((n) => n.toLowerCase().split(/[^\p{L}\p{N}]+/u));
+  const long = all.filter((w) => w.length >= 4);
+  // Short requests ("ice", "AA batteries") still need a word to match.
+  const words = long.length ? long : all.filter((w) => w.length >= 2);
+  const accessoryOk = !ACCESSORY.test(title) || ACCESSORY.test(product.name);
   const base = getProduct(groupOf(product))?.cents ?? product.cents;
-  return words.some((w) => title.includes(w)) && !ACCESSORY.test(title) && offer.cents >= base / 4 && offer.cents <= base * 3;
+  const offCatalog = base <= 0;
+  const priced = offCatalog || (offer.cents >= base / 4 && offer.cents <= base * 3);
+  // Without a price band to catch mismatches, off-catalog listings must share a whole word ("rice" isn't "price").
+  const titleWords = new Set(title.split(/[^\p{L}\p{N}]+/u));
+  const shares = offCatalog ? words.some((w) => titleWords.has(w)) : words.some((w) => title.includes(w));
+  return shares && accessoryOk && priced;
 }
 
 /** Live store listings for a catalog product, as options the member can pick. Undefined when unavailable. */
@@ -189,7 +234,9 @@ export async function liveOptionsFor(
   opts: { now?: number; maxAgeHours?: number } = {},
 ): Promise<{ products: Product[]; checkedAt: number } | undefined> {
   const query = searchQuery(product);
-  const result = await searchOffers(query, opts);
+  // Off-catalog searches carry the member's words, so logs name them by id only.
+  const logAs = product.id.startsWith(OFF_CATALOG) ? product.id : undefined;
+  const result = await searchOffers(query, { ...opts, ...(logAs ? { logAs } : {}) });
   if (!result) return undefined;
   // By default only major retailers we recognize, under their usual names. DEALS_ANY_STORE=1 keeps every seller.
   const relevantOffers = result.offers.filter((o) => relevant(o, product));
@@ -215,7 +262,7 @@ export async function liveOptionsFor(
       };
     });
   // Why listings drop out: off-topic or mispriced (relevant), then sellers we don't recognize (stores).
-  logSearch(query, "listings", {
+  logSearch(logAs ?? query, "listings", {
     kept: products.length, offers: result.offers.length, relevant: relevantOffers.length,
     sized: products.filter((p) => p.units).length,
   });

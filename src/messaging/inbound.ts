@@ -24,7 +24,7 @@ import { config } from "../config.js";
 import { cleanName, findPhone } from "../core/households.js";
 import { handleOnboarding, setupInProgress } from "./onboarding.js";
 import { parseDealRequest, stripDealWords } from "../deals/request.js";
-import { currentListing, liveDealsEnabled } from "../deals/live.js";
+import { currentListing, liveDealsEnabled, offCatalogProduct } from "../deals/live.js";
 import { describeParts, parseSplitCommand, parseSplitInAdd, payersOf, setPayers, splitLabel, unclearReply, type SplitRequest } from "./splitWith.js";
 import {
   buildDealChoice, hasPendingChoice, isCancel, lastBought, namedSpecifically, parsePick, queueChoices, resolvePick, stripUsual, wantsUsual,
@@ -409,7 +409,29 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       }
       const match = await matchItem(requested);
       if (!match) {
-        await respond("I couldn’t find that in the demo catalog. Try another household item name?");
+        // Not in the demo catalog. With store prices on, search the stores for what they asked for: the member
+        // still picks from real listings, and nothing is added until they do.
+        const offCatalog = liveDealsEnabled() ? offCatalogProduct(requested) : undefined;
+        // "The usual": re-add last time's listing at today's price, like catalog items.
+        const usualListing = usual && offCatalog ? lastBought(household.id, offCatalog) : undefined;
+        if (offCatalog && usualListing?.store) {
+          const fresh = await currentListing(usualListing, offCatalog);
+          if (fresh) {
+            await addToCart(fresh, intent.shared, "Added your usual:", undefined, payers);
+            continue;
+          }
+        }
+        const choice = offCatalog ? await buildDealChoice(household.id, offCatalog, intent.shared, dealOptions, member.id) : undefined;
+        if (choice?.checkedAt && choice.options.length) {
+          if (usualListing) choice.note = `Your usual, ${usualListing.name}, isn't listed right now. Here are today's store prices.`;
+          else if (usual) choice.note = `I don't see an earlier order for ${requested}, so here are the options.`;
+          if (payers) choice.splitWith = payers;
+          choices.push(choice);
+        } else {
+          await respond(liveDealsEnabled()
+            ? "I couldn’t find store listings for that right now. Try another household item name?"
+            : "I couldn’t find that in the demo catalog. Try another household item name?");
+        }
         continue;
       }
       // Real prices first: when store prices are on, the usual and specific requests use today's listings too,

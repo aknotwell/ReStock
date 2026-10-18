@@ -4,7 +4,8 @@ import express from "express";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { activeHousehold, addMember, createHousehold, findMyHousehold, householdName } from "../src/core/households.js";
+import { activeHousehold, addMember, createHousehold, findMyHousehold, householdName, shareCard, stripeCustomerInUse } from "../src/core/households.js";
+import { pendingCustomerDeletions } from "../src/payments/deleteCustomer.js";
 import { addItem, db, householdsForPhone, pendingItems, resetStore } from "../src/core/store.js";
 import { parseMembershipCommand } from "../src/messaging/membership.js";
 import { handleInbound } from "../src/messaging/inbound.js";
@@ -291,5 +292,55 @@ describe("dashboard New group", () => {
     expect((await post("/app/api/households", { name: "Maple", groupType: "other", budgetCents: 12.5 }, cookie)).status).toBe(400);
     expect((await post("/app/api/households", { name: "Maple", groupType: "other", budgetCents: null }, cookie)).status).toBe(200);
     expect(db.households.size).toBe(2);
+  });
+});
+
+describe("one card per person across households", () => {
+  const giveCard = (household: ReturnType<typeof createHousehold>, phone: string) =>
+    Object.assign(household.members.find((m) => m.phone === phone)!, { stripeCustomerId: "cus_alex", paymentMethodId: "pm_alex", cardLast4: "4242" });
+
+  it("\"order now\" in another household uses the card you added in your first one", async () => {
+    const maple = createHousehold("Alex", ALEX, { name: "Maple House" });
+    const soccer = createHousehold("Alex", ALEX, { name: "Soccer Team" }); // texts now go here
+    giveCard(maple, ALEX); // added from the dashboard while looking at Maple House (an existing record, not shared yet)
+    addItem({ householdId: soccer.id, name: "Dish soap", addedBy: soccer.members[0]!.id, cents: 849, shared: true });
+    logs = [];
+    await dm(ALEX, "order now");
+    if (/Which cart/.test(out())) await dm(ALEX, "2"); // Soccer Team
+    // Past the owner-card check, it goes on to charge her card through Stripe (no key in tests, so that throws).
+    const charging = /Reply "yes" to order/.test(out()) ? await dm(ALEX, "yes").catch((err: Error) => err) : undefined;
+    expect(out()).not.toMatch(/I need your card/);
+    expect(String(charging)).toMatch(/STRIPE_SECRET_KEY/);
+    expect(soccer.members[0]).toMatchObject({ paymentMethodId: "pm_alex", cardLast4: "4242", stripeCustomerId: "cus_alex" });
+  });
+
+  it("a new card is shared with your other households right away, and new ones start with it", async () => {
+    const maple = createHousehold("Alex", ALEX, { name: "Maple House" });
+    const soccer = createHousehold("Alex", ALEX, { name: "Soccer Team" });
+    shareCard(giveCard(maple, ALEX));
+    expect(soccer.members[0]!.cardLast4).toBe("4242");
+    const club = createHousehold("Amber", AMBER, { name: "Book Club" });
+    expect(addMember(club, "Alex", ALEX).paymentMethodId).toBe("pm_alex");
+    expect(createHousehold("Alex", ALEX, { name: "Family" }).members[0]!.paymentMethodId).toBe("pm_alex");
+  });
+
+  it("a card you added in a household is kept there, not replaced by another household's", () => {
+    const maple = createHousehold("Alex", ALEX, { name: "Maple House" });
+    const soccer = createHousehold("Alex", ALEX, { name: "Soccer Team" });
+    giveCard(maple, ALEX);
+    Object.assign(soccer.members[0]!, { stripeCustomerId: "cus_other", paymentMethodId: "pm_other", cardLast4: "1881" });
+    shareCard(maple.members[0]!);
+    expect(soccer.members[0]!.cardLast4).toBe("1881");
+  });
+
+  it("leaving one household keeps the Stripe customer the others still use", async () => {
+    createHousehold("Alex", ALEX, { name: "Maple House" });
+    const soccer = createHousehold("Alex", ALEX, { name: "Soccer Team" });
+    shareCard(giveCard(soccer, ALEX));
+    await dm(ALEX, "leave household"); // leaves Soccer Team, the active one
+    await dm(ALEX, "yes");
+    expect(householdsForPhone(ALEX).map(householdName)).toEqual(["Maple House"]);
+    expect(stripeCustomerInUse("cus_alex")).toBe(true);
+    expect(pendingCustomerDeletions()).not.toContain("cus_alex");
   });
 });

@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import type Stripe from "stripe";
 import { config } from "../config.js";
 import { markDebtPaid } from "../core/ledger.js";
+import { shareCard } from "../core/households.js";
 import { db, findMember } from "../core/store.js";
 import { sendPrivate } from "../messaging/photon.js";
 import { cardAdded, paidBack } from "../messaging/templates.js";
@@ -138,6 +139,7 @@ export async function saveCardFromSetupSession(
   if (typeof session.customer === "string") member.stripeCustomerId = session.customer;
   member.paymentMethodId = paymentMethod.id;
   member.cardLast4 = paymentMethod.card.last4;
+  shareCard(member); // their other households without a card use it too
   await sendPrivate(member.id, cardAdded(member.cardLast4), `card-added:${setupIntentId}`).catch((err) =>
     console.warn("card-added text failed:", err instanceof Error ? err.message : err),
   );

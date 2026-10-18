@@ -2,7 +2,7 @@
 // Never phone numbers, and other members' cards only as "has a card" (last 4 digits are yours alone).
 import { computeShares } from "../core/split.js";
 import { db, findMember, householdsForPhone, pendingItems } from "../core/store.js";
-import { householdName } from "../core/households.js";
+import { adoptCards, householdName } from "../core/households.js";
 import type { Household, Member } from "../types.js";
 
 export type HouseholdView = {
@@ -26,6 +26,7 @@ export function householdView(me: Member): HouseholdView | undefined {
   const found = findMember(me.id);
   if (!found) return undefined;
   const { household } = found;
+  adoptCards(household); // show the card someone added in another of their households here too
   const nameOf = (id: string) => household.members.find((m) => m.id === id)?.name ?? "Former member";
   const owner = household.members.find((m) => m.id === household.ownerId);
   const items = pendingItems(household.id);

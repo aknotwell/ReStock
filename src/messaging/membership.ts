@@ -8,7 +8,7 @@ import { db, householdsForPhone } from "../core/store.js";
 import type { Debt, Household, Member } from "../types.js";
 import { cancelInvite, invitedTo, inviteCodeFor, inviteToHousehold, releaseLineFor, resetInvite } from "../core/signups.js";
 import { LineUnavailableError } from "./photonLines.js";
-import { deleteHousehold } from "../core/households.js";
+import { deleteHousehold, stripeCustomerInUse } from "../core/households.js";
 import { openBalancesOf, openDebtsFor, owedTo } from "../core/ledger.js";
 import { config } from "../config.js";
 import { forgetHandle, sendPrivate } from "./photon.js";
@@ -75,8 +75,9 @@ type Ctx = {
  * delete their Stripe customer so their saved card goes too. Failures are retried by the sweep.
  */
 async function forgetPerson(member: Member): Promise<void> {
-  // Each household membership has its own Stripe customer. Their number stays while they're in another household.
-  if (member.stripeCustomerId) await deleteStripeCustomer(member.stripeCustomerId);
+  // Their card can be shared with their other households (one card per person): delete the Stripe customer only
+  // once no household uses it. Their number stays while they're in another household.
+  if (member.stripeCustomerId && !stripeCustomerInUse(member.stripeCustomerId)) await deleteStripeCustomer(member.stripeCustomerId);
   // Keep their number while money is still owed to or by them: logging in to pay back texts them a code.
   if (householdsForPhone(member.phone).length || openBalancesOf([member.id]).length) return;
   forgetHandle(member.phone);

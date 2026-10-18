@@ -12,6 +12,21 @@ export function isIdentityQuestion(text: string): boolean {
   return IDENTITY.test(text.trim().toLowerCase().replace(/[’]/g, "'"));
 }
 
+// "shopping list", "cart", "what's in the cart?", "show cart", "list".
+const SHOW_CART =
+  /^(?:(?:show|see|view|check|send)(?: me)? |what(?:'s| is) (?:in|on) )?(?:(?:the|my|our) )?(?:(?:shopping|grocery) list|list|cart|basket)[?!. ]*$/;
+
+export function isShowCart(text: string): boolean {
+  return SHOW_CART.test(text.trim().toLowerCase().replace(/[’]/g, "'"));
+}
+
+// "hi", "Hello?", "hey there!", "good morning". Only a greeting, nothing else to act on.
+const GREETING = /^(?:hi+|hey+|hello+|hiya|yo|howdy|sup|what'?s up|hi there|hey there|hello there|good (?:morning|afternoon|evening))(?: restock)?[\s!.?,]*$/;
+
+export function isGreetingOnly(text: string): boolean {
+  return GREETING.test(text.trim().toLowerCase().replace(/[’]/g, "'"));
+}
+
 export function parseCommand(text: string): Intent[] {
   const t = text.trim().toLowerCase();
 
@@ -19,6 +34,7 @@ export function parseCommand(text: string): Intent[] {
   if (t === "yes" || t === "approve" || t === "approved") return [{ type: "approve", ...none }];
   if (/what do i owe|my balance/.test(t)) return [{ type: "what_do_i_owe", ...none }];
   if (t === "help" || isIdentityQuestion(t)) return [{ type: "help", ...none }];
+  if (isShowCart(t)) return [{ type: "show_cart", ...none }];
   if (/^(add|update|set up) (a |my )?card$/.test(t)) return [{ type: "add_card", ...none }];
 
   const add = /^add\s+(.+?)(\s+(personal|for me))?$/.exec(t);

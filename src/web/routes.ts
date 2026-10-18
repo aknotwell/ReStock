@@ -5,6 +5,7 @@ import path from "node:path";
 import { config } from "../config.js";
 import { fmt } from "../messaging/templates.js";
 import { createCardSetupLink, openCardSetupLink, openPayBackLink } from "../payments/links.js";
+import { confirmCardSetup } from "../payments/webhook.js";
 import { resolveShortLink } from "../deals/links.js";
 import { householdView, ownRecord, spacesView } from "./appState.js";
 import { rateLimiter } from "./rateLimit.js";
@@ -384,7 +385,21 @@ webRoutes.post("/app/api/remove", async (req, res) => {
 });
 
 // Landing pages after Stripe Checkout. TODO: branding and polish.
-webRoutes.get("/card/success", (_req, res) => res.sendFile(path.join(publicDir, "card-success.html")));
+// Back from Stripe's add-card page: save the card now (the webhook does the same, later, as a backup).
+// A failure here never blocks the page; the webhook still saves it.
+const cardConfirmsPerIp = rateLimiter(30, 60 * 60 * 1000); // each one is a Stripe API call
+webRoutes.get("/card/success", async (req, res) => {
+  const sessionId = typeof req.query.session_id === "string" && /^cs_(?:test_)?[A-Za-z0-9]{10,200}$/.test(req.query.session_id) ? req.query.session_id : undefined;
+  if (sessionId && !cardConfirmsPerIp(req.ip ?? "unknown")) return res.sendFile(path.join(publicDir, "card-success.html"));
+  if (sessionId) {
+    const result = await confirmCardSetup(sessionId).catch((err) => {
+      console.warn("card confirm on return failed (the webhook will retry):", err instanceof Error ? err.message : err);
+      return undefined;
+    });
+    if (result && result !== "saved") console.warn(`card confirm on return: ${result}`);
+  }
+  res.sendFile(path.join(publicDir, "card-success.html"));
+});
 webRoutes.get("/pay/success", (_req, res) => res.sendFile(path.join(publicDir, "pay-success.html")));
 webRoutes.get("/cancel", (_req, res) => res.sendFile(path.join(publicDir, "cancel.html")));
 webRoutes.get("/dashboard", (_req, res) => res.sendFile(path.join(publicDir, "dashboard.html")));

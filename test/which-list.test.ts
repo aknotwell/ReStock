@@ -114,3 +114,24 @@ describe("which shopping list", () => {
     expect(out()).toMatch(/In the cart \(6 items\)/);
   });
 });
+
+describe("a household with its own name", () => {
+  it("is listed by that name, can be picked by it, and the order preview uses it", async () => {
+    addSecondHousehold();
+    db.households.get("alex-house")!.name = "we da fam";
+    await say("shopping list");
+    expect(out()).toMatch(/Which list\?\n1\. Your household \(you, Jake and Priya\)\n2\. we da fam \(Alex and you\)\n/);
+    expect(out()).not.toMatch(/Alex's household/);
+    logs = [];
+    await say("we da fam");
+    expect(out()).toMatch(/we da fam \(Alex and you\):\nIn the cart \(1 item\)/);
+    logs = [];
+    await say("order now");
+    expect(out()).toMatch(/Which cart should I order\?\n1\. Your household \(you, Jake and Priya\)\n2\. we da fam \(Alex and you\)/);
+    logs = [];
+    await say("2");
+    expect(out()).not.toMatch(/Alex's household/);
+    expect(out()).toMatch(/we da fam \(Alex and you\)/);
+  });
+});
+

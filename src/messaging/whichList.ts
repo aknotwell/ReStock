@@ -20,12 +20,17 @@ registerState("list-picks", {
   },
 });
 
-/** "Your personal list", or "Sam's household (Sam, Jake and Priya)" so two households with one owner differ. */
+/**
+ * "Your personal list", "we da fam (David and you)" for a household with its own name, or "Sam's household (Sam, Jake
+ * and Priya)": the members are listed so two households with one owner differ.
+ */
 export function groupName(household: Household, phone: string): string {
   if (household.kind === "personal") return "Your personal list";
   const owner = household.members.find((m) => m.id === household.ownerId);
   const names = household.members.map((m) => (m.phone === phone ? "you" : m.name));
   const who = names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+  // Its own name when it has one ("we da fam (David and you)"); otherwise "<owner>'s household".
+  if (household.name) return `${household.name} (${who})`;
   return `${owner?.phone === phone ? "Your" : `${owner?.name ?? "A"}'s`} household (${who})`;
 }
 
@@ -85,6 +90,9 @@ function byName(groups: Household[], t: string, phone: string): Household | unde
   const hits = groups.filter((h) => {
     if (h.kind === "personal") return /^(?:personal|my personal|mine|just me|me)$/.test(words);
     const owner = h.members.find((m) => m.id === h.ownerId);
+    // Its own name, as typed ("we da fam") or with the same filler words dropped ("maple" for "Maple House").
+    const own = h.name?.toLowerCase();
+    if (own && (own === t || own.replace(/'s\b/g, "").replace(/\b(?:the|household|house|group|list|one)\b/g, "").replace(/\s+/g, " ").trim() === words)) return true;
     if (owner?.phone === phone && /^(?:my|mine|our)$/.test(words)) return true;
     return !!owner && (owner.name.toLowerCase() === words || owner.name.toLowerCase().split(/\s+/)[0] === words);
   });

@@ -74,14 +74,14 @@ describe("handleInbound", () => {
     expect(out).not.toMatch(/4242 4242/);
   });
 
-  it("tells unknown direct senders how to join", async () => {
+  it("says hi to unknown direct senders and asks how they'll use Restock", async () => {
     await send(text("+19999999999", "hi", "direct", "pho_spc_dm_stranger"));
-    expect(logs.join("\n")).toMatch(/budget owner to add you/);
+    expect(logs.join("\n")).toMatch(/Hi! I'm Restock, an AI assistant[\s\S]*"just me" or "group"/);
   });
 
-  it("ignores unknown group chats", async () => {
+  it("greets an unknown group chat and asks what kind of group it is", async () => {
     await send(text("+19999999999", "add tp", "group", "pho_spc_other"));
-    expect(logs).toHaveLength(0);
+    expect(logs.join("\n")).toMatch(/Hi everyone! I'm Restock[\s\S]*"roommates", "family", or "other"/);
   });
 });
 

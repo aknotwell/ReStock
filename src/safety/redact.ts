@@ -1,6 +1,8 @@
 // Owner: Person 1. Output filter: every outbound text passes through here before it leaves the service (V-002).
 // Defense in depth: even if something upstream leaks, personal data and secrets never reach a chat or a log.
 
+import { isRestockLine } from "../messaging/photonLines.js";
+
 // Secrets: Anthropic, Stripe, Photon, webhook secrets, bearer tokens. Applied everywhere, including inside URLs.
 const SECRET_RULES: [RegExp, string][] = [
   [/\b(?:sk-ant-[\w-]{8,}|sk_(?:test|live)_\w{8,}|rk_(?:test|live)_\w{8,}|whsec_\w{8,}|pho_(?:sk|ask)_\w{8,})\b/g, "[redacted secret]"],
@@ -9,9 +11,20 @@ const SECRET_RULES: [RegExp, string][] = [
   [/\b(?:api[_ -]?key|access[_ -]?token|client[_ -]?secret|password|authorization)\s*[:=]\s*[^\s,;]+/gi, "[redacted secret]"],
 ];
 
+/** "(206) 555-0142" / "206-555-0142" / "+12065550142" -> "+12065550142" (US numbers, as Restock lines are stored). */
+function asE164(text: string): string {
+  const digits = text.replace(/\D/g, "");
+  if (text.trim().startsWith("+")) return `+${digits}`;
+  return digits.length === 10 ? `+1${digits}` : `+${digits}`;
+}
+
+// Restock's own numbers aren't personal data: an owner has to be able to read "text hi to (206) 555-0142".
+// Every other phone number is still redacted.
+const phoneOrRestockLine = (match: string) => (isRestockLine(asE164(match)) ? match : "[redacted phone]");
+
 // Personal data and internal IDs. Not applied inside our own links: pay-back and add-card URLs carry
 // random IDs (UUIDs, tokens) that would otherwise be mangled into broken links.
-const PII_RULES: [RegExp, string][] = [
+const PII_RULES: [RegExp, string | ((match: string) => string)][] = [
   [/\b(?:cus|pm|pi|seti|acct)_[A-Za-z0-9_]+\b/g, "[redacted ID]"],
   [/\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b/gi, "[redacted ID]"],
   // Emails
@@ -21,11 +34,13 @@ const PII_RULES: [RegExp, string][] = [
   // Card numbers (13–19 digits, optionally grouped)
   [/\b\d(?:[ -]?\d){12,18}\b/g, "[redacted card]"],
   // Phone numbers: +country or 10+ digits with common separators
-  [/(?:\+\d{1,3}[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]?\d{3}[\s.-]?\d{4}\b/g, "[redacted phone]"],
+  [/(?:\+\d{1,3}[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]?\d{3}[\s.-]?\d{4}\b/g, phoneOrRestockLine],
 ];
 
 const URL = /https?:\/\/[^\s<>"']+/g;
-const apply = (rules: [RegExp, string][], t: string) => rules.reduce((acc, [re, sub]) => acc.replace(re, sub), t);
+// The two identical-looking branches let TypeScript pick replace()'s string or function overload.
+const apply = (rules: [RegExp, string | ((match: string) => string)][], t: string) =>
+  rules.reduce((acc, [re, sub]) => (typeof sub === "string" ? acc.replace(re, sub) : acc.replace(re, sub)), t);
 
 export function redact(text: string): string {
   const clean = apply(SECRET_RULES, normalizeSafetyText(text));

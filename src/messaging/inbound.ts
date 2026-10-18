@@ -17,7 +17,7 @@ import { balanceSummary, CARD_NUMBER_WARNING, fmt, groupSummary, helpMessage, in
 import { sendOrderTexts } from "./afterOrder.js";
 import { handleMembershipCommand, parseMembershipCommand } from "./membership.js";
 import { clearAction, isNo, isYes, peekAction, proposeAction } from "./confirm.js";
-import { activateFromFirstText, inviteCodeFor, isPendingSignup, lineFor, type Activation } from "../core/signups.js";
+import { activateFromFirstText, invitedTo, inviteCodeFor, isPendingSignup, lineFor, type Activation } from "../core/signups.js";
 import { isRestockLine } from "./photonLines.js";
 import { CONTACT_NAME, contactLink } from "../web/contactCard.js";
 import { config } from "../config.js";
@@ -109,7 +109,8 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     const activation = activateFromFirstText(msg.fromPhone);
     if (activation) {
       await welcome(activation, respond);
-      return;
+      // "hi" just activates. Anything else ("we're out of TP") is also handled, so it isn't lost.
+      if (isGreeting(msg.text)) return;
     }
   }
 
@@ -504,15 +505,15 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       // Owner-only, checked in code before asking and again when it runs.
       const name = intent.itemName ? cleanName(intent.itemName) : undefined;
       if (member.id !== household.ownerId) {
-        await respond("Only the budget owner can add or remove people.");
+        await respond("Only the budget owner can invite or remove people.");
       } else if (!name) {
-        await respond(`Who should I ${intent.type === "add_member" ? "add" : "remove"}? Use their first name.`);
+        await respond(`Who should I ${intent.type === "add_member" ? "invite" : "remove"}? Use their first name.`);
       } else if (intent.type === "add_member" && !heldPhone) {
-        await respond(`What's ${name}'s phone number? Text "add member ${name} <phone number>".`);
+        await respond(`What's ${name}'s phone number? Text "invite ${name} <phone number>".`);
       } else if (intent.type === "add_member") {
         proposeAction(msg.fromPhone, { kind: "membership", command: { type: "add_member", name, phone: heldPhone! } });
-        await respond(`Add ${name} (phone ending ${heldPhone!.slice(-4)}) to the household? Reply "yes" to confirm or "no" to cancel.`);
-      } else if (!household.members.some((m) => m.name.toLowerCase() === name.toLowerCase())) {
+        await respond(`Invite ${name} (phone ending ${heldPhone!.slice(-4)}) to the household? Reply "yes" to confirm or "no" to cancel.`);
+      } else if (!household.members.some((m) => m.name.toLowerCase() === name.toLowerCase()) && !invitedTo(household.id).some((p) => p.name.toLowerCase() === name.toLowerCase())) {
         await respond(`I couldn't find ${name} in your household.`);
       } else {
         proposeAction(msg.fromPhone, { kind: "membership", command: { type: "remove_member", name } });
@@ -580,6 +581,11 @@ export function contactReply(line: string | undefined): string {
   return line && isRestockLine(line)
     ? `Tap to save me as "${CONTACT_NAME}" in your contacts: ${contactLink(line)}`
     : `Save this number in your contacts as "${CONTACT_NAME}" so you can find me easily.`;
+}
+
+/** A first text that's only a greeting ("hi", "hey!"), so there's nothing else to act on after the welcome. */
+function isGreeting(text: string): boolean {
+  return /^(?:hi+|hey+|hello|hiya|yo|sup|howdy|hi there|hello there|start|join|ok|okay)[\s!.?]*$/i.test(text.trim());
 }
 
 /** "Alex", "Alex and Sam", "Alex, Sam and Jo". */

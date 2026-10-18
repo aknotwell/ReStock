@@ -104,15 +104,17 @@ describe("casual household management", () => {
     await dm(SAM, "can you add my roommate amber, her number is 425 555 0123", [intent("add_member", "Amber")]);
     expect(seen.at(-1)).toBe("can you add my roommate amber, her number is [phone]");
     expect(seen.join(" ")).not.toMatch(/555/);
-    expect(out()).toMatch(/Add Amber \(phone ending 0123\) to the household\? Reply "yes"/);
+    expect(out()).toMatch(/Invite Amber \(phone ending 0123\) to the household\? Reply "yes"/);
     await dm(SAM, "yes");
+    expect(out()).toMatch(/Invited Amber \(phone ending 0123\)\. Ask Amber to text "hi"/);
+    await dm("+14255550123", "hi"); // Amber joins with her first text
     expect(householdsForPhone("+14255550123")[0]?.members.map((m) => m.name)).toContain("Amber");
   });
 
-  it("only the owner can add or remove people, even casually", async () => {
+  it("only the owner can invite or remove people, even casually", async () => {
     await dm(JAKE, "add my friend bo, 206 555 0111", [intent("add_member", "Bo")]);
     await dm(JAKE, "kick priya out", [intent("remove_member", "Priya")]);
-    expect(out().match(/Only the budget owner can add or remove people/g)).toHaveLength(2);
+    expect(out().match(/Only the budget owner can invite or remove people/g)).toHaveLength(2);
     await dm(JAKE, "yes");
     expect(householdsForPhone("+12065550111")).toHaveLength(0);
   });

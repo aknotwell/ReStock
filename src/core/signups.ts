@@ -5,7 +5,7 @@
 // proves they own the phone and activates them. Unactivated sign-ups expire and free their line.
 // Saved with the rest of the store (persist.ts). We keep names, phones and line IDs; never message text.
 import { randomBytes } from "node:crypto";
-import { addMember, ALREADY_USES_RESTOCK, cleanName, createHousehold, MembershipError, normalizePhone } from "./households.js";
+import { addMember, ALREADY_USES_RESTOCK, checkCanJoin, cleanName, createHousehold, MembershipError, normalizePhone } from "./households.js";
 import { registerState } from "./persist.js";
 import { db, householdsForPhone } from "./store.js";
 import { assignLine, isLineActive, releaseLine, releaseLinesForHandle } from "../messaging/photonLines.js";
@@ -112,6 +112,44 @@ export async function startSignup(input: { name: string; phone: string; inviteCo
     expiresAt: now + SIGNUP_TTL_MS,
   });
   return { line: assignment.line, householdName: household ? ownerName(household) : null };
+}
+
+/**
+ * The owner invites someone by text ("invite Alex 206-555-0102"). Works like signing up with the household's
+ * invite link: it reserves them a Restock number (Photon's shared lines only take texts from assigned phones),
+ * and they join the household when they text it. Same join rules as addMember (checkCanJoin). Lasts 7 days.
+ */
+export async function inviteToHousehold(household: Household, name: string, phone: string, now = Date.now()): Promise<{ line: string }> {
+  await sweepExpiredSignups(now);
+  checkCanJoin(household, name, phone);
+  const others = invitedTo(household.id, now).filter((p) => p.phone !== phone);
+  if (others.some((p) => p.name.toLowerCase() === name.toLowerCase())) {
+    throw new MembershipError(`You've already invited a ${name}. Use a different name, like "${name} B".`);
+  }
+  if (household.members.length + others.length >= MAX_MEMBERS) throw new MembershipError("A household can have up to 9 people, counting invites.");
+  const existing = pending.get(phone);
+  if (!existing && pending.size >= MAX_OPEN_SIGNUPS) {
+    throw new MembershipError("Restock is at capacity for new people right now. Please try again later.");
+  }
+  const saved = existing ?? lines.get(phone);
+  const assignment =
+    saved && (await isLineActive(saved.assignmentId)) ? saved : await assignLine(phone, name, signupKey(phone, now));
+  pending.set(phone, { phone, name, householdId: household.id, assignmentId: assignment.assignmentId, line: assignment.line, expiresAt: now + INVITE_TTL_MS });
+  return { line: assignment.line };
+}
+
+/** People invited to this household who haven't texted yet. */
+export function invitedTo(householdId: string, now = Date.now()): { name: string; phone: string }[] {
+  return [...pending.values()].filter((p) => p.householdId === householdId && p.expiresAt > now).map((p) => ({ name: p.name, phone: p.phone }));
+}
+
+/** Take back an invite that hasn't been accepted ("remove member Alex" before Alex has texted). Frees the line. */
+export async function cancelInvite(householdId: string, name: string, now = Date.now()): Promise<string | undefined> {
+  const p = [...pending.values()].find((x) => x.householdId === householdId && x.expiresAt > now && x.name.toLowerCase() === name.trim().toLowerCase());
+  if (!p) return undefined;
+  pending.delete(p.phone);
+  if (!(await releaseLine(p.assignmentId))) unreleased.set(p.assignmentId, p.phone);
+  return p.name;
 }
 
 export type Activation = { household: Household; member: Member; joined: boolean };

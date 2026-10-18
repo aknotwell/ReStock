@@ -28,6 +28,9 @@ describe("parsing", () => {
   it("recognizes membership commands without stealing item adds", () => {
     expect(parseMembershipCommand("start household as Alex")).toEqual({ type: "start", name: "Alex" });
     expect(parseMembershipCommand("Start a household")).toEqual({ type: "start", name: null });
+    expect(parseMembershipCommand("invite Amber 425-555-0102")).toMatchObject({ type: "add_member", name: "Amber" });
+    expect(parseMembershipCommand("invite roommate Amber 425-555-0102")).toMatchObject({ type: "add_member", name: "Amber" });
+    expect(parseMembershipCommand("invite")).toEqual({ type: "invite", reset: false }); // the join link
     expect(parseMembershipCommand("add member Amber 425-555-0102")).toMatchObject({ type: "add_member", name: "Amber" });
     expect(parseMembershipCommand("add Amber (425) 555-0102")).toMatchObject({ type: "add_member", name: "Amber" });
     expect(parseMembershipCommand("remove member Amber")).toEqual({ type: "remove_member", name: "Amber" });
@@ -47,7 +50,7 @@ describe("parsing", () => {
 });
 
 describe("household lifecycle over chat", () => {
-  it("a stranger starts a household, adds people, and new members can use it right away", async () => {
+  it("a stranger starts a household, invites people, and they join with their first text", async () => {
     await dm(STRANGER, "hi");
     expect(out()).toMatch(/Hi! I'm Restock[\s\S]*"just me" or "group"/); // setup by questions (onboarding.ts)
 
@@ -58,59 +61,77 @@ describe("household lifecycle over chat", () => {
     await dm(ALEX, "start household as Alex");
     const [h] = householdsForPhone(ALEX);
     expect(h?.members).toMatchObject([{ name: "Alex", phone: ALEX, role: "owner" }]);
-    expect(out()).toMatch(/you're the budget owner/);
+    expect(out()).toMatch(/you're the budget owner[\s\S]*Invite roommates: "invite <first name> <phone number>"/);
 
     logs = [];
-    await dm(ALEX, "add member Amber 425-555-0102");
-    await dm(ALEX, "add David (509) 555-0103");
-    expect(h!.members.map((m) => m.name)).toEqual(["Alex", "Amber", "David"]);
-    expect(out()).toMatch(/Added Amber \(phone ending 0102\)/);
-    expect(out()).not.toMatch(/4255550102/); // never echo full phone numbers
+    await dm(ALEX, "invite Amber 425-555-0102");
+    await dm(ALEX, "add David (509) 555-0103"); // the old wording still works
+    // Invited, not members yet: each got a Restock number to text, and joins when they text it.
+    expect(h!.members.map((m) => m.name)).toEqual(["Alex"]);
+    expect(out()).toMatch(/Invited Amber \(phone ending 0102\)\. Ask Amber to text "hi" to \(628\) 555-0100\. That's their Restock number/);
+    expect(out()).not.toMatch(/4255550102|425-555-0102/); // never echo the invitee's full number
+    logs = [];
+    await dm(ALEX, "members");
+    expect(out()).toMatch(/• Alex \(budget owner\), no card yet\nInvited, waiting for them to text: Amber, David/);
 
-    // Amber is recognized on her first text and can shop immediately.
+    // Amber's first text joins her, and is handled too (not lost to the welcome).
     logs = [];
     await dm(AMBER, "add dish soap");
+    expect(out()).toMatch(/Welcome, Amber! You're in Alex's household/);
     expect(out()).toMatch(/Added Dish soap|Which one\?/); // either added, or offered product choices
     expect(out()).not.toMatch(/start household as/);
 
+    logs = [];
+    await dm(DAVID, "hi");
+    expect(out()).toMatch(/Welcome, David!/);
     logs = [];
     await dm(DAVID, "members");
     expect(out()).toMatch(/• Alex \(budget owner\), no card yet\n• Amber, no card yet\n• David, no card yet/);
   });
 
-  it("only the owner can add or remove people", async () => {
+  it("only the owner can invite or remove people", async () => {
     await dm(ALEX, "start household as Alex");
-    await dm(ALEX, "add member Amber 425-555-0102");
+    await dm(ALEX, "invite Amber 425-555-0102");
+    await dm(AMBER, "hi");
     logs = [];
-    await dm(AMBER, "add member Eve 206-555-0177");
+    await dm(AMBER, "invite Eve 206-555-0177");
     await dm(AMBER, "remove member Alex");
-    expect(out().match(/Only the budget owner can add or remove people/g)).toHaveLength(2);
+    expect(out().match(/Only the budget owner can invite or remove people/g)).toHaveLength(2);
     expect(householdsForPhone("+12065550177")).toHaveLength(0);
   });
 
   it("rejects duplicates and numbers already in another household", async () => {
     await dm(ALEX, "start household as Alex");
-    await dm(ALEX, "add member Amber 425-555-0102");
+    await dm(ALEX, "invite Amber 425-555-0102");
     logs = [];
-    await dm(ALEX, "add member Amber 509-555-0103");
-    expect(out()).toMatch(/already a Amber/);
-    await dm(ALEX, "add member Ambs 425-555-0102");
+    await dm(ALEX, "invite Amber 509-555-0103");
+    expect(out()).toMatch(/already invited a Amber/);
+    await dm(AMBER, "hi"); // Amber joins
+    await dm(ALEX, "invite Ambs 425-555-0102");
     expect(out()).toMatch(/already in another household/);
     await dm(AMBER, "start household as Amber");
     expect(out()).toMatch(/already in Alex's household/);
     expect(db.households.size).toBe(1);
   });
 
-  it("removes members (never the owner) and rejects unreadable input", async () => {
+  it("removes members (never the owner), cancels invites, and rejects unreadable input", async () => {
     await dm(ALEX, "start household as Alex");
-    await dm(ALEX, "add member Amber 425-555-0102");
+    await dm(ALEX, "invite Amber 425-555-0102");
+    logs = [];
+    await dm(ALEX, "remove member Amber"); // not joined yet: the invite is taken back
+    expect(out()).toMatch(/Cancelled Amber's invite/);
+    await dm(AMBER, "hi");
+    expect(householdsForPhone(AMBER)).toHaveLength(0); // the invite is gone, so her "hi" doesn't join her
+
+    await dm(ALEX, "invite Amber 425-555-0102");
+    await dm(AMBER, "hi");
     logs = [];
     await dm(ALEX, "remove member Alex");
     expect(out()).toMatch(/budget owner can't be removed/);
     await dm(ALEX, "remove member Amber");
     expect(out()).toMatch(/Removed Amber/);
     expect(householdsForPhone(AMBER)).toHaveLength(0);
-    await dm(ALEX, "add member 123 425-555-0102"); // not a valid name: never parsed as a member command
+    await dm(ALEX, "invite 123 425-555-0102"); // not a valid name: never parsed as a member command
     expect(householdsForPhone(AMBER)).toHaveLength(0);
   });
 });

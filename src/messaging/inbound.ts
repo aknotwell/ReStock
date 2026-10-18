@@ -13,7 +13,8 @@ import { OwnerCardRequiredError, ownerCardRequest } from "../payments/ownerGate.
 import type { Debt, Household, Item } from "../types.js";
 import { checkInput, INJECTION_REPLY } from "../safety/guardrails.js";
 import { isMuted, mute, reply, sendGroup, sendPrivate, unmute, type InboundMessage } from "./photon.js";
-import { isGreetingOnly, parseCommand } from "./commands.js";
+import { isGreetingOnly, isShowCart, parseCommand } from "./commands.js";
+import { askWhichList, groupsToPick, resolveListPick } from "./whichList.js";
 import { cartSummary } from "./cart.js";
 import { stripIntensifiers } from "./casualAdd.js";
 import { balanceSummary, CARD_NUMBER_WARNING, fmt, groupSummary, helpMessage, inviteToAddCard } from "./templates.js";
@@ -131,6 +132,21 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     if (msg.spaceKind === "direct") await sendLoginCode(member, respond);
     else await respond("For your security, text me directly for a login code.");
     return;
+  }
+
+  // "shopping list" one-on-one from someone in several groups: ask which group's list, then show it.
+  // In a group chat, or with only one group, the list is shown below as usual.
+  if (msg.spaceKind === "direct") {
+    const pick = resolveListPick(msg.fromPhone, msg.text);
+    if (pick) {
+      await respond(pick.kind === "cancelled" ? "OK, never mind." : pick.text);
+      return;
+    }
+    const groups = isShowCart(msg.text) ? groupsToPick(msg.fromPhone) : undefined;
+    if (groups) {
+      await respond(askWhichList(msg.fromPhone, groups));
+      return;
+    }
   }
 
   // A "yes"/"no" to a question Restock asked (confirm-to-act). Only the person who was asked can answer.

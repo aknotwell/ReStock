@@ -33,11 +33,23 @@ export function memberId(name: string, taken: Set<string>): string {
 
 /** A personal space doesn't count: someone can have their own space and be in a group. */
 export const inAGroup = (phone: string) => householdsForPhone(phone).some((h) => h.kind !== "personal");
+const hasPersonalSpace = (phone: string) => householdsForPhone(phone).some((h) => h.kind === "personal");
+
+/**
+ * One place per number when texting Restock one-on-one: each person's direct texts go to their personal space
+ * if they have one, so they couldn't also use a household that works through one-on-one texts.
+ */
+export const ALREADY_USES_RESTOCK =
+  'That number already uses Restock, in a household or a personal space. Each number can be in one place for now. ' +
+  'To move, text "delete my data" from that phone first, then sign up again.';
 
 export const allMemberIds = () => new Set([...db.households.values()].flatMap((h) => h.members.map((m) => m.id)));
 
 export function createHousehold(ownerName: string, ownerPhone: string): Household {
-  if (inAGroup(ownerPhone)) throw new MembershipError("You're already in a household.");
+  if (inAGroup(ownerPhone)) throw new MembershipError("You're already in a household. Each number can be in one household for now.");
+  if (hasPersonalSpace(ownerPhone)) {
+    throw new MembershipError('You already have a personal space with me, and one-on-one texts go there. To start a household instead, text "delete my data" first.');
+  }
   const owner: Member = { id: memberId(ownerName, allMemberIds()), name: ownerName, phone: ownerPhone, role: "owner" };
   const household: Household = {
     id: newId(),
@@ -53,11 +65,20 @@ export function createHousehold(ownerName: string, ownerPhone: string): Househol
 
 export function addMember(household: Household, name: string, phone: string): Member {
   if (household.members.length >= 9) throw new MembershipError("A household can have up to 9 people.");
-  if (inAGroup(phone)) throw new MembershipError("That number is already in a household.");
+  if (inAGroup(phone)) {
+    throw new MembershipError('That number is already in another household. Each number can be in one household for now; they can text "delete my data" there to leave it first.');
+  }
+  if (hasPersonalSpace(phone) && household.groupChatId === UNBOUND_GROUP) {
+    // Their one-on-one texts go to their personal space, so a household without a group chat would be unreachable.
+    throw new MembershipError(
+      'That person has a personal Restock space, and their one-on-one texts go there, so they couldn\'t use this household. They can text "delete my data" to close it first.',
+    );
+  }
   if (household.members.some((m) => m.name.toLowerCase() === name.toLowerCase())) {
     throw new MembershipError(`There's already a ${name} in your household. Use a different name, like "${name} B".`);
   }
-  const member: Member = { id: memberId(name, allMemberIds()), name, phone, role: "member" };
+  // Same rule as joining in a group chat: everyone can approve requests, except in a family (only the owner).
+  const member: Member = { id: memberId(name, allMemberIds()), name, phone, role: "member", ...(household.groupType === "family" ? {} : { canApprove: true }) };
   household.members.push(member);
   return member;
 }

@@ -3,6 +3,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { parseCommand } from "../messaging/commands.js";
 import { ParsedMessageSchema, type Intent } from "./intent.js";
 import { anthropic as client, MODEL } from "./client.js";
+import { aiErrorSummary } from "./errors.js";
 import { checkInput } from "../safety/guardrails.js";
 import { SYSTEM_PROMPT, wrapUntrusted } from "./prompt.js";
 
@@ -33,9 +34,9 @@ export async function parseMessage(text: string, senderName: string): Promise<In
       intent.type !== "order_now" && intent.type !== "approve"
       && (!intent.itemName || !checkInput(intent.itemName)),
     );
-  } catch {
-    // The demo must keep working without the LLM (AGENTS.md).
-    console.warn("AI parse failed; using command parser.");
+  } catch (err) {
+    // The demo must keep working without the LLM (AGENTS.md). The log says why, never what was said.
+    console.warn(`AI parse failed: ${aiErrorSummary(err)}. Using the command parser.`);
     return parseCommand(text);
   }
 }

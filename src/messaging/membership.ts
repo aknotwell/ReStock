@@ -48,7 +48,11 @@ export async function handleMembershipCommand({ command, fromPhone, spaceKind, h
   try {
     if (command.type === "start") {
       if (member && household) {
-        await respond(`You're already in ${household.members.find((m) => m.id === household.ownerId)?.name ?? "a"}'s household.`);
+        await respond(
+          household.kind === "personal"
+            ? 'You already have a personal space with me, and one-on-one texts go there. To start a household instead, text "delete my data" first.'
+            : `You're already in ${household.members.find((m) => m.id === household.ownerId)?.name ?? "a"}'s household. Each number can be in one household for now.`,
+        );
         return true;
       }
       if (spaceKind !== "direct") {

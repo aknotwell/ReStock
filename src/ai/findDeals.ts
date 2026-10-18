@@ -29,19 +29,33 @@ const TOOLS: Anthropic.Beta.BetaTool[] = [
   },
   {
     name: "choose_listings",
-    description: "Finish: the listing numbers that are the best deals for what the member asked for, best first. Empty if none fit.",
+    description:
+      "Finish: the listing numbers that are the best deals for what the member asked for, best first. Empty if none fit. " +
+      "ask_about: what the member could usefully narrow down (\"brand\", \"size\"), only if they named none of it and your " +
+      "chosen listings differ in it in a way most shoppers care about. Empty otherwise.",
     strict: true,
     input_schema: {
       type: "object",
-      properties: { listing_numbers: { type: "array", items: { type: "integer" } } },
-      required: ["listing_numbers"],
+      properties: {
+        listing_numbers: { type: "array", items: { type: "integer" } },
+        ask_about: { type: "array", items: { type: "string", enum: ["brand", "size"] } },
+      },
+      required: ["listing_numbers", "ask_about"],
       additionalProperties: false,
     },
   },
 ];
 
 const SearchInput = z.object({ query: z.string().min(1).max(200) });
-const ChooseInput = z.object({ listing_numbers: z.array(z.number().int()).max(20) });
+const ChooseInput = z.object({
+  listing_numbers: z.array(z.number().int()).max(20),
+  ask_about: z.array(z.enum(["brand", "size"])).max(2).optional(),
+});
+
+/** What Claude thinks the member could narrow down. Code still checks the listings really differ in it. */
+export type DetailKind = "brand" | "size";
+/** Claude's picks, plus what it suggests asking about. */
+export type DealResult = { picks: DealPick[]; askAbout: DetailKind[] };
 
 /** A listing Claude chose, and when its search ran. The caller turns it into an option with listingProduct. */
 export type DealPick = { offer: Offer; at: number };
@@ -52,6 +66,11 @@ export type DealPick = { offer: Offer; at: number };
  * searched and found nothing that fits.
  */
 export async function findDeals(request: string): Promise<DealPick[] | undefined> {
+  return (await findDealsDetailed(request))?.picks;
+}
+
+/** findDeals, plus Claude's suggestion of what to ask about ("brand", "size"). */
+export async function findDealsDetailed(request: string): Promise<DealResult | undefined> {
   if (!anthropic || !liveDealsEnabled()) return undefined;
   const seen = new Map<number, DealPick>();
   let searches = 0;
@@ -100,7 +119,7 @@ export async function findDeals(request: string): Promise<DealPick[] | undefined
           const s = seen.get(n);
           return s ? [s] : [];
         });
-        return picks.slice(0, MAX_PICKS);
+        return { picks: picks.slice(0, MAX_PICKS), askAbout: [...new Set(parsed.data.ask_about ?? [])] };
       }
 
       messages.push({ role: "assistant", content: response.content });

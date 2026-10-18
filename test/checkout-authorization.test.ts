@@ -22,8 +22,10 @@ it("requires an authenticated household member", async () => {
   await send("order now", "unknown");
   expect(order).not.toHaveBeenCalled();
 });
-it("hands off a member's explicit command exactly once", async () => {
-  const replies = await send("order now");
+it("hands off a member's explicit command exactly once, after their yes", async () => {
+  await send("order now");
+  expect(order).not.toHaveBeenCalled(); // "order now" shows what would be bought first
+  const replies = await send("yes");
   expect(order).toHaveBeenCalledExactlyOnceWith("demo-house");
   expect(replies.join()).toContain("Checkout handoff verified.");
 });

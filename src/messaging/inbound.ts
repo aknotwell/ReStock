@@ -1,6 +1,6 @@
 // Owner: Person 1. Pipeline: identify household + sender -> guard -> AI parse -> act -> reply.
 import { answerQuestion, OFFLINE_REPLY } from "../ai/answerQuestion.js";
-import { findDeals } from "../ai/findDeals.js";
+import { findDealsDetailed, type DetailKind } from "../ai/findDeals.js";
 import { matchItem } from "../ai/matchItem.js";
 import { parseMessage } from "../ai/parseMessage.js";
 import { addItem, db, findHouseholdByGroupChat, findMemberByPhone, householdsForPhone, pendingItems, UNBOUND_GROUP } from "../core/store.js";
@@ -9,12 +9,13 @@ import { openDebtsFor, owedTo } from "../core/ledger.js";
 import { OrderError, placeOrder } from "../core/orders.js";
 import { createCardSetupLink } from "../payments/links.js";
 import { ChargeFailedError } from "../payments/charges.js";
-import { OwnerCardRequiredError, ownerCardRequest } from "../payments/ownerGate.js";
-import type { Debt, Household, Item } from "../types.js";
+import { findOwner, OwnerCardRequiredError, ownerCardRequest, ownerHasCard } from "../payments/ownerGate.js";
+import type { Debt, Household, Item, Member } from "../types.js";
 import { checkInput, INJECTION_REPLY } from "../safety/guardrails.js";
 import { isMuted, mute, reply, sendGroup, sendPrivate, unmute, type InboundMessage } from "./photon.js";
 import { isGreetingOnly, isShowCart, parseCommand } from "./commands.js";
 import { askWhichList, groupsToPick, resolveListPick } from "./whichList.js";
+import { cartName, orderPreview, ownerCardWait, readyItems } from "./orderPreview.js";
 import { cartSummary } from "./cart.js";
 import { stripIntensifiers } from "./casualAdd.js";
 import { balanceSummary, CARD_NUMBER_WARNING, fmt, groupSummary, helpMessage, inviteToAddCard } from "./templates.js";
@@ -34,11 +35,12 @@ import { currentListing, listingProduct, liveDealsEnabled, offCatalogProduct } f
 import { describeFilters, hasFilters } from "../deals/rank.js";
 import { describeParts, parseSplitCommand, parseSplitInAdd, payersOf, setPayers, splitLabel, unclearReply, type SplitRequest } from "./splitWith.js";
 import {
-  buildChoice, buildDealChoice, hasPendingChoice, isCancel, lastBought, namedSpecifically, parsePick, queueChoices, resolvePick, stripUsual, wantsUsual,
+  buildChoice, buildDealChoice, currentChoice, dropCurrentChoice, hasPendingChoice, isCancel, lastBought, namedSpecifically, parsePick, queueChoices, resolvePick, stripUsual, wantsUsual,
   type Choice,
 } from "./options.js";
 import type { Product } from "../core/catalog.js";
 import { searchSpecFor } from "../ai/searchSpec.js";
+import { askForDetails, clearDetails, detailsHint, looksLikeDetails, NO_PREFERENCE, namedDetails, pendingDetails, thinResults } from "./details.js";
 import { sendLoginCode } from "../payments/payback.js";
 
 const LOGIN_CODE = /^(?:(?:send|text|give) me (?:a |my |the )?|get (?:a |my )?)?(?:log ?in |dashboard |verification )?code[.!?]*$|^log ?in[.!?]*$/i;
@@ -75,7 +77,8 @@ function resolveHousehold(msg: InboundMessage): Household | undefined {
   return current;
 }
 
-export async function handleInbound(msg: InboundMessage): Promise<void> {
+/** `refined`: this message is a member's answer to "Any brand or size?", so it won't be asked again. */
+export async function handleInbound(msg: InboundMessage, opts: { refined?: boolean } = {}): Promise<void> {
   let part = 0;
   const respond = (text: string) => reply(msg, text, part++);
 
@@ -137,7 +140,10 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     }
   }
 
-  const household = resolveHousehold(msg);
+  // "yes" to an order preview for a cart they picked: that cart, even when they're in several groups.
+  const confirming = peekAction(msg.fromPhone);
+  const pickedCart = confirming?.kind === "order" && confirming.householdId && isYes(msg.text) ? db.households.get(confirming.householdId) : undefined;
+  const household = pickedCart && findMemberByPhone(pickedCart, msg.fromPhone) ? pickedCart : resolveHousehold(msg);
   const member = household && findMemberByPhone(household, msg.fromPhone);
 
   // "code": a login code for the dashboard and pay-back site, as a reply (Restock can't text first, so the
@@ -152,13 +158,20 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   // In a group chat, or with only one group, the list is shown below as usual.
   if (msg.spaceKind === "direct") {
     const pick = resolveListPick(msg.fromPhone, msg.text);
+    if (pick?.kind === "order") {
+      const me = findMemberByPhone(pick.household, msg.fromPhone);
+      if (me) await startCheckout(pick.household, me, msg, respond);
+      return;
+    }
     if (pick) {
       await respond(pick.kind === "cancelled" ? "OK, never mind." : pick.text);
       return;
     }
-    const groups = isShowCart(msg.text) ? groupsToPick(msg.fromPhone) : undefined;
+    // "order now" one-on-one from someone in several groups: ask which cart first.
+    const ordering = parseCommand(msg.text).some((i) => i.type === "order_now");
+    const groups = isShowCart(msg.text) || ordering ? groupsToPick(msg.fromPhone) : undefined;
     if (groups) {
-      await respond(askWhichList(msg.fromPhone, groups));
+      await respond(askWhichList(msg.fromPhone, groups, ordering ? "order" : "list"));
       return;
     }
   }
@@ -324,7 +337,8 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     }
     const budgetNote = exceedsBudget ? " Heads-up: this puts the household over this month's budget." : "";
     await respond(
-      `${prefix} ${item.name} (${splitLabel(item, household, member.id)}, ${fmt(item.cents)}). ${changeHint(item, household, member.id)}${budgetNote}`,
+      // In several groups: say which cart it went to, so "order now" later isn't a surprise.
+      `${prefix} ${item.name}${groupsToPick(member.phone) ? ` to ${cartName(household, member.phone, { short: true })}` : ""} (${splitLabel(item, household, member.id)}, ${fmt(item.cents)}). ${changeHint(item, household, member.id)}${budgetNote}`,
     );
     if (household.groupChatId === UNBOUND_GROUP) {
       await relayToOthers(household, member.id, `${member.name} added ${item.name} (${splitLabel(item, household)}, ${fmt(item.cents)}).`, `add:${item.id}`);
@@ -405,6 +419,16 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     return;
   }
 
+  // Text that's handled as usual, never taken as a brand or size: commands, greetings, "yes".
+  const handledElsewhere = (text: string) =>
+    parseCommand(text).some((i) => i.type !== "unknown") || !!membership || !!parseSplitCommand(text, household, member) ||
+    isGreetingOnly(text) || isYes(text);
+  const searchAgain = (answer: string, requested: string, shared: boolean | null) =>
+    handleInbound(
+      { ...msg, messageId: `${msg.messageId}:details`, text: `add ${answer} ${requested}${shared === false ? " for me" : ""}` },
+      { refined: true },
+    );
+
   // A reply to "Which one?" (1/2/3 or cancel) is handled in code, before any AI parsing.
   if (hasPendingChoice(household.id, member.id)) {
     const pick = parsePick(msg.text);
@@ -415,6 +439,35 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       else if (result?.kind === "picked") await addToCart(result.product, result.shared, "Added", result.overBudget, result.splitWith);
       else if (result?.kind === "cancelled") await respond("OK, I didn't add that one.");
       if (result && result.kind !== "invalid" && result.next) await respond(result.next);
+      return;
+    }
+    // "Charmin, 24 rolls" in answer to a "Which one?" that suggested a brand or size: search again with it.
+    const current = currentChoice(household.id, member.id);
+    if (current?.refine && looksLikeDetails(msg.text, handledElsewhere(msg.text.trim()))) {
+      dropCurrentChoice(household.id, member.id);
+      await searchAgain(msg.text.trim(), current.refine.requested, current.refine.shared);
+      return;
+    }
+  }
+
+  // An answer to "Any brand or size?". "any" shows what was found, "cancel" drops it, a short answer
+  // ("Charmin, 24 rolls") is searched again with the item, and anything else (a command, a new request) moves on.
+  const details = pendingDetails(household.id, member.id);
+  if (details) {
+    const answer = msg.text.trim();
+    clearDetails(household.id, member.id);
+    if (NO_PREFERENCE.test(answer)) {
+      const prompt = details.found.options.length ? queueChoices(household.id, member.id, [details.found]) : undefined;
+      await respond(prompt ?? `OK. Text "add ${details.requested.toLowerCase()}" with a brand or size anytime.`);
+      return;
+    }
+    if (isCancel(answer)) {
+      await respond(`OK, I didn't add ${details.requested.toLowerCase()}.`);
+      return;
+    }
+    // Commands, greetings, "yes" and questions aren't brand or size answers: they're handled as usual below.
+    if (looksLikeDetails(answer, handledElsewhere(answer))) {
+      await searchAgain(answer, details.requested, details.shared);
       return;
     }
   }
@@ -447,6 +500,29 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     return;
   }
   const choices: Choice[] = [];
+  // A thin store search for something they didn't describe: ask for a brand or size instead of showing it
+  // (once per message, and never for an answer to that question).
+  let askedDetails = false;
+  // `askAbout`: Claude's suggestion from the deal search (undefined when Claude didn't pick these listings).
+  const offerChoice = async (choice: Choice, requested: string, product: Product | undefined, shared: boolean | null, askAbout?: DetailKind[]) => {
+    // Not when their own limits ("under $15", "from Costco") made the list short: that's what they asked for.
+    if (!opts.refined && !askedDetails && !hasFilters(dealOptions) && choice.checkedAt && thinResults(choice) && !namedDetails(requested, product)) {
+      askedDetails = true;
+      const item = (product?.name.split(",")[0] ?? requested).toLowerCase();
+      await respond(askForDetails(household.id, member.id, requested, item, shared, choice));
+      return;
+    }
+    // Plenty to pick from but they said nothing specific: show the options now, with a line suggesting the brands or
+    // sizes these listings come in. A reply naming one searches again (see the "Which one?" handling above).
+    if (!opts.refined && !hasFilters(dealOptions) && choice.checkedAt && !namedDetails(requested, product)) {
+      const hint = detailsHint(choice.options, product, askAbout);
+      if (hint) {
+        choice.hint = hint;
+        choice.refine = { requested, shared };
+      }
+    }
+    choices.push(choice);
+  };
   // "cheapest TP under $15 from Costco": deal preferences come from the member's own words, read by code.
   const dealOptions = parseDealRequest(msg.text);
   // "add oat milk for me and Jake": who it's for also comes from their own words, read by code.
@@ -481,14 +557,15 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       // With Claude and store prices on, Claude searches the stores and picks the best listings while the catalog
       // match runs alongside. "The usual" keeps its own path below, so it can re-add last time's pick.
       const askedFor = hasFilters(dealOptions) ? `${requested} (${describeFilters(dealOptions)})` : requested;
-      const [match, deals] = await Promise.all([matchItem(requested), usual ? undefined : findDeals(askedFor)]);
+      const [match, dealResult] = await Promise.all([matchItem(requested), usual ? undefined : findDealsDetailed(askedFor)]);
+      const deals = dealResult?.picks;
       const dealBase = match?.product ?? offCatalogProduct(requested);
       if (deals?.length && dealBase) {
         // Names, prices, stores and links come from the listings; code still ranks them and labels the budget.
         const options = deals.map((d) => listingProduct(d.offer, dealBase, d.at));
         const choice = buildChoice(household.id, dealBase, intent.shared, dealOptions, options, member.id);
         if (payers) choice.splitWith = payers;
-        choices.push(choice);
+        await offerChoice(choice, requested, dealBase, intent.shared, dealResult?.askAbout);
         continue;
       }
       if (deals && !match) {
@@ -513,7 +590,8 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
           if (usualListing) choice.note = `Your usual, ${usualListing.name}, isn't listed right now. Here are today's store prices.`;
           else if (usual) choice.note = `I don't see an earlier order for ${requested}, so here are the options.`;
           if (payers) choice.splitWith = payers;
-          choices.push(choice);
+          if (usual) choices.push(choice);
+          else await offerChoice(choice, requested, offCatalog, intent.shared);
         } else {
           await respond(liveDealsEnabled()
             ? "I couldn’t find store listings for that right now. Try another household item name?"
@@ -562,7 +640,8 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
         const choice = await buildDealChoice(household.id, match.product, intent.shared, itemOptions, member.id);
         withSizeNote(choice);
         if (payers) choice.splitWith = payers;
-        choices.push(choice);
+        if (usual) choices.push(choice);
+        else await offerChoice(choice, requested, match.product, intent.shared);
       }
     } else if (intent.type === "question") {
       await respond(await answerQuestion(msg.text, member.name));
@@ -623,15 +702,8 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       if (msg.spaceKind === "direct") await respond(invite);
       else await sendPrivate(member.id, invite, `add-card:${msg.messageId}`);
     } else if (intent.type === "checkout") {
-      // Casual "let's order": ask first. Only the member's explicit "yes" (or "order now") places it.
-      const ready = pendingItems(household.id).filter((i) => !i.needsApproval);
-      if (ready.length === 0) {
-        await respond("The cart is empty.");
-      } else {
-        const total = ready.reduce((sum, i) => sum + i.cents, 0);
-        proposeAction(msg.fromPhone, { kind: "order" });
-        await respond(`Place the order now? ${ready.length} item${ready.length === 1 ? "" : "s"}, ${fmt(total)}. Reply "yes" to confirm or "no" to cancel.`);
-      }
+      // Casual "let's order": show what would be bought and who pays, then only their "yes" places it.
+      await startCheckout(household, member, msg, respond);
     } else if (intent.type === "start_household" || intent.type === "list_members") {
       const command = intent.type === "list_members" ? ({ type: "members" } as const) : ({ type: "start", name: null } as const);
       await handleMembershipCommand({ command, fromPhone: msg.fromPhone, spaceKind: msg.spaceKind, household, member, respond });
@@ -662,7 +734,8 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
         await respond('To check out the current cart, text "order now".');
         continue;
       }
-      await runOrder();
+      // Show what would be bought and who pays for what. Nothing is charged until they reply "yes".
+      await startCheckout(household, member, msg, respond);
     }
   }
 
@@ -724,6 +797,31 @@ function isGreeting(text: string): boolean {
 /** The reply to "hi" from a member who's already set up. */
 export function greetingReply(name: string): string {
   return `Hi ${name}! Text what you need ("we're out of TP"), "cart" to see the shopping list, or "order now" to check out. Text "help" for more.`;
+}
+
+/**
+ * Before buying: the cart's items grouped by who pays, ending in "Reply yes". The "yes" (confirm.ts) places the
+ * order for exactly this cart. If the budget owner has no card yet, say so plainly instead: nothing is charged,
+ * the cart is kept, and the owner gets a private add-card link.
+ */
+async function startCheckout(household: Household, member: Member, msg: InboundMessage, respond: (text: string) => Promise<void>): Promise<void> {
+  if (!readyItems(household).length) {
+    await respond(`The cart for ${cartName(household, msg.fromPhone)} is empty.`);
+    return;
+  }
+  if (!ownerHasCard(household)) {
+    const gate = await ownerCardRequest(household);
+    const owner = findOwner(household);
+    if (gate.ownerId === member.id && msg.spaceKind === "direct" && gate.ownerText) {
+      await respond(gate.ownerText); // the owner asked: their own secure link
+      return;
+    }
+    await respond(owner ? ownerCardWait(household, owner.name, msg.fromPhone, false) : gate.groupText);
+    if (gate.ownerId && gate.ownerText) await sendPrivate(gate.ownerId, gate.ownerText, `owner-gate:${msg.messageId}`);
+    return;
+  }
+  proposeAction(msg.fromPhone, { kind: "order", householdId: household.id });
+  await respond(orderPreview(household, member.id, msg.fromPhone));
 }
 
 /** "Alex", "Alex and Sam", "Alex, Sam and Jo". */

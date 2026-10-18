@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
 <title>Restock</title>
-<meta name="description" content="Your household's shopping list, in your group chat. Text Restock what you're out of and it fills the cart and splits the bill.">
+<meta name="description" content="Your household's shopping list, by text. Text Restock what you're out of and it fills the shared cart and splits the bill.">
 <link rel="canonical" href="https://restock.select/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Restock">
 <meta property="og:url" content="https://restock.select/">
 <meta property="og:title" content="Restock">
-<meta property="og:description" content="Your household's shopping list, in your group chat. Text Restock what you're out of and it fills the cart and splits the bill.">
+<meta property="og:description" content="Your household's shopping list, by text. Text Restock what you're out of and it fills the shared cart and splits the bill.">
 <meta property="og:image" content="https://restock.select/og.png">
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
@@ -19,7 +19,7 @@
 <meta property="og:image:alt" content="The Restock logo and wordmark next to a receipt for a household order split between three roommates.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Restock">
-<meta name="twitter:description" content="Your household's shopping list, in your group chat. Text Restock what you're out of and it fills the cart and splits the bill.">
+<meta name="twitter:description" content="Your household's shopping list, by text. Text Restock what you're out of and it fills the shared cart and splits the bill.">
 <meta name="twitter:image" content="https://restock.select/og.png">
 <meta name="twitter:image:alt" content="The Restock logo and wordmark next to a receipt for a household order split between three roommates.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cpath d='M6 6a3 3 0 0 1 3-3H31a3 3 0 0 1 3 3V33L30.5 36.5L27 33L23.5 36.5L20 33L16.5 36.5L13 33L9.5 36.5L6 33Z' fill='%23161616'/%3E%3Cg fill='none' stroke='%23ffe866' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 13.5V28' stroke-width='4.5'/%3E%3Cpath d='M15 20C15 15.5 18 13 22.5 13H24' stroke-width='4.5'/%3E%3Cpath d='M21.8 8.8L26 13L21.8 17.2' stroke-width='4'/%3E%3C/g%3E%3C/svg%3E">
@@ -84,7 +84,7 @@
   .hero p.hint { margin: 16px 0 0; font-size: 15px; }
   .nav { display: flex; gap: 10px; }
 
-  /* The sample receipt: a group chat turning into an order */
+  /* The sample receipt: Priya's thread with Restock turning into an order */
   .chat { display: flex; flex-direction: column; gap: 10px; margin: 14px 0 0; }
   .msg { max-width: 88%; }
   .msg b { display: block; margin-bottom: 2px; color: var(--muted); font-family: var(--mono); font-size: 12px; font-weight: 500; }
@@ -146,20 +146,19 @@
   <div class="shell hero">
     <div>
       <h1>Groceries and supplies, restocked by text.</h1>
-      <p>Restock is an AI assistant in your group chat. Text what you're out of. It finds the best match, keeps a shared cart, and splits the bill when someone says &ldquo;order now&rdquo;.</p>
+      <p>Restock is an AI assistant your household texts. Text what you're out of. It finds the best match, keeps a shared cart everyone sees, and splits the bill when someone says &ldquo;order now&rdquo;.</p>
       <div class="ctas">
         <a class="btn primary" href="/start">Get your Restock number</a>
         <a class="btn" href="/dashboard">Log in</a>
       </div>
       <p class="hint">No app to install. Got an invite link from a roommate? Open it to join their group.</p>
     </div>
-    <div class="torn" aria-label="Example: a group chat ordering supplies">
+    <div class="torn" aria-label="Example: a roommate's texts with Restock turning into an order">
       <div class="slip">
-        <p class="meta">Maple House &middot; group chat</p>
+        <p class="meta">Maple House &middot; Priya's texts with Restock</p>
         <div class="chat">
           <div class="msg"><b>Priya</b><span>we're out of TP</span></div>
           <div class="msg bot"><b>Restock</b><span>Added Toilet paper, 12 rolls (shared, $11.99).</span></div>
-          <div class="msg"><b>Sam</b><span>order now</span></div>
           <div class="msg bot"><b>Restock</b><span>Ordered! 6 items, $72.75.</span></div>
         </div>
         <div class="split">
@@ -220,7 +219,7 @@
       <div class="grid">
         <div class="torn"><div class="slip">
           <h3>Groups</h3>
-          <p>Roommates, family, a team. Add Restock to the group chat and say hi. It sets up the group by text.</p>
+          <p>Roommates, family, a team. Start a group and share its invite link. Everyone texts Restock and sees what the others add.</p>
         </div></div>
         <div class="torn"><div class="slip">
           <h3>Personal</h3>

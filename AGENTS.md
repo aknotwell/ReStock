@@ -4,7 +4,7 @@ Instructions for every coding agent (Claude Code, Codex, Cursor, etc.) and every
 
 ## The product in one paragraph
 
-Restock is an AI messaging agent that lives in a household's group chat. Roommates text things like "we're out of TP" and the agent turns that into cart items. When someone says "order now", the agent places the order and splits the bill. The budget owner's card is required and everyone else's card is optional. A member with a card is charged their share. A member without one is covered by the owner's card and gets a private "you owe" text with a pay link. The full design is in [PLAN.md](PLAN.md).
+Restock is an AI messaging agent a household texts on iMessage. Each person texts their own Restock number (Photon's free shared lines; a shared group chat needs Photon's $250 paid plan, so it's a future plan), and Restock relays household news to everyone's thread. Roommates text things like "we're out of TP" and the agent turns that into cart items. When someone says "order now", the agent places the order and splits the bill. The budget owner's card is required and everyone else's card is optional. A member with a card is charged their share. A member without one is covered by the owner's card and gets a private "you owe" text with a pay link. The full design is in [PLAN.md](PLAN.md).
 
 ## Tracks we're submitting to (every feature should serve at least one)
 
@@ -21,7 +21,7 @@ That's 3 sponsored side tracks, which is the maximum. Don't add another one with
 
 | Criterion | Weight | What it means for Restock |
 |---|---|---|
-| Innovation | 25% | Shopping happens in the group chat with no app to install. The AI turns casual messages into a shared cart and splits it fairly. |
+| Innovation | 25% | Shopping happens over iMessage with no app to install. The AI turns casual messages into a shared cart and splits it fairly. |
 | User Experience | 20–25% | It has to feel effortless and polished **under pressure**. The demo path must never break. Replies are short, fast, and friendly. |
 | Technical Execution | 20% | Real LLM use (intent parsing, item normalization, shared vs personal classification, restock suggestions), real Photon messaging, real Stripe test payments |
 | Commerce Impact | 15% | Fewer forgotten items, faster checkout, nobody stuck fronting money, repeat weekly orders |

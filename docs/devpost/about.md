@@ -2,11 +2,11 @@
 
 Every shared home has the same group chat. Someone texts *"we're out of toilet paper"*, three people react with 👍, and nobody buys it. When someone finally does, they're stuck sending an awkward *"you owe me \$14.37"* Venmo request, and chasing it for a week.
 
-The shopping already happens in the group chat. It just doesn't end in a cart, a fair split, or anyone getting paid back. We wanted the group chat itself to do the shopping.
+The shopping already happens over text. It just doesn't end in a cart, a fair split, or anyone getting paid back. We wanted texting itself to do the shopping.
 
 ## What it does
 
-Restock is an AI assistant that lives in your household's iMessage group chat. There's no app to install.
+Restock is an AI assistant your household texts on iMessage. There's no app to install: everyone texts their own Restock number, and Restock keeps the whole household in sync.
 
 - Roommates text in plain language: *"we're out of TP and dish soap."* Restock turns that into cart items and offers up to three options, ranked by price per unit, comparing live store listings with its own catalog.
 - Anyone can steer it: *"cheapest TP under \$15 from Target"*, *"make the chips personal"*, *"what do I owe?"*
@@ -16,7 +16,7 @@ Restock is an AI assistant that lives in your household's iMessage group chat. T
 
 ## How we built it
 
-- Messaging: Photon 2.0 for iMessage. Group chat for the household, direct messages for anything private (receipts, balances, card links).
+- Messaging: Photon 2.0 for iMessage. Each person gets their own Restock number on Photon's shared lines. Household news ("Jake added chips", the order summary) is relayed to everyone's thread, and anything private (receipts, balances, card links) goes only to that person.
 - AI layer: Claude reads each message into schema-validated intents (`add_item`, `set_shared`, `what_do_i_owe`…) and matches casual names ("TP") to catalog products. Every model output is validated with Zod, and every component has a deterministic fallback, so the demo works even with the LLM turned off.
 - Live deals: SerpApi's Google Shopping engine supplies real store listings. Code (never the model) reads pack sizes from titles, filters out accessories and outliers, keeps major retailers, and ranks everything by price per unit. The built-in catalog is a demo dataset, and live listings are shown for comparison: payments run in Stripe test mode, and Restock doesn't place real retailer orders yet.
 - Payments: Stripe in test mode. Each member's share is charged with a hold-then-capture PaymentIntent and an idempotency key per *(order, member)*, so a retry can never charge twice. Pay-back links are Stripe Checkout sessions, and signed webhooks mark debts paid.
@@ -29,7 +29,7 @@ Restock is an AI assistant that lives in your household's iMessage group chat. T
 - Keeping the AI away from the money: an LLM is great at reading *"grab some chips for me"* and terrible at being trusted with a charge. We split responsibilities strictly: the model may *suggest* an item or whether it's shared, but checkout only happens on an exact "order now" command, and shares come from deterministic code.
 - Card numbers in disguise: people paste cards as `4242-4242 4242.4242`, across line breaks, or followed by an expiry date. The guard has to catch all of them without flagging ordinary numbers like phone numbers.
 - Messy real-world shopping data: store titles rarely state a plain pack size. Our first parser read *"Tough Guy 38C405 Toilet Paper Roll"* as 405 rolls and declared it the best deal. Titles like *"8 Triple Rolls"* or a 40 fl oz bottle can't be compared per unit with regular rolls or the catalog's bottles. We learned to compare only like with like, and to say "no per-unit price" rather than guess.
-- Private texts in group chats: iMessage won't let a bot start a private conversation, so "you owe" texts are held until each person messages Restock directly once, and one failed text never blocks the others.
+- Pivoting away from the group chat: we designed Restock to sit in the household's iMessage group chat, but putting an agent in a group chat needs Photon's paid plan (a $250 subscription). We rebuilt around the free plan's shared lines: per-person Restock numbers, sign-up and invite links, and a relay that keeps every member's thread in sync. Shared lines also can't text first, so private texts are held until each person messages Restock once, and one failed text never blocks the others.
 
 
 ## What we learned
@@ -41,4 +41,4 @@ Restock is an AI assistant that lives in your household's iMessage group chat. T
 
 ## What's next
 
-Real retailer checkout instead of comparison-only prices, recurring restock suggestions ("you usually order paper towels every two weeks"), and household budgets that the whole group can see. Every household brings in 2 to 5 people, and every one of them can start their own household, which is how Restock spreads.
+Moving into the household's group chat on Photon's paid plan (the code path is already there), real retailer checkout instead of comparison-only prices, recurring restock suggestions ("you usually order paper towels every two weeks"), and household budgets that the whole group can see. Every household brings in 2 to 5 people, and every one of them can start their own household, which is how Restock spreads.

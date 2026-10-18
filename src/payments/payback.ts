@@ -9,7 +9,7 @@ import { createHash, randomInt, randomBytes, timingSafeEqual } from "node:crypto
 import type Stripe from "stripe";
 import { config } from "../config.js";
 import { markDebtPaid, openDebtsFor } from "../core/ledger.js";
-import { db, findMember } from "../core/store.js";
+import { db, findMember, formerMembers } from "../core/store.js";
 import { registerState } from "../core/persist.js";
 import { canTextPrivately, sendPrivate } from "../messaging/photon.js";
 import { fmt, paidBack } from "../messaging/templates.js";
@@ -42,12 +42,15 @@ registerState("login", {
 export function findMemberByHandle(input: string): Member | undefined {
   const typed = input.trim().toLowerCase();
   const digits = typed.replace(/\D/g, "");
+  const matches = (m: Member) => {
+    const handle = m.phone.toLowerCase();
+    return typed.includes("@") ? handle === typed : digits.length >= 10 && handle.replace(/\D/g, "").endsWith(digits.slice(-10));
+  };
   for (const household of db.households.values()) {
-    for (const m of household.members) {
-      const handle = m.phone.toLowerCase();
-      if (typed.includes("@") ? handle === typed : digits.length >= 10 && handle.replace(/\D/g, "").endsWith(digits.slice(-10))) return m;
-    }
+    for (const m of household.members) if (matches(m)) return m;
   }
+  // Removed from their household while they still owed: they can still log in to pay it back.
+  for (const { member } of formerMembers.values()) if (matches(member)) return member;
   return undefined;
 }
 

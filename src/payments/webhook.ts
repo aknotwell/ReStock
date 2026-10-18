@@ -6,6 +6,7 @@ import { markDebtPaid } from "../core/ledger.js";
 import { db, findMember } from "../core/store.js";
 import { sendPrivate } from "../messaging/photon.js";
 import { cardAdded } from "../messaging/templates.js";
+import { settlePayBack } from "./payback.js";
 import { payBackDebtsForSession } from "./links.js";
 import { requireStripe } from "./stripe.js";
 
@@ -29,11 +30,17 @@ export async function stripeWebhook(req: Request, res: Response): Promise<void> 
     switch (event.type) {
       case "checkout.session.completed":
         if (event.data.object.mode === "setup") await saveCardFromSetupSession(event.data.object);
-        else if (event.data.object.mode === "payment") markDebtPaidFromSession(event.data.object);
+        else if (event.data.object.mode === "payment" && event.data.object.payment_status === "paid") {
+          if (event.data.object.metadata?.memberId) await settlePayBack(event.data.object);
+          else markDebtPaidFromSession(event.data.object);
+        }
         break;
       // Bank payments (offered through Link) finish Checkout as "processing" and clear days later.
       case "checkout.session.async_payment_succeeded":
-        if (event.data.object.mode === "payment") markDebtPaidFromSession(event.data.object);
+        if (event.data.object.mode === "payment") {
+          if (event.data.object.metadata?.memberId) await settlePayBack(event.data.object);
+          else markDebtPaidFromSession(event.data.object);
+        }
         break;
       default:
         break;

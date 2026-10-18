@@ -9,6 +9,7 @@ export type Member = {
   name: string;
   phone: string;
   role: "owner" | "member";
+  canApprove?: boolean; // owner can always approve; others only when the owner allows it (e.g. roommates yes, kids no)
   stripeCustomerId?: string;
   paymentMethodId?: string; // set = "card on file"
   cardLast4?: string;
@@ -18,8 +19,9 @@ export type Household = {
   id: string;
   groupChatId: string;
   ownerId: MemberId;
-  budgetCents: Cents;
+  budgetCents?: Cents; // optional monthly limit. With none, orders still go on the owner's card
   spentCents: Cents;
+  approvalOverCents?: Cents; // items above this need someone else's "yes", even from an approver
   members: Member[];
 };
 
@@ -31,7 +33,7 @@ export type Item = {
   cents: Cents;
   shared: boolean;
   status: "pending" | "ordered";
-  needsApproval?: boolean; // expensive personal item awaiting owner "yes"
+  needsApproval?: boolean; // waiting for a "yes" from an approver (see core/approvals.ts)
 };
 
 export type SplitRule = "smart" | "even" | "adder";

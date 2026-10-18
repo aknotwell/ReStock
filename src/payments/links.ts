@@ -55,7 +55,7 @@ export async function openCardSetupLink(token: string, now = Date.now()): Promis
 }
 
 /** Create the member's Stripe Customer the first time we need it. We send Stripe only their name. */
-async function ensureStripeCustomer(member: Member): Promise<string> {
+export async function ensureStripeCustomer(member: Member): Promise<string> {
   if (member.stripeCustomerId) return member.stripeCustomerId;
   const customer = await requireStripe().customers.create(
     { name: member.name, metadata: { memberId: member.id } },

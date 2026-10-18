@@ -3,6 +3,7 @@ import { answerQuestion, OFFLINE_REPLY } from "../ai/answerQuestion.js";
 import { matchItem } from "../ai/matchItem.js";
 import { parseMessage } from "../ai/parseMessage.js";
 import { addItem, db, findHouseholdByGroupChat, findMemberByPhone, householdsForPhone, pendingItems, UNBOUND_GROUP } from "../core/store.js";
+import { approvableBy, approverNames, needsApproval } from "../core/approvals.js";
 import { openDebtsFor, owedTo } from "../core/ledger.js";
 import { OrderError, placeOrder } from "../core/orders.js";
 import { createCardSetupLink } from "../payments/links.js";
@@ -141,22 +142,36 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   // `overBudget`: the member picked an option past this month's budget. It waits for the owner's "yes",
   // using the same approval flow as expensive personal items (placeOrder skips it until then).
   const addToCart = async (product: Product, shared: boolean | null, prefix = "Added", overBudget?: { ownerName: string }) => {
-    const needsOk = !!overBudget && member.id !== household.ownerId;
+    const budget = household.budgetCents;
+    const committed = household.spentCents + pendingItems(household.id).reduce((sum, item) => sum + item.cents, 0);
+    const exceedsBudget = overBudget ?? (budget !== undefined && committed + product.cents > budget
+      ? { ownerName: household.members.find((m) => m.id === household.ownerId)?.name ?? "the budget owner" }
+      : undefined);
+    const waits = needsApproval(household, member, product.cents) || (!!exceedsBudget && member.id !== household.ownerId);
     const item = addItem({
       householdId: household.id,
       name: product.name,
       addedBy: member.id,
       cents: product.cents,
       shared: shared ?? product.defaultShared,
-      ...(needsOk ? { needsApproval: true } : {}),
+      ...(waits ? { needsApproval: true } : {}),
     });
-    const budget = !overBudget
-      ? ""
-      : needsOk
-        ? ` It's over this month's budget, so it waits for ${overBudget.ownerName}'s OK (${overBudget.ownerName}: reply "yes").`
-        : " Heads-up: this puts the household over this month's budget.";
+    if (waits) {
+      const budgetNote = exceedsBudget ? " It would exceed this month's budget." : "";
+      const ask = `${member.name} asked for ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}).${budgetNote} ${approverNames(household, member.id)}: reply "yes" to add it to the cart.`;
+      await respond(
+        msg.spaceKind === "direct"
+          ? `Best match: ${item.name} (${fmt(item.cents)}).${budgetNote} I've asked ${approverNames(household, member.id)} to approve it.`
+          : ask,
+      );
+      if (msg.spaceKind === "direct" && household.groupChatId !== UNBOUND_GROUP) {
+        await sendGroup(household.id, ask, `${msg.messageId}:ask:${item.id}`);
+      }
+      return;
+    }
+    const budgetNote = exceedsBudget ? " Heads-up: this puts the household over this month's budget." : "";
     await respond(
-      `${prefix} ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}). Reply "${item.shared ? "personal" : "shared"}" to change.${budget}`,
+      `${prefix} ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}). Reply "${item.shared ? "personal" : "shared"}" to change.${budgetNote}`,
     );
   };
 
@@ -274,13 +289,14 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       else await sendPrivate(member.id, text, `balance:${msg.messageId}`);
     } else if (intent.type === "approve") {
       const waiting = pendingItems(household.id).filter((i) => i.needsApproval);
-      if (member.id !== household.ownerId) {
-        if (waiting.length) await respond("Only the budget owner can approve that.");
-      } else if (waiting.length === 0) {
+      const mine = approvableBy(household, member, waiting);
+      if (waiting.length === 0) {
         await respond("Nothing is waiting for approval.");
+      } else if (mine.length === 0) {
+        await respond(`Only ${approverNames(household, member.id)} can approve that.`);
       } else {
-        for (const i of waiting) i.needsApproval = false;
-        await respond(`Approved: ${waiting.map((i) => i.name).join(", ")}. They'll be in the next order.`);
+        for (const i of mine) i.needsApproval = false;
+        await respond(`Approved by ${member.name}: ${mine.map((i) => i.name).join(", ")}. They'll be in the next order.`);
       }
     } else if (intent.type === "add_card") {
       // The secure Stripe link goes only to the member, privately, and only when they ask for it.

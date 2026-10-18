@@ -80,6 +80,7 @@ export function namedSpecifically(requested: string, product: Product): boolean 
 /** Money left this month after the current cart. */
 function budgetLeft(householdId: string): number {
   const h = getHousehold(householdId);
+  if (h.budgetCents === undefined) return Number.POSITIVE_INFINITY;
   return h.budgetCents - h.spentCents - pendingItems(householdId).reduce((sum, i) => sum + i.cents, 0);
 }
 

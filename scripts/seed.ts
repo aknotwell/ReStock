@@ -50,8 +50,9 @@ export function seedDemo(): Household {
   // test key, the server swaps in real sandbox cards (scripts/demoCards.ts).
   const members: Member[] = parseDemoMembers(process.env.DEMO_MEMBERS) ?? [
     { id: "sam", name: "Sam", phone: process.env.DEMO_PHONE_SAM || "+15550000001", role: "owner", paymentMethodId: "pm_test_sam", cardLast4: "4242" },
-    { id: "jake", name: "Jake", phone: process.env.DEMO_PHONE_JAKE || "+15550000002", role: "member", paymentMethodId: "pm_test_jake", cardLast4: "1881" },
-    { id: "priya", name: "Priya", phone: process.env.DEMO_PHONE_PRIYA || "+15550000003", role: "member" }, // no card
+    // Roommates: Sam lets everyone approve. A family would leave canApprove off for the kids.
+    { id: "jake", name: "Jake", phone: process.env.DEMO_PHONE_JAKE || "+15550000002", role: "member", canApprove: true, paymentMethodId: "pm_test_jake", cardLast4: "1881" },
+    { id: "priya", name: "Priya", phone: process.env.DEMO_PHONE_PRIYA || "+15550000003", role: "member", canApprove: true }, // no card
   ];
   const owner = members.find((m) => m.role === "owner")!;
   // The demo cart's three roles (PLAN.md): owner, a roommate with a card, a roommate without one.
@@ -64,6 +65,7 @@ export function seedDemo(): Household {
     ownerId: owner.id,
     budgetCents: 18515, // leaves $112.40 after the $72.75 demo order
     spentCents: 0,
+    approvalOverCents: 2500, // items over $25 need a second person's "yes"
     members,
   };
   db.households.set(household.id, household);

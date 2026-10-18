@@ -8,6 +8,7 @@ import { handleInbound } from "./messaging/inbound.js";
 import { rememberInbound, startPolling, type InboundMessage } from "./messaging/photon.js";
 import { stripeWebhook } from "./payments/webhook.js";
 import { agentApi, agentApiInfo } from "./web/agentApi.js";
+import { devChat } from "./web/devChat.js";
 import { webRoutes } from "./web/routes.js";
 
 // Load saved data before anything else touches the store.
@@ -54,6 +55,7 @@ if (config.devInbound) {
     await handleInbound(msg);
     res.sendStatus(200);
   });
+  app.use(devChat); // dashboard "Test chat" tab: /dev/state, /dev/chat, /dev/reset
   console.warn("DEV_INBOUND=1: POST /dev/inbound is enabled. Never enable this on a public deploy.");
 }
 

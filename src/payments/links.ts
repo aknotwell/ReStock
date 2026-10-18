@@ -101,21 +101,27 @@ const payBackTokens = new Map<string, { debtId: string; expiresAt: number }>();
 type PayBackSession = { sessionId: string; debtIds: string[] };
 const payBackSessions = new Map<string, PayBackSession>();
 const pairKey = (debtorId: string, creditorId: string) => `${debtorId}->${creditorId}`;
+// debtId -> the one Stripe page that can currently pay it, from either pay-back path (texted link
+// or the /pay site). Before any new page is made, older pages for the same debts are cancelled.
+const pageByDebt = new Map<string, string>();
 
 // Links already texted to people must keep working after a restart or redeploy.
 type SavedLinks = {
   card: [string, { memberId: string; expiresAt: number }][];
   payBack: [string, { debtId: string; expiresAt: number }][];
   sessions: [string, PayBackSession | string][]; // a string is the older one-session-per-debt format
+  pages?: [string, string][];
 };
 registerState("payment-links", {
-  dump: (): SavedLinks => ({ card: [...cardLinkTokens], payBack: [...payBackTokens], sessions: [...payBackSessions] }),
+  dump: (): SavedLinks => ({ card: [...cardLinkTokens], payBack: [...payBackTokens], sessions: [...payBackSessions], pages: [...pageByDebt] }),
   load: (data) => {
     const saved = data as SavedLinks;
     const now = Date.now();
     cardLinkTokens.clear();
     payBackTokens.clear();
     payBackSessions.clear();
+    pageByDebt.clear();
+    for (const [debtId, sessionId] of saved.pages ?? []) pageByDebt.set(debtId, sessionId);
     for (const [token, link] of saved.card ?? []) if (link.expiresAt > now) cardLinkTokens.set(token, link);
     for (const [token, link] of saved.payBack ?? []) if (link.expiresAt > now) payBackTokens.set(token, link);
     // Older saves mapped one debt to one session; those sessions still carry debtId in their metadata.
@@ -140,6 +146,38 @@ export function openDebtsBetween(debtorId: string, creditorId: string): Debt[] {
   return [...db.debts.values()]
     .filter((d) => d.debtorId === debtorId && d.creditorId === creditorId && d.status === "open")
     .sort((a, b) => placedAt(a).localeCompare(placedAt(b)));
+}
+
+/**
+ * Call before making any pay-back page. Cancels older open pages that could pay any of these debts,
+ * so no debt can be paid twice. Returns the debts that may go on the new page: those whose older
+ * page was already paid (its webhook may still be on the way) are left out.
+ */
+export async function claimDebtsForNewPage(debtIds: string[]): Promise<string[]> {
+  const bySession = new Map<string, string[]>();
+  for (const id of debtIds) {
+    const sessionId = pageByDebt.get(id);
+    if (sessionId) bySession.set(sessionId, [...(bySession.get(sessionId) ?? []), id]);
+  }
+  if (bySession.size === 0) return debtIds;
+
+  const stripe = requireStripe();
+  const alreadyPaid = new Set<string>();
+  for (const [sessionId, ids] of bySession) {
+    let session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (session.status === "open") {
+      // If it was paid a moment ago, Stripe refuses to cancel it; then we see "complete" below.
+      session = await stripe.checkout.sessions.expire(sessionId).catch(() => stripe.checkout.sessions.retrieve(sessionId));
+    }
+    if (session.status === "complete") for (const id of ids) alreadyPaid.add(id);
+    for (const id of ids) if (pageByDebt.get(id) === sessionId) pageByDebt.delete(id);
+  }
+  return debtIds.filter((id) => !alreadyPaid.has(id));
+}
+
+/** Record that this Stripe page can pay these debts. Call right after creating it. */
+export function registerPayBackPage(sessionId: string, debtIds: string[]): void {
+  for (const id of debtIds) pageByDebt.set(id, sessionId);
 }
 
 /** Which debts a pay-back Checkout session pays, if we created it. Used by the webhook. */
@@ -195,7 +233,12 @@ export async function openPayBackLink(token: string, now = Date.now()): Promise<
       open = open.filter((d) => !existing.debtIds.includes(d.id));
     }
     payBackSessions.delete(key);
+    for (const id of existing.debtIds) if (pageByDebt.get(id) === existing.sessionId) pageByDebt.delete(id);
   }
+
+  // A page from the /pay site may also cover some of these debts: cancel it, or skip debts it just paid.
+  const claimable = await claimDebtsForNewPage(open.map((d) => d.id));
+  open = open.filter((d) => claimable.includes(d.id));
 
   if (open.length === 0) return { kind: "paid" };
   const total = open.reduce((sum, d) => sum + d.cents, 0);
@@ -229,6 +272,7 @@ export async function openPayBackLink(token: string, now = Date.now()): Promise<
   });
   if (!session.url) throw new Error("Stripe returned a Checkout session without a URL");
   payBackSessions.set(key, { sessionId: session.id, debtIds });
+  registerPayBackPage(session.id, debtIds);
   return { kind: "checkout", url: session.url };
 }
 
@@ -238,4 +282,5 @@ const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((
 export function resetPayBackLinks(): void {
   payBackTokens.clear();
   payBackSessions.clear();
+  pageByDebt.clear();
 }

@@ -13,7 +13,6 @@ Built at **DubHacks '26**.
 | **Home**: see how Restock works | [restock-production-daab.up.railway.app](https://restock-production-daab.up.railway.app/) |
 | **Start or join a household** | [restock-production-daab.up.railway.app/start](https://restock-production-daab.up.railway.app/start) |
 | **Dashboard**: switch between your Personal space and all your Groups | [restock-production-daab.up.railway.app/dashboard](https://restock-production-daab.up.railway.app/dashboard) |
-| **Pay back**: log in and settle what you owe | [restock-production-daab.up.railway.app/pay](https://restock-production-daab.up.railway.app/pay) |
 | Privacy | [restock-production-daab.up.railway.app/privacy](https://restock-production-daab.up.railway.app/privacy) |
 | Health check | [restock-production-daab.up.railway.app/health](https://restock-production-daab.up.railway.app/health) |
 

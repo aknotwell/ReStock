@@ -126,6 +126,8 @@ registerState("payment-links", {
     for (const [token, link] of saved.payBack ?? []) if (link.expiresAt > now) payBackTokens.set(token, link);
     // Older saves mapped one debt to one session; those sessions still carry debtId in their metadata.
     for (const [key, s] of saved.sessions ?? []) if (typeof s === "object") payBackSessions.set(key, s);
+    // Saves from before pageByDebt existed: their combined pages still count as the page for those debts.
+    for (const s of payBackSessions.values()) for (const id of s.debtIds) if (!pageByDebt.has(id)) pageByDebt.set(id, s.sessionId);
   },
 });
 

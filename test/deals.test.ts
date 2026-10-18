@@ -6,7 +6,7 @@ import { seedDemo } from "../scripts/seed.js";
 import { config } from "../src/config.js";
 import { getProduct, type Product } from "../src/core/catalog.js";
 import { addItem, db, pendingItems } from "../src/core/store.js";
-import { clearLiveDeals, liveOptionsFor, offCatalogProduct, parseOffers, safeLink, searchOffers, searchQuery, searchTermsFor } from "../src/deals/live.js";
+import { clearLiveDeals, liveOptionsFor, offCatalogProduct, parseOffers, searchOffers, searchQuery, searchTermsFor } from "../src/deals/live.js";
 import { applyFilters, bestValueId, optionCount, parseUnits, rankOptions } from "../src/deals/rank.js";
 import { knownStore, parseDealRequest, stripDealWords } from "../src/deals/request.js";
 import { handleInbound } from "../src/messaging/inbound.js";
@@ -166,7 +166,7 @@ describe("SerpApi results", () => {
         row("Charmin 24 Mega Rolls", "Target", 32.99), // duplicate
       ],
     });
-    expect(offers).toEqual([{ title: "Charmin 24 Mega Rolls", store: "Target", cents: 3299, link: "https://example.com/" }]);
+    expect(offers).toEqual([{ title: "Charmin 24 Mega Rolls", store: "Target", cents: 3299 }]);
     expect(parseOffers({ error: "Invalid API key" })).toEqual([]);
   });
 
@@ -193,22 +193,6 @@ describe("SerpApi results", () => {
     expect(offers.map((o) => `${o.store} ${o.cents}`)).toEqual(["Home Depot 2175", "Walmart 497", "Target 549"]);
     expect(stats).toEqual({ rows: 6, malformed: 1, noPrice: 1, blocked: 0, outOfRange: 0, duplicate: 1 });
     expect(parseOffers("garbage")).toEqual([]);
-  });
-
-  it("keeps a listing's link only when it's a plain https URL, falling back to product_link", () => {
-    const [a, b, c] = parseOffers({
-      shopping_results: [
-        { title: "Dawn Dish Soap 3 Pack", source: "Target", extracted_price: 9.99, link: "https://www.target.com/p/dawn" },
-        { title: "Palmolive Dish Soap", source: "Walmart", extracted_price: 7.49, link: "javascript:alert(1)", product_link: "https://www.google.com/shopping/product/1" },
-        { title: "Seventh Generation Dish Soap", source: "Amazon", extracted_price: 8.99, link: "http://example.com" },
-      ],
-    });
-    expect(a?.link).toBe("https://www.target.com/p/dawn");
-    expect(b?.link).toBe("https://www.google.com/shopping/product/1");
-    expect(c).not.toHaveProperty("link");
-    expect(safeLink("https://user:pw@example.com")).toBeUndefined();
-    expect(safeLink("https://example.com/a b")).toBeUndefined();
-    expect(safeLink("https://localhost/x")).toBeUndefined();
   });
 
   it("does nothing without a key", async () => {
@@ -286,22 +270,7 @@ describe("SerpApi results", () => {
     expect(live[0]).not.toHaveProperty("units");
   });
 
-  it("fills up to three options when only one listing passes the strict checks (the dish soap case)", async () => {
-    stubSerpApi({
-      shopping_results: [
-        row("HDX 56 oz. Fresh Scent Liquid Dish Soap (3-Pack)", "Home Depot", 21.75),
-        row("Dawn Ultra Dish Soap, 3 Pack", "Dollar Tree Online", 9.5), // seller we don't recognize
-        row("Method Dish Soap Refill 3 Pack", "Grove Collaborative", 14.99), // seller we don't recognize
-        row("Dish Soap Dispenser", "Target", 12.99), // accessory: never shown
-      ],
-    });
-    const dish = getProduct("dish-3")!;
-    const live = (await liveOptionsFor(dish))!.products;
-    expect(live.map((p) => p.store)).toEqual(["Home Depot", "Dollar Tree Online", "Grove Collaborative"]);
-    expect(live.every((p) => p.url === "https://example.com/")).toBe(true);
-  });
-
-  it("puts major retailers first and fills up to three from other sellers", async () => {
+  it("keeps major retailers only, unless DEALS_ANY_STORE is on", async () => {
     stubSerpApi({
       shopping_results: [
         row("Charmin Toilet Paper, 24 Mega Rolls", "Amazon.com", 30.99),
@@ -309,7 +278,7 @@ describe("SerpApi results", () => {
         row("Toilet Paper 4 Rolls", "Walmart - One Click Away", 4.9),
       ],
     });
-    expect((await liveOptionsFor(TP()))?.products.map((p) => p.store)).toEqual(["Amazon", "TikTok Shop", "Walmart - One Click Away"]);
+    expect((await liveOptionsFor(TP()))?.products.map((p) => p.store)).toEqual(["Amazon"]);
     config.dealsAnyStore = true;
     try {
       expect((await liveOptionsFor(TP()))?.products).toHaveLength(3); // same cached search, no new request
@@ -456,7 +425,7 @@ describe("in the chat", () => {
   it("'add tp' shows live store options and adds the picked price", async () => {
     stubSerpApi();
     await say(SAM, "add tp");
-    expect(out()).toMatch(/Which one\?\n1\. Great Value Ultra Strong Toilet Paper, 32 Rolls \(Walmart\): \$24\.97 \(\$0\.78\/roll, best value\)\nhttps:\/\/example\.com\/\n2\. .*\(Costco\).*\nhttps:\/\/example\.com\/\n3\. Charmin Ultra Soft Toilet Paper, 24 Rolls \(Target\): \$32\.99 \(\$1\.37\/roll\)\nhttps:\/\/example\.com\//);
+    expect(out()).toMatch(/Which one\?\n1\. Great Value Ultra Strong Toilet Paper, 32 Rolls \(Walmart\): \$24\.97 \(\$0\.78\/roll, best value\)\n2\. .*\(Costco\).*\n3\. Charmin Ultra Soft Toilet Paper, 24 Rolls \(Target\): \$32\.99 \(\$1\.37\/roll\)/);
     expect(out()).toMatch(/Store prices checked just now\.\nReply 1, 2 or 3/);
     await say(SAM, "1");
     expect(pendingItems(H).at(-1)).toMatchObject({ name: "Great Value Ultra Strong Toilet Paper, 32 Rolls (Walmart)", cents: 2497, shared: true });
@@ -465,7 +434,7 @@ describe("in the chat", () => {
   it("deal words shape the options and don't break item matching", async () => {
     stubSerpApi();
     await say(SAM, "add tp under $15");
-    expect(out()).toMatch(/Which one\?\n1\. Quilted Northern Toilet Paper 12 Double Rolls \(CVS\): \$13\.49\nhttps:\/\/example\.com\/\nStore prices checked just now\.\nReply 1, or "cancel"/);
+    expect(out()).toMatch(/Which one\?\n1\. Quilted Northern Toilet Paper 12 Double Rolls \(CVS\): \$13\.49\nStore prices checked just now\.\nReply 1, or "cancel"/);
     expect(out()).not.toMatch(/Walmart|Costco|Target/);
   });
 

@@ -12,11 +12,11 @@ import { config } from "../config.js";
 import { getProduct, groupOf, type Product } from "../core/catalog.js";
 import { registerState } from "../core/persist.js";
 import { checkInput } from "../safety/guardrails.js";
-import { MAX_OPTIONS, parseUnits } from "./rank.js";
+import { parseUnits } from "./rank.js";
 import { knownStore } from "./request.js";
 
-/** One store listing, already cleaned. `link` is the listing's page, when SerpApi gives a safe https one. */
-export type Offer = { title: string; store: string; cents: number; link?: string };
+/** One store listing, already cleaned. */
+export type Offer = { title: string; store: string; cents: number };
 
 const SEARCH_URL = "https://serpapi.com/search.json";
 export const SEARCH_TIMEOUT_MS = 3000;
@@ -70,8 +70,6 @@ const Row = z.object({
   source: z.string().min(1).max(100),
   extracted_price: z.number().positive().optional(),
   price: z.string().max(40).optional(),
-  link: z.string().optional(),
-  product_link: z.string().optional(),
 });
 const Top = z.object({
   shopping_results: z.array(z.unknown()).optional(),
@@ -105,21 +103,6 @@ function clean(text: string, max: number): string | undefined {
   const t = text.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
   if (!t || checkInput(t)) return undefined;
   return t.length > max ? t.slice(0, max).trimEnd() : t;
-}
-
-/**
- * A listing's link, only if it's a plain https URL with no login details, no spaces and a sane length.
- * It's sent in the chat as-is, so anything odd is dropped rather than repaired.
- */
-export function safeLink(raw: string | undefined): string | undefined {
-  if (!raw || raw.length > 500 || /[\s<>"'`]/.test(raw)) return undefined;
-  try {
-    const url = new URL(raw);
-    if (url.protocol !== "https:" || url.username || url.password || !url.hostname.includes(".")) return undefined;
-    return url.toString();
-  } catch {
-    return undefined;
-  }
 }
 
 /** Why rows were dropped while parsing, for the `[serpapi]` log line. */
@@ -160,8 +143,7 @@ export function parseOffers(json: unknown, stats?: ParseStats): Offer[] {
       continue;
     }
     seen.add(key);
-    const link = safeLink(row.data.link) ?? safeLink(row.data.product_link);
-    offers.push({ title, store, cents, ...(link ? { link } : {}) });
+    offers.push({ title, store, cents });
     if (offers.length >= MAX_OFFERS) break;
   }
   return offers;
@@ -185,7 +167,7 @@ export async function searchOffers(
     loggedOff = true;
     return undefined;
   }
-  // v3: offers also come from grouped results. Older cached results (v2 missed those) are searched again once.
+  // v3: offers also come from grouped results. Older cached results missed those, so they're searched again once.
   const cacheKey = `v3|${query.toLowerCase()}|${config.dealsLocation ?? ""}`;
   const hit = cache.get(cacheKey);
   const fallback = hit ? `cached (${minutesOld(hit.at, now)} old)` : "catalog";
@@ -284,7 +266,7 @@ export function offCatalogProduct(requested: string): Product | undefined {
  * quarter and three times the catalog price, which drops single rolls and commercial cases. Items that aren't
  * in the catalog have no price to compare, so only the words count.
  */
-function relevant(offer: Offer, product: Product, band: [number, number] = [1 / 4, 3]): boolean {
+function relevant(offer: Offer, product: Product): boolean {
   const title = offer.title.toLowerCase();
   const all = [product.name.split(",")[0]!, ...product.aliases].flatMap((n) => n.toLowerCase().split(/[^\p{L}\p{N}]+/u));
   const long = all.filter((w) => w.length >= 4);
@@ -293,7 +275,7 @@ function relevant(offer: Offer, product: Product, band: [number, number] = [1 / 
   const accessoryOk = !ACCESSORY.test(title) || ACCESSORY.test(product.name);
   const base = getProduct(groupOf(product))?.cents ?? product.cents;
   const offCatalog = base <= 0;
-  const priced = offCatalog || (offer.cents >= base * band[0] && offer.cents <= base * band[1]);
+  const priced = offCatalog || (offer.cents >= base / 4 && offer.cents <= base * 3);
   // Without a price band to catch mismatches, off-catalog listings must share a whole word ("rice" isn't "price").
   const titleWords = new Set(title.split(/[^\p{L}\p{N}]+/u));
   const shares = offCatalog ? words.some((w) => titleWords.has(w)) : words.some((w) => title.includes(w));
@@ -310,27 +292,13 @@ export async function liveOptionsFor(
   const logAs = product.id.startsWith(OFF_CATALOG) ? product.id : undefined;
   const result = await searchOffers(query, { ...opts, ...(logAs ? { logAs } : {}) });
   if (!result) return undefined;
-  // Best first: relevant listings from major retailers we recognize, under their usual names. DEALS_ANY_STORE=1
-  // keeps every seller. When that leaves fewer than three, fill up with relevant listings from other sellers, then
-  // with ones priced further from the catalog (singles, bigger packs), so the member still gets three to pick from.
+  // By default only major retailers we recognize, under their usual names. DEALS_ANY_STORE=1 keeps every seller.
   const relevantOffers = result.offers.filter((o) => relevant(o, product));
-  const chosen: Offer[] = relevantOffers.flatMap((o) => {
-    const store = config.dealsAnyStore ? o.store : knownStore(o.store);
-    return store ? [{ ...o, store }] : [];
-  });
-  const backfill = [
-    ...relevantOffers,
-    ...result.offers.filter((o) => !relevantOffers.includes(o) && relevant(o, product, [1 / 8, 5])),
-  ];
-  const taken = new Set(chosen.map((o) => `${o.title}|${o.cents}`));
-  for (const o of backfill) {
-    if (chosen.length >= MAX_OPTIONS) break;
-    const k = `${o.title}|${o.cents}`;
-    if (taken.has(k)) continue;
-    taken.add(k);
-    chosen.push({ ...o, store: knownStore(o.store) ?? o.store });
-  }
-  const products = chosen
+  const products = relevantOffers
+    .flatMap((o) => {
+      const store = config.dealsAnyStore ? o.store : knownStore(o.store);
+      return store ? [{ ...o, store }] : [];
+    })
     .map((o): Product => {
       const units = parseUnits(o.title, product.unit);
       return {
@@ -344,7 +312,6 @@ export async function liveOptionsFor(
         group: groupOf(product),
         ...(units ? { units, unit: product.unit } : {}),
         store: o.store,
-        ...(o.link ? { url: o.link } : {}),
         checkedAt: new Date(result.at).toISOString(),
       };
     });

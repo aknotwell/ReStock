@@ -4,6 +4,22 @@
 
 **Why Railway:** it deploys straight from GitHub on every push to `main`, and the service stays running. Free tiers that put idle apps to sleep (such as Render's free plan) can make a VEYZL audit time out during a cold start. Config: [`railway.json`](../railway.json) starts Node directly (`node --import tsx src/server.ts`, not `npm start`, so Railway's shutdown signal reaches the app and it saves before exiting), uses `/health` as the health check, and restarts on failure.
 
+## Live links
+
+The deploy runs at **https://restock-production-daab.up.railway.app**.
+
+| Page | URL | Who uses it |
+|---|---|---|
+| Dashboard (texted-code login) | `/dashboard` | Members: a live, read-only view of their household |
+| Pay back (texted-code login) | `/pay` | Members who owe: settle on Stripe's page |
+| Add-card / pay-back links | `/c/<token>`, `/p/<token>` | Opened from Restock's texts; they redirect to Stripe |
+| Stripe return pages | `/card/success`, `/pay/success`, `/cancel` | After Stripe Checkout |
+| Health | `/health` | Uptime checks |
+| Stripe webhook | `POST /webhooks/stripe` | Stripe (register this URL in the Stripe dashboard) |
+| VEYZL audit endpoint | `POST /api/agent` | VEYZL (its Backend URL is the root URL above) |
+
+There's no sign-up page: people sign up by texting Restock (`start household as <name>`; see the README's **Try it live**). The texted login code only reaches people who have texted their Restock number at least once, because Photon's shared lines can't text first.
+
 ## One-time setup (a human does this: Claude can't create accounts or enter keys)
 
 1. **Create the account:** go to [railway.com](https://railway.com) → **Login with GitHub**. Railway's free trial credit is enough for a hackathon weekend; check the current plan terms on their pricing page.

@@ -6,6 +6,21 @@ Built at **DubHacks '26**.
 
 > Tracks: **Visa: Reimagine Shopping** (title track) · **Photon: Messaging Agent** · **VEYZL: Best Use of VEYZL** · **Best Startup Idea**
 
+## Try it live
+
+| | Link |
+|---|---|
+| **Dashboard**: log in with your phone number and see your household live | [restock-production-daab.up.railway.app/dashboard](https://restock-production-daab.up.railway.app/dashboard) |
+| **Pay back**: log in and settle what you owe | [restock-production-daab.up.railway.app/pay](https://restock-production-daab.up.railway.app/pay) |
+| Health check | [restock-production-daab.up.railway.app/health](https://restock-production-daab.up.railway.app/health) |
+
+**Signing up happens by text, not on a website:**
+1. **Get connected to Restock's iMessage line.** Photon's shared lines only accept texts from numbers that have been added, so the team adds your number in the Photon dashboard (iMessage → *Add someone to the line*) and tells you which Restock number to text. A dedicated Restock number would remove this step.
+2. **Text your Restock number** `start household as <your name>` (or just "make me a household, I'm Alex"). You become the budget owner.
+3. **Add roommates:** `add member Amber 425-555-0123`. They text their Restock number once to get started.
+4. **Add your card:** text `add card` and use the secure Stripe link (test mode).
+5. **Log in to the [dashboard](https://restock-production-daab.up.railway.app/dashboard)** with the same phone number. Restock texts you a 6-digit code.
+
 ---
 
 ## The problem

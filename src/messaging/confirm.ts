@@ -39,6 +39,11 @@ export function clearAction(phone: string): void {
   pending.delete(phone);
 }
 
+/** Drop a pending order when the person has moved on. Membership questions stay until yes or no. */
+export function clearOrderConfirmation(phone: string, now = Date.now()): void {
+  if (peekAction(phone, now)?.kind === "order") clearAction(phone);
+}
+
 export function resetConfirmations(): void {
   pending.clear();
 }

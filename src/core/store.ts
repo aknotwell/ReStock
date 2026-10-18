@@ -11,6 +11,12 @@ export const db = {
   debts: new Map<string, Debt>(),
 };
 
+/**
+ * Checkout text id -> order id. A retry of the same "yes" reuses the order, so Stripe's idempotency
+ * key cannot charge it twice if the process died after the card was captured. Cleared with the store.
+ */
+export const inflightCheckouts = new Map<string, string>();
+
 export const newId = () => randomUUID();
 
 /** groupChatId placeholder until the household's real group chat is seen. */
@@ -68,4 +74,5 @@ export function resetStore(): void {
   db.charges.length = 0;
   db.debts.clear();
   formerMembers.clear();
+  inflightCheckouts.clear();
 }

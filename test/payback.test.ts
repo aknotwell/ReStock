@@ -9,7 +9,7 @@ const fakeStripe = {
 vi.mock("../src/payments/stripe.js", () => ({ requireStripe: () => fakeStripe }));
 
 const { seedDemo } = await import("../scripts/seed.js");
-const { db, newId } = await import("../src/core/store.js");
+const { db, formerMembers, newId } = await import("../src/core/store.js");
 const { captureOutboundDetailed } = await import("../src/messaging/photon.js");
 const payback = await import("../src/payments/payback.js");
 
@@ -77,6 +77,45 @@ describe("paying back", () => {
 
     const jake = db.households.get("demo-house")!.members.find((m) => m.id === "jake")!;
     await expect(payback.createPayBackCheckout(jake, debtId, false)).rejects.toThrow(/isn't open for you/);
+  });
+
+  it("includes every household for that phone, and charges the debtor's own record", async () => {
+    db.households.set("other-house", {
+      id: "other-house",
+      kind: "group",
+      groupChatId: "other-chat",
+      ownerId: "sam-2",
+      spentCents: 0,
+      members: [
+        { id: "sam-2", name: "Sam", phone: "+15550000001", role: "owner" },
+        { id: "priya-2", name: "Priya", phone: PRIYA, role: "member" },
+      ],
+    });
+    const otherDebt = newId();
+    db.debts.set(otherDebt, { id: otherDebt, orderId: "o2", debtorId: "priya-2", creditorId: "sam-2", cents: 500, status: "open" });
+    formerMembers.set("priya-old", {
+      household: { id: "gone", groupChatId: "gone", ownerId: "sam", spentCents: 0, members: [] },
+      member: { id: "priya-old", name: "Priya", phone: PRIYA, role: "member" },
+    });
+    const oldDebt = newId();
+    db.debts.set(oldDebt, { id: oldDebt, orderId: "o3", debtorId: "priya-old", creditorId: "sam", cents: 250, status: "open" });
+
+    const { token } = await logIn();
+    const priya = payback.sessionMember(token)!;
+    expect(priya.id).toBe("priya");
+    expect(payback.myDebts(priya).map((d) => d.id).sort()).toEqual([debtId, otherDebt, oldDebt].sort());
+
+    await expect(payback.createPayBackCheckout(priya, otherDebt, false)).resolves.toBe("https://checkout.stripe.test/s");
+    const params = fakeStripe.checkout.sessions.create.mock.calls.at(-1)![0] as { metadata: { memberId: string }; line_items: { price_data: { unit_amount: number } }[] };
+    expect(params.line_items[0]!.price_data.unit_amount).toBe(500);
+    expect(params.metadata.memberId).toBe("priya-2");
+
+    await expect(payback.createPayBackCheckout(priya, oldDebt, false)).resolves.toBe("https://checkout.stripe.test/s");
+    const oldParams = fakeStripe.checkout.sessions.create.mock.calls.at(-1)![0] as { metadata: { memberId: string } };
+    expect(oldParams.metadata.memberId).toBe("priya-old");
+
+    const jake = db.households.get("demo-house")!.members.find((m) => m.id === "jake")!;
+    await expect(payback.createPayBackCheckout(jake, otherDebt, false)).rejects.toThrow(/isn't open for you/);
   });
 
   it("the webhook marks the debt paid, saves the card, texts Sam, and is safe to repeat", async () => {

@@ -48,7 +48,41 @@ export const GREETING_GROUP =
   "Hi everyone! I'm Restock, an AI assistant (not a person). Tell me what you're out of and I'll find the best match, keep a shared cart, and only order when someone texts \"order now\".\n" +
   "First, who's this group? Reply \"roommates\", \"family\", or \"other\".";
 
-const said = (text: string, ...words: string[]) => new RegExp(`\\b(?:${words.join("|")})\\b`, "i").test(text);
+const ANSWER_FILLERS = new Set([
+  "it's", "its", "i'm", "i", "am", "we're", "we", "are", "this", "is", "for", "my", "the", "a", "an",
+  "just", "only", "hey", "hi", "ok", "okay", "yes", "yep", "yeah",
+]);
+const ANSWER_WORD_LIMIT = 8;
+
+function normalizeAnswer(text: string): string {
+  return text.toLowerCase().replace(/[’‘]/g, "'").replace(/[.?!,]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/** "roommates?" also matches "roommate". A trailing ? is the only reason a final s is optional. */
+function answerForms(phrase: string): string[] {
+  const optionalS = phrase.endsWith("?");
+  const base = (optionalS ? phrase.slice(0, -1) : phrase).toLowerCase().replace(/[’‘]/g, "'").trim();
+  const forms = [base];
+  if (optionalS && base.endsWith("s")) forms.push(base.slice(0, -1));
+  return forms;
+}
+
+/**
+ * The whole reply is one of these phrases, or the phrase after a few leading fillers ("it's just me",
+ * "for my roommates"). A word inside a longer text does not count, and "we're" is not "we".
+ */
+const said = (text: string, ...phrases: string[]): boolean => {
+  const norm = normalizeAnswer(text);
+  if (!norm) return false;
+  const words = norm.split(" ");
+  if (words.length > ANSWER_WORD_LIMIT) return false;
+  const targets = new Set(phrases.flatMap(answerForms));
+  if (targets.has(norm)) return true;
+  let i = 0;
+  while (i < words.length && ANSWER_FILLERS.has(words[i]!)) i++;
+  const rest = words.slice(i).join(" ");
+  return !!rest && rest !== norm && targets.has(rest);
+};
 
 /** "150", "$150", "150 a month" -> cents; "no", "no budget", "none", "skip" -> null; anything else -> undefined. */
 export function parseBudget(text: string): Cents | null | undefined {

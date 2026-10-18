@@ -95,13 +95,15 @@ export type DestinationReply =
   | { kind: "newPersonal"; text: string }
   | { kind: "split"; householdId: string; text: string }
   | { kind: "ask"; prompt: string }
-  | { kind: "cancelled" };
+  | { kind: "cancelled" }
+  | { kind: "pass" };
 
 const CANCEL = /^(?:cancel|never ?mind|nvm|no|stop)[.!]*$/;
 
 /**
- * A reply to "Which household?" or "Who's it for?". Returns undefined when nothing is open, or the text isn't an
- * answer (a new request or command): the question is then dropped and the text is handled as usual.
+ * A reply to "Which household?" or "Who's it for?". Returns undefined when nothing is open or it has expired.
+ * Returns `{ kind: "pass" }` when a question was open but this text isn't an answer: the question is dropped
+ * and the caller handles the text as usual.
  */
 export function answerDestination(phone: string, answer: string, member: (h: Household) => Member | undefined, now = Date.now()): DestinationReply | undefined {
   const p = pending.get(phone);
@@ -127,7 +129,7 @@ export function answerDestination(phone: string, answer: string, member: (h: Hou
     if (!chosen) {
       if (number) return { kind: "ask", prompt: `Reply with a number from 1 to ${options.length + (p.newPersonal ? 1 : 0)}, or "cancel".` };
       pending.delete(phone);
-      return undefined;
+      return { kind: "pass" };
     }
     pending.delete(phone);
     return { kind: "household", household: chosen, text: p.text };
@@ -145,7 +147,7 @@ export function answerDestination(phone: string, answer: string, member: (h: Hou
   const request = parseSplitInAdd(`item for ${who}`, household, me);
   if (!request) {
     pending.delete(phone); // not about people ("what do I owe?", "order now"): handle it as a new message
-    return undefined;
+    return { kind: "pass" };
   }
   if (request.request.kind === "unclear") {
     // About people, but someone we can't place ("me and Bob", "the guys"): ask again.

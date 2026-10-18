@@ -94,6 +94,24 @@ describe("before buying: which cart, and who pays for what", () => {
     expect(out()).toMatch(/OK, I won't do that\./);
     expect(db.orders.size).toBe(0);
   });
+
+  it("an immediate ok still places that order", async () => {
+    await say(JAKE, "order now");
+    await say(JAKE, "ok");
+    expect(db.orders.size).toBe(1);
+  });
+
+  it("a later yes or ok does not place an order they moved on from", async () => {
+    await say(JAKE, "order now");
+    await say(JAKE, "help");
+    expect(out()).toMatch(/I'm Restock/);
+    await say(JAKE, "yes");
+    expect(db.orders.size).toBe(0);
+    await say(JAKE, "order now");
+    await say(JAKE, "help");
+    await say(JAKE, "ok");
+    expect(db.orders.size).toBe(0);
+  });
 });
 
 describe("in several groups", () => {
@@ -115,6 +133,28 @@ describe("in several groups", () => {
     await say(SAM, "add oat milk");
     await say(SAM, "2"); // "Which one?": the plain oat milk
     expect(out()).toMatch(/Added Oat milk to your household \(/);
+  });
+
+  it("a newer question drops the order, so yes does not check out", async () => {
+    addSecondHousehold();
+    await say(SAM, "order now", "direct");
+    await say(SAM, "1", "direct");
+    expect(db.orders.size).toBe(0);
+    logs = [];
+    await say(SAM, "add oat milk", "direct");
+    expect(out()).toMatch(/Which household is this for/);
+    await say(SAM, "yes", "direct");
+    expect(db.orders.size).toBe(0);
+
+    logs = [];
+    await say(SAM, "order now", "direct");
+    await say(SAM, "1", "direct");
+    await say(SAM, "shopping list", "direct");
+    expect(out()).toMatch(/Which list\?/);
+    await say(SAM, "no", "direct");
+    expect(out()).toMatch(/never mind/);
+    await say(SAM, "yes", "direct");
+    expect(db.orders.size).toBe(0);
   });
 
   it("in a group chat, or with one group, there's no question about which cart", async () => {

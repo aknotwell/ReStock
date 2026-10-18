@@ -105,10 +105,27 @@ describe("group chat: roommates or family", () => {
   });
 });
 
+it("a shopping text is not an answer to just me or group", async () => {
+  await dm(ALEX, "hi");
+  expect(said(await dm(ALEX, "we're out of TP"))).toMatch(/"just me" or "group"/);
+  expect(householdsForPhone(ALEX)).toHaveLength(0);
+});
+
+it("only an exact \"me\" claims the card", async () => {
+  await inGroup(ALEX, "hey");
+  await inGroup(ALEX, "roommates");
+  expect(await inGroup(ALEX, "tell me")).toHaveLength(0);
+  expect(await inGroup(ALEX, "not me")).toHaveLength(0);
+  expect(said(await inGroup(ALEX, "me"))).toMatch(/What should I call you\?/);
+});
+
 it("reads budgets and names the way people text them", () => {
   expect(parseBudget("150")).toBe(15000);
   expect(parseBudget("$1,200 a month")).toBe(120000);
   expect(parseBudget("nope")).toBeNull();
+  expect(parseBudget("no")).toBeNull();
+  expect(parseBudget("200 no problem")).toBe(20000);
+  expect(parseBudget("no, 200")).toBe(20000);
   expect(parseBudget("whatever")).toBeUndefined();
   expect(nameFrom("I'm jake")).toBe("Jake");
   expect(nameFrom("call me Priya")).toBe("Priya");

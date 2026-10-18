@@ -8,6 +8,30 @@ import { openBalancesOf } from "./ledger.js";
 
 export const DEFAULT_BUDGET_CENTS = 20000;
 
+/** `YYYY-MM` for the calendar month in Pacific time (Restock's budget clock). */
+export function budgetMonthKey(now = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(now);
+  const year = parts.find((p) => p.type === "year")?.value;
+  const month = parts.find((p) => p.type === "month")?.value;
+  if (!year || !month) throw new Error("Could not read the budget month");
+  return `${year}-${month}`;
+}
+
+/**
+ * Make `spentCents` mean "spent this month". The first time a household is seen, keep what it already
+ * spent. When `budgetMonth` is a previous month, start the new month at zero.
+ */
+export function ensureBudgetMonth(household: Household, now = new Date()): void {
+  const month = budgetMonthKey(now);
+  if (household.budgetMonth === month) return;
+  if (household.budgetMonth) household.spentCents = 0;
+  household.budgetMonth = month;
+}
+
 export class MembershipError extends Error {}
 
 /** E.164 for US numbers typed loosely ("425-829-9688", "(425) 829 9688", "+1 425…"); undefined if it isn't a phone. */

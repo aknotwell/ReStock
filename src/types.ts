@@ -23,6 +23,8 @@ export type Household = {
   groupChatId: string;
   ownerId: MemberId;
   budgetCents?: Cents; // optional monthly limit. With none, orders still go on the owner's card
+  /** `YYYY-MM` in Pacific time. Spend resets when this is a past month. Unset keeps the current spend. */
+  budgetMonth?: string;
   spentCents: Cents;
   approvalOverCents?: Cents; // items above this need someone else's "yes", even from an approver
   members: Member[];

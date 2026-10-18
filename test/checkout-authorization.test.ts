@@ -26,6 +26,6 @@ it("hands off a member's explicit command exactly once, after their yes", async 
   await send("order now");
   expect(order).not.toHaveBeenCalled(); // "order now" shows what would be bought first
   const replies = await send("yes");
-  expect(order).toHaveBeenCalledExactlyOnceWith("demo-house");
+  expect(order).toHaveBeenCalledExactlyOnceWith("demo-house", "smart", "checkout:authorization");
   expect(replies.join()).toContain("Checkout handoff verified.");
 });

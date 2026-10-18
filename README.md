@@ -10,18 +10,18 @@ Built at **DubHacks '26**.
 
 | | Link |
 |---|---|
-| **Home**: see how Restock works | [restock-production-daab.up.railway.app](https://restock-production-daab.up.railway.app/) |
-| **Start or join a household** | [restock-production-daab.up.railway.app/start](https://restock-production-daab.up.railway.app/start) |
-| **Dashboard**: switch between your Personal space and all your Groups | [restock-production-daab.up.railway.app/dashboard](https://restock-production-daab.up.railway.app/dashboard) |
-| Privacy | [restock-production-daab.up.railway.app/privacy](https://restock-production-daab.up.railway.app/privacy) |
-| Health check | [restock-production-daab.up.railway.app/health](https://restock-production-daab.up.railway.app/health) |
+| **Home**: see how Restock works | [restock.select](https://restock.select/) |
+| **Start or join a household** | [restock.select/start](https://restock.select/start) |
+| **Dashboard**: switch between your Personal space and all your Groups | [restock.select/dashboard](https://restock.select/dashboard) |
+| Privacy | [restock.select/privacy](https://restock.select/privacy) |
+| Health check | [restock.select/health](https://restock.select/health) |
 
 **Sign up on the web:**
-1. **Start a household** at [restock-production-daab.up.railway.app/start](https://restock-production-daab.up.railway.app/start): enter your first name and mobile number and give consent. Restock gives you **your own Restock iMessage number**.
+1. **Start a household** at [restock.select/start](https://restock.select/start): enter your first name and mobile number and give consent. Restock gives you **your own Restock iMessage number**.
 2. **Text "hi" to that number** (the page has an *Open Messages* button). Your first text activates you as the budget owner, and Restock replies with an invite link.
 3. **Invite roommates** with that link (or text Restock `invite`). They open `/join/<code>`, sign up, and text "hi" to join. Everyone hears "Amber joined the household."
 4. **Add your card:** text `add card` and use the secure Stripe link (test mode).
-5. **Log in to the [dashboard](https://restock-production-daab.up.railway.app/dashboard)** with the same phone number. Restock texts you a 6-digit code. Use the Groups and Personal navigation to switch between spaces.
+5. **Log in to the [dashboard](https://restock.select/dashboard)** with the same phone number. Restock texts you a 6-digit code. Use the Groups and Personal navigation to switch between spaces.
 
 Each person texts their own Restock number, and Restock relays household news (items added, orders, who joined) to everyone's thread. Text `STOP` to stop texts and `delete my data` to leave. Orders are a demo: nothing ships, and payments are Stripe test mode.
 

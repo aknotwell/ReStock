@@ -28,7 +28,7 @@ import {
 import { isRestockLine } from "./photonLines.js";
 import { CONTACT_NAME, contactLink } from "../web/contactCard.js";
 import { config } from "../config.js";
-import { activeHousehold, cleanName, findPhone, householdName } from "../core/households.js";
+import { activeHousehold, adoptCards, cleanName, findPhone, householdName } from "../core/households.js";
 import { handleOnboarding, setupInProgress } from "./onboarding.js";
 import { parseDealRequest, stripDealWords } from "../deals/request.js";
 import { currentListing, listingProduct, liveDealsEnabled, offCatalogProduct } from "../deals/live.js";
@@ -144,6 +144,7 @@ export async function handleInbound(msg: InboundMessage, opts: { refined?: boole
   const confirming = peekAction(msg.fromPhone);
   const pickedCart = confirming?.kind === "order" && confirming.householdId && isYes(msg.text) ? db.households.get(confirming.householdId) : undefined;
   const household = pickedCart && findMemberByPhone(pickedCart, msg.fromPhone) ? pickedCart : resolveHousehold(msg);
+  if (household) adoptCards(household); // cards people added in their other households count here (one card per person)
   const member = household && findMemberByPhone(household, msg.fromPhone);
 
   // "code": a login code for the dashboard and pay-back site, as a reply (Restock can't text first, so the

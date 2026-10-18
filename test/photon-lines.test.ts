@@ -15,7 +15,7 @@ vi.mock("@photon-ai/api", async (orig) => ({
 }));
 
 import { ApiError } from "@photon-ai/api";
-import { assignLine, isLineActive } from "../src/messaging/photonLines.js";
+import { assignLine } from "../src/messaging/photonLines.js";
 
 const PHONE = "+14255550102";
 const row = (id: string, line: string, releasedAt?: string) => ({ assignmentId: id, assignedPhoneNumber: line, handle: PHONE, ...(releasedAt ? { releasedAt } : {}) });
@@ -50,24 +50,21 @@ describe("assignLine", () => {
     expect(await assignLine(PHONE, "Amber", "k1")).toEqual({ assignmentId: "asg_live", line: "+16285550133" });
   });
 
+  it("already connected but Photon won't list connections: uses the saved number", async () => {
+    assignments.create.mockRejectedValueOnce(apiError(409, "ASSIGNMENT_EXISTS"));
+    assignments.list.mockRejectedValueOnce(apiError(403, "INSUFFICIENT_SCOPE"));
+    const saved = { assignmentId: "asg_saved", line: "+16285550144" };
+    expect(await assignLine(PHONE, "Amber", "k1", saved)).toEqual(saved);
+  });
+
+  it("already connected, can't list, and nothing saved: a friendly error, not a made-up number", async () => {
+    assignments.create.mockRejectedValueOnce(apiError(409, "ASSIGNMENT_EXISTS"));
+    assignments.list.mockRejectedValueOnce(apiError(403, "INSUFFICIENT_SCOPE"));
+    await expect(assignLine(PHONE, "Amber", "k1")).rejects.toThrow(/couldn't set up a number/);
+  });
+
   it("other Photon errors still show a friendly message", async () => {
     assignments.create.mockRejectedValueOnce(apiError(503, "SHARED_LINE_POOL_EXHAUSTED"));
     await expect(assignLine(PHONE, "Amber", "k1")).rejects.toThrow(/couldn't set up a number/);
-  });
-});
-
-describe("isLineActive", () => {
-  it("is false for a released or missing assignment", async () => {
-    assignments.get.mockResolvedValueOnce(row("asg_1", "+16285550111", "2026-10-16T00:00:00Z"));
-    expect(await isLineActive("asg_1")).toBe(false);
-    assignments.get.mockRejectedValueOnce(apiError(404, "ASSIGNMENT_NOT_FOUND"));
-    expect(await isLineActive("asg_1")).toBe(false);
-  });
-
-  it("is true for a live one, and when Photon can't be reached (keep the saved number)", async () => {
-    assignments.get.mockResolvedValueOnce(row("asg_1", "+16285550111"));
-    expect(await isLineActive("asg_1")).toBe(true);
-    assignments.get.mockRejectedValueOnce(apiError(503, "UPSTREAM_UNAVAILABLE"));
-    expect(await isLineActive("asg_1")).toBe(true);
   });
 });

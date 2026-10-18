@@ -94,11 +94,19 @@ describe("asking where it goes, then who it's for", () => {
     expect(famItems()).toHaveLength(before);
   });
 
-  it("a different message instead of an answer moves on", async () => {
+  it("a different message instead of an answer moves on, at either question", async () => {
     await say("add oat milk");
     logs = [];
     await say("what do I owe?");
-    expect(out()).not.toMatch(/Which household|Reply with a number/);
+    expect(out()).not.toMatch(/Which household|Reply with a number|I don't know who/);
+    expect(out()).toMatch(/owe|balance|settled|all square/i);
+
+    await say("add oat milk");
+    await say("2"); // now at "Who's it for?"
+    logs = [];
+    await say("what do I owe?");
+    expect(out()).not.toMatch(/I don't know who|Who's it for/);
+    expect(out()).toMatch(/owe|balance|settled|all square/i);
   });
 });
 

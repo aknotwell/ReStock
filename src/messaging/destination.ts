@@ -121,11 +121,12 @@ export function answerDestination(phone: string, answer: string, member: (h: Hou
     : /^(?:me|just me|only me|myself|personal|mine|just mine|for me)$/.test(a) ? "me"
     : a.replace(/^(?:for|just|only|split (?:it )?(?:with|between)|between)\s+/, "");
   const request = parseSplitInAdd(`item for ${who}`, household, me);
-  if (!request || request.request.kind === "unclear") {
-    if (a.split(/\s+/).length > 6) {
-      pending.delete(phone); // a whole new message, not an answer
-      return undefined;
-    }
+  if (!request) {
+    pending.delete(phone); // not about people ("what do I owe?", "order now"): handle it as a new message
+    return undefined;
+  }
+  if (request.request.kind === "unclear") {
+    // About people, but someone we can't place ("me and Bob", "the guys"): ask again.
     return { kind: "ask", prompt: `I don't know who that is in ${groupName(household, phone).replace(/^Your /, "your ")}. Reply "everyone", "just me", or first names.` };
   }
   pending.delete(phone);

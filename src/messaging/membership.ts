@@ -117,8 +117,15 @@ export async function handleMembershipCommand({ command, fromPhone, spaceKind, h
       }
       if (member.id === household.ownerId) deleteHousehold(household);
       else removeMember(household, member.name);
-      await forgetPerson(member);
-      await respond("Done. You've left Restock and your data is deleted. Thanks for trying it!");
+      // Confirm before releasing their Restock number: once Photon releases it, texts on it can't reach them.
+      try {
+        await respond(
+          "Done. Your Restock data is deleted: you've left the household, your Restock number is released, and any saved card is removed. " +
+            `You won't get more texts from me. To come back, sign up again at ${config.publicBaseUrl}/start. Thanks for trying Restock!`,
+        );
+      } finally {
+        await forgetPerson(member);
+      }
       return true;
     }
 

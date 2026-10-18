@@ -12,11 +12,11 @@ import { config } from "../config.js";
 import { getProduct, groupOf, type Product } from "../core/catalog.js";
 import { registerState } from "../core/persist.js";
 import { checkInput } from "../safety/guardrails.js";
-import { parseUnits } from "./rank.js";
+import { MAX_OPTIONS, parseUnits } from "./rank.js";
 import { knownStore } from "./request.js";
 
-/** One store listing, already cleaned. */
-export type Offer = { title: string; store: string; cents: number };
+/** One store listing, already cleaned. `link` is the listing's page, when SerpApi gives a safe https one. */
+export type Offer = { title: string; store: string; cents: number; link?: string };
 
 const SEARCH_URL = "https://serpapi.com/search.json";
 export const SEARCH_TIMEOUT_MS = 3000;
@@ -68,9 +68,37 @@ export function liveDealsEnabled(): boolean {
 const Row = z.object({
   title: z.string().min(1).max(500),
   source: z.string().min(1).max(100),
-  extracted_price: z.number().positive(),
+  extracted_price: z.number().positive().optional(),
+  price: z.string().max(40).optional(),
+  link: z.string().optional(),
+  product_link: z.string().optional(),
 });
-const Top = z.object({ shopping_results: z.array(z.unknown()).optional() });
+const Top = z.object({
+  shopping_results: z.array(z.unknown()).optional(),
+  inline_shopping_results: z.array(z.unknown()).optional(),
+  categorized_shopping_results: z.array(z.unknown()).optional(),
+});
+const Category = z.object({ shopping_results: z.array(z.unknown()).optional(), results: z.array(z.unknown()).optional() });
+
+/**
+ * Every listing row in a response. Google sometimes groups shopping results into categories, and SerpApi then
+ * returns them under `categorized_shopping_results` with only a few left in `shopping_results`.
+ */
+function listingRows(json: unknown): unknown[] {
+  const top = Top.safeParse(json);
+  if (!top.success) return [];
+  const grouped = (top.data.categorized_shopping_results ?? []).flatMap((c) => {
+    const cat = Category.safeParse(c);
+    return cat.success ? [...(cat.data.shopping_results ?? []), ...(cat.data.results ?? [])] : [];
+  });
+  return [...(top.data.shopping_results ?? []), ...grouped, ...(top.data.inline_shopping_results ?? [])];
+}
+
+/** "$4.97" or "4.97" -> 4.97. Anything else (ranges, "From $5", other currencies) is ignored. */
+function priceFromText(text: string | undefined): number | undefined {
+  const m = text ? /^\s*\$?\s*(\d{1,4}(?:,\d{3})*(?:\.\d{1,2})?)\s*$/.exec(text) : undefined;
+  return m ? Number(m[1]!.replace(/,/g, "")) : undefined;
+}
 
 /** One line of printable text, or undefined if it's empty or trips a guardrail. */
 function clean(text: string, max: number): string | undefined {
@@ -79,23 +107,61 @@ function clean(text: string, max: number): string | undefined {
   return t.length > max ? t.slice(0, max).trimEnd() : t;
 }
 
+/**
+ * A listing's link, only if it's a plain https URL with no login details, no spaces and a sane length.
+ * It's sent in the chat as-is, so anything odd is dropped rather than repaired.
+ */
+export function safeLink(raw: string | undefined): string | undefined {
+  if (!raw || raw.length > 500 || /[\s<>"'`]/.test(raw)) return undefined;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" || url.username || url.password || !url.hostname.includes(".")) return undefined;
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+/** Why rows were dropped while parsing, for the `[serpapi]` log line. */
+export type ParseStats = { rows: number; malformed: number; noPrice: number; blocked: number; outOfRange: number; duplicate: number };
+
 /** SerpApi JSON -> cleaned offers. Malformed rows are skipped, never trusted. Exported for tests. */
-export function parseOffers(json: unknown): Offer[] {
-  const top = Top.safeParse(json);
-  if (!top.success) return [];
+export function parseOffers(json: unknown, stats?: ParseStats): Offer[] {
+  const rows = listingRows(json);
+  const st = stats ?? { rows: 0, malformed: 0, noPrice: 0, blocked: 0, outOfRange: 0, duplicate: 0 };
+  st.rows = rows.length;
   const seen = new Set<string>();
   const offers: Offer[] = [];
-  for (const raw of top.data.shopping_results ?? []) {
+  for (const raw of rows) {
     const row = Row.safeParse(raw);
-    if (!row.success) continue;
-    const cents = Math.round(row.data.extracted_price * 100);
+    if (!row.success) {
+      st.malformed++;
+      continue;
+    }
+    const price = row.data.extracted_price ?? priceFromText(row.data.price);
+    if (price === undefined) {
+      st.noPrice++;
+      continue;
+    }
+    const cents = Math.round(price * 100);
     const title = clean(row.data.title, 120);
     const store = clean(row.data.source, 40);
-    if (!title || !store || !Number.isSafeInteger(cents) || cents < 50 || cents > 100_000) continue;
+    if (!title || !store) {
+      st.blocked++;
+      continue;
+    }
+    if (!Number.isSafeInteger(cents) || cents < 50 || cents > 100_000) {
+      st.outOfRange++;
+      continue;
+    }
     const key = `${store}|${title}`.toLowerCase();
-    if (seen.has(key)) continue;
+    if (seen.has(key)) {
+      st.duplicate++;
+      continue;
+    }
     seen.add(key);
-    offers.push({ title, store, cents });
+    const link = safeLink(row.data.link) ?? safeLink(row.data.product_link);
+    offers.push({ title, store, cents, ...(link ? { link } : {}) });
     if (offers.length >= MAX_OFFERS) break;
   }
   return offers;
@@ -119,7 +185,8 @@ export async function searchOffers(
     loggedOff = true;
     return undefined;
   }
-  const cacheKey = `${query.toLowerCase()}|${config.dealsLocation ?? ""}`;
+  // v3: offers also come from grouped results. Older cached results (v2 missed those) are searched again once.
+  const cacheKey = `v3|${query.toLowerCase()}|${config.dealsLocation ?? ""}`;
   const hit = cache.get(cacheKey);
   const fallback = hit ? `cached (${minutesOld(hit.at, now)} old)` : "catalog";
   if (hit && now - hit.at <= maxAgeHours * 3_600_000) {
@@ -146,11 +213,16 @@ export async function searchOffers(
     const json: unknown = await res.json().catch(() => undefined);
     const message = serpError(json);
     if (!res.ok) throw Object.assign(new Error(`status ${res.status}`), { name: "HttpError", serp: message });
-    const fresh = { at: now, offers: parseOffers(json) };
-    const raw = Top.safeParse(json);
-    const results = raw.success ? (raw.data.shopping_results?.length ?? 0) : 0;
+    const stats: ParseStats = { rows: 0, malformed: 0, noPrice: 0, blocked: 0, outOfRange: 0, duplicate: 0 };
+    const fresh = { at: now, offers: parseOffers(json, stats) };
+    // Rows that didn't become offers, by reason, so a short list can be explained from the logs.
+    const skipped = (["malformed", "noPrice", "blocked", "outOfRange", "duplicate"] as const)
+      .filter((k) => stats[k] > 0)
+      .map((k) => `${k}:${stats[k]}`)
+      .join(",");
     logSearch(query, message ? "ok, with SerpApi error" : "ok", {
-      status, ms: Date.now() - started, results, offers: fresh.offers.length, today, error: message && `"${message}"`,
+      status, ms: Date.now() - started, results: stats.rows, offers: fresh.offers.length, today, error: message && `"${message}"`,
+      skipped: skipped || undefined,
     }, !!message);
     cache.set(cacheKey, fresh);
     return fresh;
@@ -212,7 +284,7 @@ export function offCatalogProduct(requested: string): Product | undefined {
  * quarter and three times the catalog price, which drops single rolls and commercial cases. Items that aren't
  * in the catalog have no price to compare, so only the words count.
  */
-function relevant(offer: Offer, product: Product): boolean {
+function relevant(offer: Offer, product: Product, band: [number, number] = [1 / 4, 3]): boolean {
   const title = offer.title.toLowerCase();
   const all = [product.name.split(",")[0]!, ...product.aliases].flatMap((n) => n.toLowerCase().split(/[^\p{L}\p{N}]+/u));
   const long = all.filter((w) => w.length >= 4);
@@ -221,7 +293,7 @@ function relevant(offer: Offer, product: Product): boolean {
   const accessoryOk = !ACCESSORY.test(title) || ACCESSORY.test(product.name);
   const base = getProduct(groupOf(product))?.cents ?? product.cents;
   const offCatalog = base <= 0;
-  const priced = offCatalog || (offer.cents >= base / 4 && offer.cents <= base * 3);
+  const priced = offCatalog || (offer.cents >= base * band[0] && offer.cents <= base * band[1]);
   // Without a price band to catch mismatches, off-catalog listings must share a whole word ("rice" isn't "price").
   const titleWords = new Set(title.split(/[^\p{L}\p{N}]+/u));
   const shares = offCatalog ? words.some((w) => titleWords.has(w)) : words.some((w) => title.includes(w));
@@ -238,13 +310,27 @@ export async function liveOptionsFor(
   const logAs = product.id.startsWith(OFF_CATALOG) ? product.id : undefined;
   const result = await searchOffers(query, { ...opts, ...(logAs ? { logAs } : {}) });
   if (!result) return undefined;
-  // By default only major retailers we recognize, under their usual names. DEALS_ANY_STORE=1 keeps every seller.
+  // Best first: relevant listings from major retailers we recognize, under their usual names. DEALS_ANY_STORE=1
+  // keeps every seller. When that leaves fewer than three, fill up with relevant listings from other sellers, then
+  // with ones priced further from the catalog (singles, bigger packs), so the member still gets three to pick from.
   const relevantOffers = result.offers.filter((o) => relevant(o, product));
-  const products = relevantOffers
-    .flatMap((o) => {
-      const store = config.dealsAnyStore ? o.store : knownStore(o.store);
-      return store ? [{ ...o, store }] : [];
-    })
+  const chosen: Offer[] = relevantOffers.flatMap((o) => {
+    const store = config.dealsAnyStore ? o.store : knownStore(o.store);
+    return store ? [{ ...o, store }] : [];
+  });
+  const backfill = [
+    ...relevantOffers,
+    ...result.offers.filter((o) => !relevantOffers.includes(o) && relevant(o, product, [1 / 8, 5])),
+  ];
+  const taken = new Set(chosen.map((o) => `${o.title}|${o.cents}`));
+  for (const o of backfill) {
+    if (chosen.length >= MAX_OPTIONS) break;
+    const k = `${o.title}|${o.cents}`;
+    if (taken.has(k)) continue;
+    taken.add(k);
+    chosen.push({ ...o, store: knownStore(o.store) ?? o.store });
+  }
+  const products = chosen
     .map((o): Product => {
       const units = parseUnits(o.title, product.unit);
       return {
@@ -258,6 +344,7 @@ export async function liveOptionsFor(
         group: groupOf(product),
         ...(units ? { units, unit: product.unit } : {}),
         store: o.store,
+        ...(o.link ? { url: o.link } : {}),
         checkedAt: new Date(result.at).toISOString(),
       };
     });

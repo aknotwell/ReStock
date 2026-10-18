@@ -95,7 +95,8 @@ describe("restoring a save with no households", () => {
     persist = await import("../src/core/persist.js");
     store = await import("../src/core/store.js");
     photon = await import("../src/messaging/photon.js");
-    expect(persist.openDatabase(file)).toBe(false); // no households, so the caller may seed the demo
+    // Saved data with no households still counts as restored: seeding the demo would reset the store and wipe it.
+    expect(persist.openDatabase(file)).toBe(true);
     expect(store.db.debts.get("d1")?.cents).toBe(1015);
     expect(photon.isMuted(PRIYA)).toBe(true);
     persist.saveNow();

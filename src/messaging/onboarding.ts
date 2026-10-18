@@ -1,4 +1,4 @@
-// Owner: Person 1. First contact: Restock introduces itself and sets up a space by asking questions.
+// First contact: Restock introduces itself and sets up a space by asking questions.
 //
 // - Someone texts Restock one-on-one and isn't set up yet: say hi, explain what Restock does, and ask
 //   whether it's just for them or for a group. "Just me" makes a personal space (name, then an optional

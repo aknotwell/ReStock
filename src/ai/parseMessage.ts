@@ -1,4 +1,4 @@
-// Owner: Person 1. Natural language -> validated intents, with a deterministic fallback.
+// Natural language -> validated intents, with a deterministic fallback.
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { parseCommand } from "../messaging/commands.js";
 import { ParsedMessageSchema, type Intent } from "./intent.js";

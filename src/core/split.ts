@@ -1,4 +1,4 @@
-// Owner: Person 2. Deterministic money math — never the LLM.
+// Deterministic money math — never the LLM.
 import type { Cents, Item, Member, MemberId, Shares, SplitRule } from "../types.js";
 
 /** One item's part of one member's share. `splitWays` is 1 for an item that's all theirs. */

@@ -1,4 +1,4 @@
-// Owner: Person 1. HTTP entry point to the agent, for the VEYZL API audit and local testing.
+// HTTP entry point to the agent, for the VEYZL API audit and local testing.
 // Runs the real inbound pipeline (guardrails -> AI -> templates) for a sandbox household and
 // returns what Restock would have texted back. Nothing is sent and no real household is touched.
 import { randomUUID, timingSafeEqual } from "node:crypto";

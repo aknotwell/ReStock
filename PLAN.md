@@ -34,7 +34,7 @@ Even splits are done in **integer cents**. The remainder cents go one each to th
 
 ## Shared contracts (agree on these first, about 30 min, all four people)
 
-Everyone codes against these. Person 2 owns the file, and changes go through them.
+Everyone codes against these. They live in `src/types.ts`; tell the team before changing them.
 
 ```ts
 type Member = {
@@ -63,13 +63,13 @@ type Debt = { id: string; orderId: string; debtorId: string; creditorId: string;
 Module interfaces:
 
 ```ts
-// Person 2
+// Split engine (src/core/split.ts)
 computeShares(items: Item[], members: Member[], rule: SplitRule): Record<memberId, cents>
-// Person 3
+// Payments (src/payments/)
 chargeOrder(order: Order, shares: Record<memberId, cents>): Promise<{ charges: Charge[]; debts: Debt[] }>
 createCardSetupLink(memberId): Promise<url>
 createPayBackLink(debtId): Promise<url>
-// Person 1
+// Messaging and AI (src/messaging/, src/ai/)
 parseMessage(text, sender, household): Promise<Intent>   // LLM + fallback parser
 sendGroup(householdId, text): Promise<void>
 sendPrivate(memberId, text): Promise<void>
@@ -77,7 +77,7 @@ sendPrivate(memberId, text): Promise<void>
 
 ---
 
-## Person 1: Photon messaging and the AI agent
+## Photon messaging and the AI agent
 
 You own everything that comes in or goes out as a message, and the generative AI that makes sense of it.
 
@@ -90,9 +90,9 @@ You own everything that comes in or goes out as a message, and the generative AI
 - [ ] Implement `sendGroup` and `sendPrivate`.
 - [ ] Fallback command parser:
   - adding an item ("add dish soap", optionally with "personal" or "for me" to mark it personal)
-  - `order now` triggers the checkout flow (call Person 2's `placeOrder`)
+  - `order now` triggers the checkout flow (calls `placeOrder`)
   - joining the household: an unknown number texting the group becomes a member with no card
-- [ ] **Card-number guard:** detect anything that looks like a card number (13–19 digits, Luhn check) in any message. Don't store or echo it. Privately reply with the secure add-card link from Person 3.
+- [ ] **Card-number guard:** detect anything that looks like a card number (13–19 digits, Luhn check) in any message. Don't store or echo it. Privately reply with the secure add-card link (`createCardSetupLink`).
 - [ ] Message templates. The wording must match the design note:
   - **Group summary:** `Ordered! {n} items, {total}, {rule text}.` / `Sam $X · Jake $Y · Priya $Z` / `Arrives {eta}. Household budget left: {remaining}`
   - **Owner receipt:** `Receipt: your share is $X, charged to your Visa ending 4242.` Add `Your card also covered $Y for roommates without a card. I'll remind them to pay you back.` when Y > 0.
@@ -105,43 +105,43 @@ You own everything that comes in or goes out as a message, and the generative AI
 
 ---
 
-## Person 2: Core data, split engine, and the order flow
+## Core data, split engine, and the order flow
 
 You own the data and the money math. Everyone else depends on you, so publish the types file and a stub DB first.
 
 - [ ] Database schema and data-access layer for Household, Member, Item, Order, Charge, and Debt (the contracts above).
 - [ ] `computeShares(items, members, rule)` for `smart`, `even`, and `adder`, in integer cents with deterministic remainder handling.
 - [ ] Unit tests for the split engine. Must include:
-  - The demo household (Person 4's seed) under all three rules, with the shares adding up exactly to $72.75. Expected `smart` result (remainder cents assigned per item): Sam $15.65, Jake $46.95, Priya $10.15
+  - The demo household (the demo seed) under all three rules, with the shares adding up exactly to $72.75. Expected `smart` result (remainder cents assigned per item): Sam $15.65, Jake $46.95, Priya $10.15
   - Flipping one item between shared and personal
   - Uneven remainders, e.g. $10.00 split 3 ways gives 334/333/333
 - [ ] `placeOrder(householdId)`:
   1. Collect pending items.
   2. Create the Order.
   3. Run `computeShares`.
-  4. Call Person 3's `chargeOrder`.
+  4. Call `chargeOrder`.
   5. Mark items as ordered.
   6. Update the remaining budget.
-  7. Hand the results to Person 1's templates.
+  7. Hand the results to the message templates.
 - [ ] Household budget: track the monthly budget and the remaining amount. The owner approves personal items above a threshold (the "air fryer (approved by Sam)" case). Approval can be a simple "yes" reply from the owner.
-- [ ] Ledger queries: what each member owes and to whom, and marking a debt paid (Person 3's webhook calls this).
+- [ ] Ledger queries: what each member owes and to whom, and marking a debt paid (the Stripe webhook calls this).
 
 **Done when:** `placeOrder` on seeded data produces the correct Order, shares, charges, and debts, and the tests pass.
 
 ---
 
-## Person 3: Payments (Stripe)
+## Payments (Stripe)
 
 You own every interaction with Stripe. Test mode only, with fake cards.
 
 - [ ] Create a Stripe Customer for each member when they join.
 - [ ] **Add-card flow** (`createCardSetupLink`): a Stripe Checkout session in `setup` mode, with Apple Pay and a card form. On `checkout.session.completed` or `setup_intent.succeeded`, save `paymentMethodId` and `cardLast4` on the Member. Restock never sees the card number.
-- [ ] Owner gate: a household can't place an order until the owner has a card on file. Give Person 2 a clear error to text back if it's missing.
+- [ ] Owner gate: a household can't place an order until the owner has a card on file. Give the order flow a clear error to text back if it's missing.
 - [ ] `chargeOrder`, for each member's share:
   - With a card: an off-session PaymentIntent on their own card.
   - Without a card: add their share to the **owner's** charge, and create a `Debt(debtor → owner)`.
   - If a member's card fails: fall back to the owner's card and create a Debt.
-- [ ] **Pay-back flow** (`createPayBackLink`): a Stripe Checkout `payment` session or Payment Link for the debt amount. The webhook marks the Debt paid through Person 2.
+- [ ] **Pay-back flow** (`createPayBackLink`): a Stripe Checkout `payment` session or Payment Link for the debt amount. The webhook marks the Debt paid through the ledger.
   - Stretch: actually send the money to the owner (e.g. Stripe Connect). For the hackathon, it's fine to only record that it was paid.
 - [ ] Webhook endpoint with signature verification.
 - [ ] Short URLs: `restock.link/card` and `restock.link/pay` (or `/c/:token` and `/p/:token` on our server) that redirect to the Stripe sessions.
@@ -150,7 +150,7 @@ You own every interaction with Stripe. Test mode only, with fake cards.
 
 ---
 
-## Person 4: Web pages, VEYZL, demo, and pitch
+## Web pages, VEYZL, demo, and pitch
 
 You own what judges see outside the texts, the VEYZL audit evidence, and you make the demo run without a hitch.
 
@@ -195,14 +195,14 @@ You own what judges see outside the texts, the VEYZL audit evidence, and you mak
 ## Dependencies and order of work
 
 0. **Before Sat 12:30 PM:** planning only. No code (DubHacks rule).
-1. **All four:** agree on the contracts. **Person 2** pushes the types and stub DB. **Person 4** connects VEYZL. From then on, all work goes through PRs.
-2. In parallel:
-   - Person 1 builds messaging against stubbed `placeOrder`, `chargeOrder`, and links.
-   - Person 2 builds the split engine and its tests.
-   - Person 3 builds the Stripe flows against a stub Member store.
-   - Person 4 builds the pages and the seed script.
+1. Agree on the contracts, push the types and a stub DB, and connect VEYZL. From then on, all work goes through PRs.
+2. In parallel, each piece built against stubs of the others:
+   - messaging against stubbed `placeOrder`, `chargeOrder`, and links;
+   - the split engine and its tests;
+   - the Stripe flows against a stub Member store;
+   - the pages and the seed script.
 3. **Integration:**
-   - Person 2 wires `placeOrder`, which calls Person 3's `chargeOrder`, then Person 1's templates.
-   - Person 3's webhooks call Person 2's ledger.
-4. **Person 4** runs the full demo. Everyone fixes what breaks.
+   - `placeOrder` calls `chargeOrder`, then the message templates.
+   - The Stripe webhooks call the ledger.
+4. Run the full demo. Everyone fixes what breaks.
 5. **Before Sun 10:00 AM:** all code is pushed, the repo is public, and Devpost is submitted with the repo link.

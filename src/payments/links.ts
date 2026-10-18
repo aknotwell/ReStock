@@ -1,4 +1,4 @@
-// Owner: Person 3. Secure links texted to members. Card data only ever touches Stripe's pages.
+// Secure links texted to members. Card data only ever touches Stripe's pages.
 import { randomInt } from "node:crypto";
 import { config } from "../config.js";
 import { registerState } from "../core/persist.js";
@@ -62,7 +62,7 @@ export async function ensureStripeCustomer(member: Member): Promise<string> {
     // Two quick taps on the link must not create two customers.
     { idempotencyKey: `restock-customer-${member.id}` },
   );
-  // TODO(P2): replace with an updateMember() in store.ts once there is one. Members are live objects
+  // TODO: replace with an updateMember() in store.ts once there is one. Members are live objects
   // in the in-memory store, so setting the field saves it.
   member.stripeCustomerId = customer.id;
   return customer.id;

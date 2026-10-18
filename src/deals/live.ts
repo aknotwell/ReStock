@@ -1,4 +1,4 @@
-// Owner: Person 1. Live store prices for the "Which one?" options, from SerpApi's Google Shopping engine.
+// Live store prices for the "Which one?" options, from SerpApi's Google Shopping engine.
 //
 // Store results are untrusted web data. We validate them with a schema, drop anything the guardrails object
 // to, and use only a short title, the seller, and the price. They are shown to the member and never sent to

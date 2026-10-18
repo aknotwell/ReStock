@@ -1,4 +1,4 @@
-// Owner: Person 1. Pipeline: identify household + sender -> guard -> AI parse -> act -> reply.
+// Pipeline: identify household + sender -> guard -> AI parse -> act -> reply.
 import { answerQuestion, OFFLINE_REPLY } from "../ai/answerQuestion.js";
 import { findDealsDetailed, type DetailKind } from "../ai/findDeals.js";
 import { matchItem } from "../ai/matchItem.js";

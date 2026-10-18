@@ -1,5 +1,5 @@
-// Owner: Person 2. In-memory store so everyone can build against it today.
-// TODO(P2): swap for SQLite/Postgres behind the same functions.
+// In-memory store so everyone can build against it today.
+// TODO: swap for SQLite/Postgres behind the same functions.
 import { randomUUID } from "node:crypto";
 import type { Debt, Household, Item, Member, Order, Charge } from "../types.js";
 

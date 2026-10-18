@@ -1,4 +1,4 @@
-// Owner: Person 3. "delete my data" also deletes the person's Stripe Customer, which removes their saved card.
+// "delete my data" also deletes the person's Stripe Customer, which removes their saved card.
 // Stripe keeps its own records of past payments either way; this only stops it holding a card for us.
 import Stripe from "stripe";
 import { registerState } from "../core/persist.js";

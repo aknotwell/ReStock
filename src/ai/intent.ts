@@ -1,4 +1,4 @@
-// Shared between the AI parser and the fallback command parser. Owner: Person 1.
+// Shared between the AI parser and the fallback command parser.
 import { z } from "zod";
 
 export const IntentSchema = z.object({

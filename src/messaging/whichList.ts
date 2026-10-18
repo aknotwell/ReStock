@@ -1,4 +1,4 @@
-// Owner: Person 1. "shopping list" in a one-on-one text from someone in several groups: ask which group's
+// "shopping list" in a one-on-one text from someone in several groups: ask which group's
 // list they mean, then show that one. Only the sender's own groups are ever listed, and picks are read by code.
 import { registerState } from "../core/persist.js";
 import { db, householdsForPhone, pendingItems } from "../core/store.js";

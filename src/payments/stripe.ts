@@ -1,4 +1,4 @@
-// Owner: Person 3. Stripe client — TEST MODE ONLY (enforced in config.ts).
+// Stripe client — TEST MODE ONLY (enforced in config.ts).
 import Stripe from "stripe";
 import { config } from "../config.js";
 

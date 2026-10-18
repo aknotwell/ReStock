@@ -1,4 +1,4 @@
-// Owner: Person 3 (for Person 4's demo seed). Gives the seeded Sam and Jake real cards in our Stripe
+// Gives the seeded Sam and Jake real cards in our Stripe
 // sandbox, so "order now" on the demo household charges for real (test mode). Priya stays card-less.
 // Uses Stripe's built-in test PaymentMethods only: no card numbers in code.
 import type Stripe from "stripe";

@@ -1,4 +1,4 @@
-// Owner: Person 3. Charge each member's share.
+// Charge each member's share.
 //
 // Two steps, so nobody is charged for an order that doesn't go through:
 //   1. Hold: authorize every share on a card (capture_method "manual"). Nothing is taken yet.

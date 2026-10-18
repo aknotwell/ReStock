@@ -1,4 +1,4 @@
-// Owner: Person 1. Proactive restock suggestions from the household's order history.
+// Proactive restock suggestions from the household's order history.
 // Suggestions are only ever *offered* in chat ("Add them?"). Nothing is added or charged without a reply.
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";

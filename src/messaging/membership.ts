@@ -1,4 +1,4 @@
-// Owner: Person 1. Chat commands for starting a household and managing who's in it.
+// Chat commands for starting a household and managing who's in it.
 // Deterministic and authorized in code (owner-only changes); the AI never decides membership.
 import {
   activeHousehold, cleanHouseholdName, cleanName, knownName, createHousehold, describeBalances, findMyHousehold, householdBalances, householdName,

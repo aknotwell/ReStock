@@ -1,4 +1,4 @@
-// Owner: Person 1. Runs on EVERY inbound message before the LLM or the database sees it.
+// Runs on EVERY inbound message before the LLM or the database sees it.
 
 function luhnValid(digits: string): boolean {
   let sum = 0;

@@ -1,6 +1,6 @@
 # VEYZL audit log
 
-This is the evidence for the "Best Use of VEYZL" track: every VEYZL finding, and how it changed what we shipped. The process is in [AGENTS.md → Tracking VEYZL-driven changes](../AGENTS.md#tracking-veyzl-driven-changes-required-for-humans-and-agents). Owner: Person 4, but whoever fixes a finding logs it, in the same PR as the fix.
+This is the evidence for the "Best Use of VEYZL" track: every VEYZL finding, and how it changed what we shipped. The process is in [AGENTS.md → Tracking VEYZL-driven changes](../AGENTS.md#tracking-veyzl-driven-changes-required-for-humans-and-agents). Whoever fixes a finding logs it, in the same PR as the fix.
 
 **Rules:**
 

@@ -1,4 +1,4 @@
-// Owner: Person 3. Dev helper for testing the pay-back flow by hand (see docs/stripe.md).
+// Dev helper for testing the pay-back flow by hand (see docs/stripe.md).
 // Loads the demo household, adds the demo debt (Priya owes Sam $10.15, as after the demo order),
 // starts the server in this same process (the store is in memory), and prints a pay-back link.
 // Usage: npx tsx scripts/try-pay-back-link.ts

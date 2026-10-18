@@ -1,4 +1,4 @@
-// Owner: Person 1 (drafted by Person 3). Everyday ways of asking for something, understood without
+// Everyday ways of asking for something, understood without
 // the AI: "we're out of TP", "we need dish soap", "can we get oat milk?", "the coffee is almost gone".
 // Only counts when what's asked for is a real catalog item, so chat like "I need a nap" or "we're out
 // of ideas" never gets an "I couldn't find that" reply in the group.

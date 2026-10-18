@@ -1,4 +1,4 @@
-// Owner: Person 1/4. Web sign-up and invite links.
+// Web sign-up and invite links.
 //
 // Flow: someone signs up on the web (to start a household, or through an owner's invite link) -> we assign
 // their phone a Restock iMessage number (Photon shared line) -> they text "hi" to it -> that first text

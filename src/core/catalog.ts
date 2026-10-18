@@ -1,4 +1,4 @@
-// Owner: Person 2. Demo product catalog (data/catalog.json) — the dataset the AI matches against.
+// Demo product catalog (data/catalog.json) — the dataset the AI matches against.
 import { readFileSync } from "node:fs";
 import type { Cents } from "../types.js";
 

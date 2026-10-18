@@ -1,4 +1,4 @@
-// Shared contracts. Owner: Person 2. Change only after telling the team (see AGENTS.md).
+// Shared contracts. Change only after telling the team (see AGENTS.md).
 // All money is integer cents. Never floats.
 
 export type Cents = number;

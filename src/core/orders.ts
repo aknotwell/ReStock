@@ -1,4 +1,4 @@
-// Owner: Person 2. The "order now" flow.
+// The "order now" flow.
 import type { OrderResult, SplitRule } from "../types.js";
 import { db, getHousehold, newId, pendingItems } from "./store.js";
 import { computeShares } from "./split.js";
@@ -9,7 +9,7 @@ export class OrderError extends Error {}
 
 export async function placeOrder(householdId: string, rule: SplitRule = "smart"): Promise<OrderResult> {
   const household = getHousehold(householdId);
-  assertOwnerCard(household); // throws OwnerCardRequiredError (Person 3's gate)
+  assertOwnerCard(household); // throws OwnerCardRequiredError (src/payments/ownerGate.ts)
 
   const items = pendingItems(householdId).filter((i) => !i.needsApproval);
   if (items.length === 0) throw new OrderError("The cart is empty.");
@@ -22,7 +22,7 @@ export async function placeOrder(householdId: string, rule: SplitRule = "smart")
     totalCents,
     rule,
     createdAt: new Date().toISOString(),
-    eta: "Thursday", // TODO(P2): real ETA from the merchant/catalog
+    eta: "Thursday", // TODO: real ETA from the merchant/catalog
   };
 
   const shares = computeShares(items, household.members, rule);

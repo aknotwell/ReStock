@@ -1,4 +1,4 @@
-// Owner: Person 1. Simple command parser used when the LLM is unavailable.
+// Simple command parser used when the LLM is unavailable.
 import type { Intent } from "../ai/intent.js";
 import { casualItems } from "./casualAdd.js";
 

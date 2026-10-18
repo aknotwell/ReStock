@@ -1,4 +1,4 @@
-// Owner: Person 4. Demo household from PLAN.md. Fake data only, unless DEMO_MEMBERS names real testers.
+// Demo household from PLAN.md. Fake data only, unless DEMO_MEMBERS names real testers.
 import { addItem, db, resetStore, UNBOUND_GROUP } from "../src/core/store.js";
 import type { Household, Member } from "../src/types.js";
 

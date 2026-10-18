@@ -1,4 +1,4 @@
-// Owner: Person 1. Deal preferences typed in chat ("cheapest TP under $15 from Costco"), read by code.
+// Deal preferences typed in chat ("cheapest TP under $15 from Costco"), read by code.
 // Plain patterns, never the LLM, so a price cap or store filter is exactly what the member typed.
 import type { DealOptions } from "./rank.js";
 

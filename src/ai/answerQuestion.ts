@@ -1,4 +1,4 @@
-// Owner: Person 1. Only reviewed, source-backed facts may leave this path.
+// Only reviewed, source-backed facts may leave this path.
 // No model-written factual prose or model-supplied citations are trusted.
 import { catalog } from "../core/catalog.js";
 import { checkInput, FABRICATION_REPLY } from "../safety/guardrails.js";

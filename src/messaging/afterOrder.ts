@@ -1,4 +1,4 @@
-// Owner: Person 1. Private texts after "order now": a receipt for everyone charged on their own card,
+// Private texts after "order now": a receipt for everyone charged on their own card,
 // and a "you owe" text (pay-back link + add-card link) for members the owner's card covered.
 import { computeShareLines, type ShareLine } from "../core/split.js";
 import type { Household, OrderResult } from "../types.js";

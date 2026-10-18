@@ -5,6 +5,7 @@ import path from "node:path";
 import { config } from "../config.js";
 import { fmt } from "../messaging/templates.js";
 import { openCardSetupLink, openPayBackLink } from "../payments/links.js";
+import { householdView } from "./appState.js";
 import { createPayBackCheckout, logout, myDebts, SESSION_TTL_MS, sessionMember, startLogin, verifyLogin } from "../payments/payback.js";
 
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "public");
@@ -45,7 +46,7 @@ const PAY_COOKIE = "restock_pay";
 const payToken = (req: Request) =>
   (req.headers.cookie ?? "").split(";").map((c) => c.trim().split("=")).find(([k]) => k === PAY_COOKIE)?.[1];
 const cookie = (value: string, maxAgeSeconds: number) =>
-  `${PAY_COOKIE}=${value}; Path=/pay; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${config.publicBaseUrl.startsWith("https://") ? "; Secure" : ""}`;
+  `${PAY_COOKIE}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${config.publicBaseUrl.startsWith("https://") ? "; Secure" : ""}`;
 const text = (v: unknown, max: number) => (typeof v === "string" && v.length <= max ? v : "");
 
 webRoutes.get("/pay", (_req, res) => res.sendFile(path.join(publicDir, "pay.html")));
@@ -91,6 +92,18 @@ webRoutes.post("/pay/api/logout", (req, res) => {
   logout(payToken(req));
   res.setHeader("Set-Cookie", cookie("", 0));
   res.json({ ok: true });
+});
+
+// Dashboard data: the logged-in member's own household only, read-only. Same texted-code login as /pay.
+webRoutes.get("/app/api/state", (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  const member = sessionMember(payToken(req));
+  const state = member && householdView(member);
+  if (!state) {
+    res.status(401).json({ error: "Please log in." });
+    return;
+  }
+  res.json(state);
 });
 
 // Landing pages after Stripe Checkout. TODO(P4): branding and polish.

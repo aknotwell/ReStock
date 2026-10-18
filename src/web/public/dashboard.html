@@ -181,6 +181,9 @@
     .space-row .bar-slot { grid-column: 1 / -1; grid-row: 2; }
     .card { padding: 20px; }
   }
+  #login-error.info { color: var(--muted); }
+  .live-note { color: var(--muted, #6b7280); font-size: 14px; margin: 4px 0 12px; }
+  body.is-live #add-group { display: none; }
 </style>
 </head>
 <body>
@@ -384,12 +387,24 @@
     return bar;
   }
 
-  // ---------- Login ----------
-  // Fake for now: any phone number and any 6-digit code logs you in. Nothing is sent or checked.
-  // TODO: swap for the texted-code login the pay-back site uses (payments/payback.ts).
-  function loginError(message) {
+  // ---------- Login: the same texted-code login as the pay-back site (/pay/api/*) ----------
+  // Logged in, the dashboard shows your real household from /app/api/state (read-only; you manage it by text).
+  // The sample households above are only used when the page is opened without a Restock server behind it.
+  let live = null;
+  let phone = "";
+
+  function loginError(message, info = false) {
     $("#login-error").textContent = message || "";
     $("#login-error").hidden = !message;
+    $("#login-error").classList.toggle("info", info);
+  }
+
+  async function api(path, body) {
+    const response = await fetch(path, body
+      ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), credentials: "same-origin" }
+      : { credentials: "same-origin", cache: "no-store" });
+    const data = await response.json().catch(() => null);
+    return { ok: response.ok, status: response.status, data };
   }
 
   function enterApp(name) {
@@ -400,31 +415,87 @@
     showList("group");
   }
 
-  function sendCode() {
+  function showLogin() {
+    $("#app").hidden = true;
+    $("#account").hidden = true;
+    $("#login-view").hidden = false;
+    $("#code-form").hidden = true;
+    $("#phone-form").hidden = false;
+  }
+
+  // Map the live household into the same shape the sample data uses, so every view renders it unchanged.
+  function applyLive(state) {
+    live = state;
+    const meCard = state.me.cardLast4;
+    const cardOf = (m) => (m.isMe ? meCard : m.hasCard ? "on file" : null);
+    const group = {
+      id: "live", name: state.household.name, budget: state.household.budgetCents, spent: state.household.spentCents,
+      threshold: state.household.approvalOverCents ?? 2500, askFirst: state.household.approvalOverCents != null, routine: true,
+      members: state.members.map((m) => ({ name: m.name, role: m.role, card: cardOf(m), canApprove: m.role === "owner", isMe: m.isMe })),
+      cart: state.items.map((i) => ({ name: i.shared ? i.name : `${i.name} (${i.addedBy})`, cents: i.cents })),
+      debts: state.openDebts.map((d) => ({ from: d.from, cents: d.cents })),
+    };
+    groups.splice(0, groups.length, group);
+    personal.card = meCard;
+    personal.spent = 0;
+    personal.cart = state.items.filter((i) => !i.shared && i.addedBy === state.me.name).map((i) => ({ name: i.name, cents: i.cents }));
+    document.body.classList.add("is-live");
+  }
+
+  async function loadLive() {
+    const { ok, status, data } = await api("/app/api/state");
+    if (ok && data) {
+      applyLive(data);
+      return "live";
+    }
+    return status === 401 ? "login" : "error";
+  }
+
+  async function refreshLive() {
+    if (!live || $("#app").hidden) return;
+    const result = await loadLive().catch(() => "error");
+    if (result === "login") return showLogin();
+    if (result !== "live") return;
+    if (!$("#space-view").hidden && selectedId) renderSpace();
+    else if (!$("#list-view").hidden) showList(listKind);
+  }
+
+  $("#phone-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    phone = $("#login-phone").value.trim();
+    if (phone.replace(/\D/g, "").length < 10) return loginError("Enter a 10-digit phone number.");
     loginError("");
+    await api("/pay/api/start", { handle: phone }).catch(() => {});
     $("#phone-form").hidden = true;
     $("#code-form").hidden = false;
     $("#login-code").value = "";
     $("#login-code").focus();
-  }
-
-  $("#phone-form").addEventListener("submit", (event) => {
-    event.preventDefault();
-    if ($("#login-phone").value.replace(/\D/g, "").length < 10) return loginError("Enter a 10-digit phone number.");
-    sendCode();
+    loginError("If that number is in a household, Restock just texted it a code. (You need to have texted Restock at least once.)", true);
   });
-  $("#code-form").addEventListener("submit", (event) => {
+  $("#code-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!/^\d{6}$/.test($("#login-code").value.trim())) return loginError("Enter the 6-digit code.");
-    enterApp("Sam");
+    const code = $("#login-code").value.trim();
+    if (!/^\d{6}$/.test(code)) return loginError("Enter the 6-digit code.");
+    const verify = await api("/pay/api/verify", { handle: phone, code }).catch(() => ({ ok: false, data: null }));
+    if (!verify.ok) return loginError(verify.data?.error || "That code didn't work. Try again.");
+    loginError("");
+    if ((await loadLive()) !== "live") return loginError("Logged in, but your household couldn't be loaded. Refresh to try again.");
+    enterApp(live.me.name);
   });
   $("#login-back").addEventListener("click", () => {
     $("#code-form").hidden = true;
     $("#phone-form").hidden = false;
     loginError("");
   });
-  $("#login-resend").addEventListener("click", sendCode);
-  $("#logout").addEventListener("click", () => location.reload());
+  $("#login-resend").addEventListener("click", async () => {
+    await api("/pay/api/start", { handle: phone }).catch(() => {});
+    loginError("Sent a new code.", true);
+  });
+  $("#logout").addEventListener("click", async () => {
+    await api("/pay/api/logout", {}).catch(() => {});
+    location.reload();
+  });
+  setInterval(refreshLive, 10000);
 
   // ---------- List ----------
   let listKind = "group";
@@ -581,10 +652,14 @@
     if (holder.card) {
       list.append(line(label, make("span", "line-value", `Visa ${holder.card}`)));
     } else {
-      const button = make("button", "btn primary", isPersonal ? "Set up card" : "Set up main card");
-      button.type = "button";
-      button.addEventListener("click", () => setUpCard(holder, () => renderPayments(space)));
-      list.append(line(label, button));
+      if (live) {
+        list.append(line(label, make("span", "tag red", isPersonal || holder.isMe ? 'Text "add card" to Restock' : "No card yet")));
+      } else {
+        const button = make("button", "btn primary", isPersonal ? "Set up card" : "Set up main card");
+        button.type = "button";
+        button.addEventListener("click", () => setUpCard(holder, () => renderPayments(space)));
+        list.append(line(label, button));
+      }
     }
     if (isPersonal) return;
     for (const member of space.members) {
@@ -610,6 +685,12 @@
 
   function renderSpace() {
     const space = spaceById(selectedId);
+    let note = $("#live-note");
+    if (live && !note) {
+      note = make("p", "live-note", "Live view of your household. To change anything, text Restock: add items, \"order now\", \"add member …\".");
+      note.id = "live-note";
+      $("#view-title").after(note);
+    }
     const isPersonal = space === personal;
     $("#view-title").textContent = space.name;
     $("#approvers-card").hidden = isPersonal;
@@ -618,6 +699,8 @@
     renderRules(space);
     if (!isPersonal) renderApprovers(space);
     renderCart(space);
+    // Live view is read-only: lock every control once everything is rendered (you manage it by text).
+    for (const control of document.querySelectorAll("#space-view input, #space-view button, #add-group")) control.disabled = !!live;
   }
 
   function openSpace(id) {
@@ -671,6 +754,13 @@
     addGroupButton.hidden = false;
     openSpace(group.id);
   });
+
+  // ---------- Start: live data if logged in, the login screen if not ----------
+  loadLive().then((result) => {
+    if (result === "live") enterApp(live.me.name);
+    else if (result === "login") showLogin();
+    else loginError("Couldn't reach Restock. Showing sample data.") || enterApp("Sample");
+  }).catch(() => enterApp("Sample"));
 
   // ---------- Test chat: the local server's /dev routes (DEV_INBOUND=1). Hidden when they don't exist. ----------
   fetch("/dev/state").then((r) => { if ((r.headers.get("content-type") || "").includes("json")) chatTab.hidden = false; }).catch(() => {});

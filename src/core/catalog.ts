@@ -15,6 +15,9 @@ export type Product = {
   /** Pack size in `unit`s (12 rolls, 64 loads), so options can be compared by price per unit. */
   units?: number;
   unit?: string;
+  /** Live store results only (src/deals/live.ts): the seller and when the price was checked. */
+  store?: string;
+  checkedAt?: string;
 };
 
 const raw = JSON.parse(readFileSync(new URL("../../data/catalog.json", import.meta.url), "utf8")) as { products: Product[] };
@@ -49,16 +52,6 @@ export function alternativesFor(product: Product): Product[] {
 /** Price per unit in cents, rounded for display ("$0.92/roll"). Undefined without a pack size. */
 export function unitCents(p: Product): number | undefined {
   return p.units && p.unit ? Math.round(p.cents / p.units) : undefined;
-}
-
-/**
- * The same products, cheapest per unit first, when they all share a unit. Otherwise unchanged.
- * Compares exactly with integer cross-multiplication, so no rounding decides a tie; ties keep catalog order.
- */
-export function byUnitPrice(products: Product[]): Product[] {
-  const unit = products[0]?.unit;
-  if (!unit || products.some((p) => p.unit !== unit || !p.units)) return products;
-  return [...products].sort((a, b) => a.cents * b.units! - b.cents * a.units!);
 }
 
 export function getProductByName(name: string): Product | undefined {

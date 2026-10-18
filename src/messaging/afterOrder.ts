@@ -1,7 +1,7 @@
 // Owner: Person 1. Private texts after "order now": a receipt for everyone charged on their own card,
 // and a "you owe" text (pay-back link + add-card link) for members the owner's card covered.
 import type { Household, OrderResult } from "../types.js";
-import { createCardSetupLink, createPayBackLink } from "../payments/links.js";
+import { createCardSetupLink, createPayBackLink, openDebtsBetween } from "../payments/links.js";
 import { sendPrivate } from "./photon.js";
 import { memberReceipt, ownerReceipt, youOwe } from "./templates.js";
 
@@ -26,7 +26,8 @@ export async function sendOrderTexts(household: Household, result: OrderResult):
         const debt = result.debts.find((d) => d.debtorId === member.id);
         if (debt) {
           const [payLink, cardLink] = await Promise.all([createPayBackLink(debt.id), createCardSetupLink(member.id)]);
-          text = youOwe(owner, debt.cents, payLink, cardLink);
+          const totalOwed = openDebtsBetween(member.id, owner.id).reduce((sum, d) => sum + d.cents, 0);
+          text = youOwe(owner, debt.cents, payLink, cardLink, totalOwed);
         } else {
           text = memberReceipt(member, share);
         }

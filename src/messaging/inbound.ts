@@ -34,6 +34,7 @@ import {
   type Choice,
 } from "./options.js";
 import type { Product } from "../core/catalog.js";
+import { searchSpecFor } from "../ai/searchSpec.js";
 import { sendLoginCode } from "../payments/payback.js";
 
 const LOGIN_CODE = /^(?:(?:send|text|give) me (?:a |my |the )?|get (?:a |my )?)?(?:log ?in |dashboard |verification )?code[.!?]*$|^log ?in[.!?]*$/i;
@@ -455,13 +456,24 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
         }
         continue;
       }
+      // A brand or size they named ("Dawn", "24 rolls"): code finds it, the AI checks a brand makes sense for this
+      // product, and code checks the size fits how it's sold. Only used for the store search.
+      const spec = liveDealsEnabled() ? await searchSpecFor(requested, match.product, msg.text) : {};
+      const itemOptions = { ...dealOptions, ...(spec.brand ? { brand: spec.brand } : {}), ...(spec.size ? { size: spec.size } : {}) };
+      const sizeNote = spec.droppedSize
+        ? `"${spec.droppedSize}" doesn't fit ${match.product.name.split(",")[0]!.toLowerCase()}${match.product.unit ? ` (it's sold by the ${match.product.unit})` : ""}, so I searched without it.`
+        : undefined;
+      const withSizeNote = (choice: Choice) => {
+        if (sizeNote) choice.note = choice.note ? `${sizeNote} ${choice.note}` : sizeNote;
+      };
       // Real prices first: when store prices are on, the usual and specific requests use today's listings too,
       // and the demo catalog price is the fallback when there are none.
       const liveChoice = async (note?: string) => {
         if (!liveDealsEnabled()) return false;
-        const choice = await buildDealChoice(household.id, match.product, intent.shared, dealOptions, member.id);
+        const choice = await buildDealChoice(household.id, match.product, intent.shared, itemOptions, member.id);
         if (!choice.checkedAt) return false; // no store listings: fall back
         if (note) choice.note = note;
+        withSizeNote(choice);
         if (payers) choice.splitWith = payers;
         choices.push(choice);
         return true;
@@ -482,7 +494,8 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
         if (!(await liveChoice())) await addToCart(match.product, intent.shared, "Added", undefined, payers);
       } else {
         if (usual) await respond(`I don't see an earlier order for ${requested}, so here are the options.`);
-        const choice = await buildDealChoice(household.id, match.product, intent.shared, dealOptions, member.id);
+        const choice = await buildDealChoice(household.id, match.product, intent.shared, itemOptions, member.id);
+        withSizeNote(choice);
         if (payers) choice.splitWith = payers;
         choices.push(choice);
       }

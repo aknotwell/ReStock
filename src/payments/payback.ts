@@ -51,11 +51,24 @@ export function findMemberByHandle(input: string): Member | undefined {
   return undefined;
 }
 
-/** Make a fresh login code for this member (replacing any earlier one) and return the text that carries it. */
-export function newLoginCode(member: Member, now = Date.now()): string {
+/**
+ * Make a fresh login code for this member and hand the text carrying it to `send`. The new code replaces
+ * any earlier one, but if sending fails the earlier code is put back, so a code they already have keeps working.
+ */
+export async function sendLoginCode(member: Member, send: (text: string) => Promise<unknown>, now = Date.now()): Promise<void> {
+  const previous = codes.get(member.id);
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
-  codes.set(member.id, { code: hash(code), expiresAt: now + CODE_TTL_MS, tries: 0 });
-  return `Your Restock code is ${code}. It expires in 10 minutes. Don't share it with anyone.`;
+  const entry = { code: hash(code), expiresAt: now + CODE_TTL_MS, tries: 0 };
+  codes.set(member.id, entry);
+  try {
+    await send(`Your Restock code is ${code}. It expires in 10 minutes. Don't share it with anyone.`);
+  } catch (err) {
+    if (codes.get(member.id) === entry) {
+      if (previous) codes.set(member.id, previous);
+      else codes.delete(member.id);
+    }
+    throw err;
+  }
 }
 
 /**
@@ -75,7 +88,12 @@ export async function startLogin(handle: string, now = Date.now()): Promise<void
     console.log(`login code: not sent to …${last4}, no one-on-one chat with Restock yet (or they texted STOP). They can text "code".`);
     return;
   }
-  await sendPrivate(member.id, newLoginCode(member, now), `login:${member.id}:${now}`);
+  try {
+    await sendLoginCode(member, (text) => sendPrivate(member.id, text, `login:${member.id}:${now}`), now);
+  } catch (err) {
+    console.log(`login code: failed to send to …${last4}: ${err instanceof Error ? err.message : String(err)}`);
+    throw err;
+  }
   console.log(`login code: sent to …${last4}`);
 }
 

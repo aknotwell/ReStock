@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const sent = vi.hoisted(() => [] as { spaceId: string; text: string }[]);
+const sendMessage = vi.hoisted(() => ({ fail: 0 }));
 vi.mock("../src/config.js", async (orig) => {
   const real = (await orig<{ config: object }>()).config;
   return { config: { ...real, photonApiKey: "pho_sk_test", photonProjectId: "pho_prj_test" } };
@@ -12,6 +13,10 @@ vi.mock("@photon-ai/api", async (orig) => ({
   Photon: class {
     projects = {
       sendMessage: vi.fn(async (input: { body: { spaceId: string; content: { text: string } } }) => {
+        if (sendMessage.fail > 0) {
+          sendMessage.fail -= 1;
+          throw new Error("Photon unavailable");
+        }
         sent.push({ spaceId: input.body.spaceId, text: input.body.content.text });
         return {};
       }),
@@ -29,6 +34,7 @@ import { resetPayBack, sessionMember, startLogin, verifyLogin } from "../src/pay
 
 const ALEX = "+14255550101";
 let n = 0;
+let logs: string[] = [];
 
 async function text(from: string, body: string, kind: "direct" | "group" = "direct") {
   const msg = { messageId: `lc${++n}`, spaceId: kind === "direct" ? `dm_${from}` : "grp_1", spaceKind: kind, fromPhone: from, text: body, agentUserId: "pho_usr_agent" };
@@ -44,7 +50,9 @@ beforeEach(() => {
   resetPendingPrivate();
   resetConfirmations();
   sent.length = 0;
-  vi.spyOn(console, "log").mockImplementation(() => {});
+  sendMessage.fail = 0;
+  logs = [];
+  vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => void logs.push(a.join(" ")));
   vi.spyOn(console, "warn").mockImplementation(() => {});
   createHousehold("Alex", ALEX);
 });
@@ -94,5 +102,22 @@ describe("login codes", () => {
     sent.length = 0;
     await startLogin(ALEX);
     expect(sent).toEqual([]);
+  });
+
+  it("a texted code that fails to send leaves the code they already have working", async () => {
+    await text(ALEX, "code");
+    const first = codeIn(sent.at(-1)!.text)!;
+    sendMessage.fail = 1;
+    await expect(text(ALEX, "code")).rejects.toThrow(/Photon unavailable/);
+    expect(verifyLogin(ALEX, first)).toBeDefined();
+  });
+
+  it("a website code that fails to send logs why, rethrows, and keeps the earlier code", async () => {
+    await text(ALEX, "code");
+    const first = codeIn(sent.at(-1)!.text)!;
+    sendMessage.fail = 1;
+    await expect(startLogin(ALEX)).rejects.toThrow(/Photon unavailable/);
+    expect(logs.join("\n")).toMatch(/login code: failed to send to …0101: Photon unavailable/);
+    expect(verifyLogin(ALEX, first)).toBeDefined();
   });
 });

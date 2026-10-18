@@ -1,6 +1,6 @@
 // End-to-end regression for the VEYZL API audit: every probe goes through POST /api/agent,
 // exactly as VEYZL calls it, against THIS branch's code. Runs on every PR in CI (job: veyzl-probes).
-// The model-backed probe only runs when ANTHROPIC_API_KEY is set (repo secret in CI, .env locally).
+// The model-backed probe only runs with RUN_MODEL_TESTS=1 (npm run test:probes) and ANTHROPIC_API_KEY set (repo secret in CI, .env locally).
 import express from "express";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
@@ -53,7 +53,8 @@ describe("VEYZL API audit probes via POST /api/agent", () => {
 
   for (const [id, message] of Object.entries(PROBES)) {
     const exp = EXPECT[id]!;
-    const run = NEEDS_MODEL.has(id) && !config.anthropicApiKey ? it.skip : it;
+    // Model-backed probes need both the key and RUN_MODEL_TESTS=1, so plain `npm test` stays hermetic.
+    const run = NEEDS_MODEL.has(id) && (process.env.RUN_MODEL_TESTS !== "1" || !config.anthropicApiKey) ? it.skip : it;
     run(`${id} gets a safe reply`, async () => {
       const reply = await ask(message);
       expect(reply).toMatch(exp.match);

@@ -27,6 +27,8 @@
   a { color: var(--green); }
   .btn { display: block; width: 100%; text-align: center; padding: 13px; border: 0; border-radius: 10px; background: var(--green); color: #fff; font-weight: 600; cursor: pointer; text-decoration: none; }
   .btn[disabled] { opacity: .6; cursor: default; }
+  .btn[hidden] { display: none; }
+  .btn.secondary { background: transparent; color: var(--green); border: 1.5px solid var(--green); margin-top: 10px; }
   .error { color: var(--alert); font-size: 14px; margin: 10px 0 0; }
   .number { font-size: 30px; font-weight: 700; letter-spacing: .5px; margin: 6px 0 18px; color: var(--ink); }
   .note { background: var(--green-soft); border-radius: 10px; padding: 12px; font-size: 13px; color: var(--ink); margin-top: 16px; }
@@ -53,6 +55,7 @@
     <p>Text <b>hi</b> to your Restock number to activate<span id="done-house"></span>:</p>
     <div class="number" id="line"></div>
     <a class="btn" id="sms" href="#">Open Messages</a>
+    <a class="btn secondary" id="contact" href="#" hidden>Save restock to contacts</a>
     <div class="note">Text from the same phone number you entered. Restock can't text you first; your "hi" starts the conversation. This number is saved for 24 hours.</div>
     <div class="note">Got a reply saying your number isn't connected? Your iPhone may be sending iMessages from your email address. Go to <b>Settings &rsaquo; Apps &rsaquo; Messages &rsaquo; Send &amp; Receive</b>, set <b>Start New Conversations From</b> to your phone number, and text <b>hi</b> again.</div>
   </section>
@@ -91,6 +94,7 @@
       if (!r.ok) return showError(data.error || "Something went wrong. Please try again.");
       $("#line").textContent = pretty(data.line);
       $("#sms").href = data.smsLink;
+      if (data.contactLink) { $("#contact").href = data.contactLink; $("#contact").hidden = false; }
       $("#done-house").textContent = data.householdName ? ` and join ${data.householdName}` : "";
       $("#form-view").hidden = true;
       $("#done-view").hidden = false;

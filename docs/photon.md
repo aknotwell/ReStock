@@ -73,6 +73,7 @@ The AI understands natural phrasing. The fallback parser, used when there's no A
 | `what do I owe?` | The sender's own balances only | **Private** |
 | `yes` (owner only) | Approves items waiting for approval | Same chat |
 | `add card` | A secure Stripe add-card link | **Private** |
+| `contact` / `save contact` | A link that saves this Restock number as **"restock"** (with the logo) in their contacts: tap it, then "Create New Contact". It's also in the welcome text and on the sign-up page. The card is only made for Restock's own numbers (`/contact/<number>.vcf`). | Same chat |
 | `help` | What Restock is (an AI) and how it works | Same chat |
 
 When a member adds a card, the Stripe webhook texts them "Card added, ending 4242" privately.

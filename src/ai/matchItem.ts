@@ -44,9 +44,10 @@ export async function matchItem(requested: string): Promise<ItemMatch> {
     const out = parsed.success ? parsed.data : undefined;
     if (response.stop_reason !== "end_turn" || !out) return fallback();
 
-    // Validate: the ID must exist in our catalog, and low-confidence matches are not trusted.
+    // Validate: the ID must exist in our catalog, and low-confidence matches are not trusted. When the model
+    // says nothing fits, believe it: the keyword match would turn "coffee filters" into coffee.
     const product = out.productId ? getProduct(out.productId) : undefined;
-    if (!product || out.confidence === "low") return fallback();
+    if (!product || out.confidence === "low") return undefined;
     return { product, source: "ai" };
   } catch (err) {
     console.warn(`AI match failed: ${aiErrorSummary(err)}. Using keyword match.`);

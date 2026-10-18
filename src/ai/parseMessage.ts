@@ -7,11 +7,14 @@ import { aiErrorSummary } from "./errors.js";
 import { checkInput } from "../safety/guardrails.js";
 import { SYSTEM_PROMPT, wrapUntrusted } from "./prompt.js";
 
+const CODE_ONLY = new Set<Intent["type"]>(["order_now", "approve", "add_card", "help", "set_shared", "show_cart"]);
+
 export async function parseMessage(text: string, senderName: string): Promise<Intent[]> {
   if (checkInput(text)) return [];
   const fallback = parseCommand(text);
-  // Explicit commands, especially checkout, are interpreted by code alone.
-  if (!client || fallback.some((i) => i.type !== "unknown")) return fallback;
+  // Checkout, approvals, card links, "personal"/"shared", the cart list and "who are you" are read by code alone. Everything
+  // else, including casual requests the command parser also understands, goes to the model first.
+  if (!client || fallback.some((i) => CODE_ONLY.has(i.type))) return fallback;
 
   try {
     const response = await client.messages.parse({

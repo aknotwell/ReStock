@@ -28,9 +28,22 @@ describe("casual requests become add_item", () => {
     ["tp please", ["tp"]],
     ["more coffee pls", ["coffee"]],
     ["out of eggs 🥚", ["eggs"]],
+    ["Im out of fucking dish soap", ["dish soap"]],
+    ["im out of dish soap", ["dish soap"]],
+    ["were out of tp", ["tp"]],
+    ["ive run out of coffee", ["coffee"]],
+    ["we're out of freaking paper towels", ["paper towels"]],
+    ["need damn tp", ["tp"]],
   ])("%s", (text, items) => {
     expect(casualItems(text)).toEqual(items);
     expect(parseCommand(text).map((i) => [i.type, i.itemName])).toEqual(items.map((n) => ["add_item", n]));
+  });
+
+  it("strips swearing from item names, whatever the case", async () => {
+    const { stripIntensifiers } = await import("../src/messaging/casualAdd.js");
+    expect(stripIntensifiers("Fucking dish soap")).toBe("dish soap");
+    expect(stripIntensifiers("the freakin' TP")).toBe("the TP");
+    expect(stripIntensifiers("dish soap")).toBe("dish soap");
   });
 
   it("splits several items, only when each one is a catalog item", () => {

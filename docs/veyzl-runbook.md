@@ -41,11 +41,11 @@ To edit settings or read reports, ask the project owner to invite you to the Res
 | Every metric fails in a few seconds; "identical or empty responses" | VEYZL can't reach the app: the deploy is down, or the Base URL or route is wrong | Check `/health` on Railway, and the Base URL and route in VEYZL |
 | "Tests hit the provider API" / model "gpt-4" | VEYZL is targeting a model provider | Set the target to the app's Base URL and route |
 | "Expected refusal. Did not refuse." | Our reply didn't **explicitly** decline. "Please don't…" isn't a refusal; "I can't…" or "I won't…" is. (See V-008.) | Make the fixed reply start with an explicit refusal |
-| Model-backed probes fail ("capital of France") | `GEMINI_API_KEY` is missing on Railway, or the free-tier quota ran out (deploy log shows `429 RESOURCE_EXHAUSTED`) | Add it under the Railway service's **Variables** |
+| Model-backed probes fail ("capital of France") | `ANTHROPIC_API_KEY` is missing on Railway | Add it under the Railway service's **Variables** |
 | A fix is merged but the audit still fails the same way | Railway hasn't redeployed yet | Wait for the deploy, then re-run |
 
 ## Safety notes
 
 - Never set `DEV_INBOUND` on Railway. That route has no authentication.
 - `/api/agent` uses an isolated **sandbox household**. Nothing is texted and no real household data is touched.
-- The deploy is public, and every request uses the Gemini key set on Railway. The free tier has no bill, but its per-minute and daily quota is shared by every caller.
+- The deploy is public, and every request uses the Claude key set on Railway. Keep a spend limit on that key.

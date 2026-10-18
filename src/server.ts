@@ -2,7 +2,7 @@ import express from "express";
 import { randomUUID } from "node:crypto";
 import { attachDemoCards } from "../scripts/demoCards.js";
 import { seedDemo } from "../scripts/seed.js";
-import { gemini, MODEL } from "./ai/client.js";
+import { anthropic, MODEL } from "./ai/client.js";
 import { config } from "./config.js";
 import { openDatabase, saveNow, startAutosave } from "./core/persist.js";
 import { handleInbound } from "./messaging/inbound.js";
@@ -76,7 +76,7 @@ app.use(webRoutes);
 
 app.listen(config.port, () => {
   console.log(`Restock listening on ${config.publicBaseUrl}`);
-  console.log(gemini ? `Gemini AI: on (${MODEL})` : "Gemini AI: off (GEMINI_API_KEY not set), so the command parser handles every message");
+  console.log(anthropic ? `Claude AI: on (${MODEL})` : "Claude AI: off (ANTHROPIC_API_KEY not set), so the command parser handles every message");
   startPolling(handleInbound);
   // Sign-ups that never texted "hi" give their Photon seat back.
   // Deletions that Stripe couldn't take the first time are retried on the same timer.

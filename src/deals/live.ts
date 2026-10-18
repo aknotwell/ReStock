@@ -61,7 +61,8 @@ function serpError(json: unknown): string | undefined {
 
 let loggedOff = false;
 
-const cacheKeyFor = (label: string) => `${label.toLowerCase()}|${config.dealsLocation ?? ""}`;
+// v3: offers also come from grouped results. Older cached results missed those, so they're searched again once.
+const cacheKeyFor = (label: string) => `v3|${label.toLowerCase()}|${config.dealsLocation ?? ""}`;
 /** Below this many usable listings, a search isn't worth keeping for 12 hours: the next request searches again. */
 export const MIN_CACHED_LISTINGS = 2;
 
@@ -72,9 +73,35 @@ export function liveDealsEnabled(): boolean {
 const Row = z.object({
   title: z.string().min(1).max(500),
   source: z.string().min(1).max(100),
-  extracted_price: z.number().positive(),
+  extracted_price: z.number().positive().optional(),
+  price: z.string().max(40).optional(),
 });
-const Top = z.object({ shopping_results: z.array(z.unknown()).optional() });
+const Top = z.object({
+  shopping_results: z.array(z.unknown()).optional(),
+  inline_shopping_results: z.array(z.unknown()).optional(),
+  categorized_shopping_results: z.array(z.unknown()).optional(),
+});
+const Category = z.object({ shopping_results: z.array(z.unknown()).optional(), results: z.array(z.unknown()).optional() });
+
+/**
+ * Every listing row in a response. Google sometimes groups shopping results into categories, and SerpApi then
+ * returns them under `categorized_shopping_results` with only a few left in `shopping_results`.
+ */
+function listingRows(json: unknown): unknown[] {
+  const top = Top.safeParse(json);
+  if (!top.success) return [];
+  const grouped = (top.data.categorized_shopping_results ?? []).flatMap((c) => {
+    const cat = Category.safeParse(c);
+    return cat.success ? [...(cat.data.shopping_results ?? []), ...(cat.data.results ?? [])] : [];
+  });
+  return [...(top.data.shopping_results ?? []), ...grouped, ...(top.data.inline_shopping_results ?? [])];
+}
+
+/** "$4.97" or "4.97" -> 4.97. Anything else (ranges, "From $5", other currencies) is ignored. */
+function priceFromText(text: string | undefined): number | undefined {
+  const m = text ? /^\s*\$?\s*(\d{1,4}(?:,\d{3})*(?:\.\d{1,2})?)\s*$/.exec(text) : undefined;
+  return m ? Number(m[1]!.replace(/,/g, "")) : undefined;
+}
 
 /** One line of printable text, or undefined if it's empty or trips a guardrail. */
 function clean(text: string, max: number): string | undefined {
@@ -83,21 +110,43 @@ function clean(text: string, max: number): string | undefined {
   return t.length > max ? t.slice(0, max).trimEnd() : t;
 }
 
+/** Why rows were dropped while parsing, for the `[serpapi]` log line. */
+export type ParseStats = { rows: number; malformed: number; noPrice: number; blocked: number; outOfRange: number; duplicate: number };
+
 /** SerpApi JSON -> cleaned offers. Malformed rows are skipped, never trusted. Exported for tests. */
-export function parseOffers(json: unknown): Offer[] {
-  const top = Top.safeParse(json);
-  if (!top.success) return [];
+export function parseOffers(json: unknown, stats?: ParseStats): Offer[] {
+  const rows = listingRows(json);
+  const st = stats ?? { rows: 0, malformed: 0, noPrice: 0, blocked: 0, outOfRange: 0, duplicate: 0 };
+  st.rows = rows.length;
   const seen = new Set<string>();
   const offers: Offer[] = [];
-  for (const raw of top.data.shopping_results ?? []) {
+  for (const raw of rows) {
     const row = Row.safeParse(raw);
-    if (!row.success) continue;
-    const cents = Math.round(row.data.extracted_price * 100);
+    if (!row.success) {
+      st.malformed++;
+      continue;
+    }
+    const price = row.data.extracted_price ?? priceFromText(row.data.price);
+    if (price === undefined) {
+      st.noPrice++;
+      continue;
+    }
+    const cents = Math.round(price * 100);
     const title = clean(row.data.title, 120);
     const store = clean(row.data.source, 40);
-    if (!title || !store || !Number.isSafeInteger(cents) || cents < 50 || cents > 100_000) continue;
+    if (!title || !store) {
+      st.blocked++;
+      continue;
+    }
+    if (!Number.isSafeInteger(cents) || cents < 50 || cents > 100_000) {
+      st.outOfRange++;
+      continue;
+    }
     const key = `${store}|${title}`.toLowerCase();
-    if (seen.has(key)) continue;
+    if (seen.has(key)) {
+      st.duplicate++;
+      continue;
+    }
     seen.add(key);
     offers.push({ title, store, cents });
     if (offers.length >= MAX_OFFERS) break;
@@ -150,11 +199,16 @@ export async function searchOffers(
     const json: unknown = await res.json().catch(() => undefined);
     const message = serpError(json);
     if (!res.ok) throw Object.assign(new Error(`status ${res.status}`), { name: "HttpError", serp: message });
-    const fresh = { at: now, offers: parseOffers(json) };
-    const raw = Top.safeParse(json);
-    const results = raw.success ? (raw.data.shopping_results?.length ?? 0) : 0;
+    const stats: ParseStats = { rows: 0, malformed: 0, noPrice: 0, blocked: 0, outOfRange: 0, duplicate: 0 };
+    const fresh = { at: now, offers: parseOffers(json, stats) };
+    // Rows that didn't become offers, by reason, so a short list can be explained from the logs.
+    const skipped = (["malformed", "noPrice", "blocked", "outOfRange", "duplicate"] as const)
+      .filter((k) => stats[k] > 0)
+      .map((k) => `${k}:${stats[k]}`)
+      .join(",");
     logSearch(query, message ? "ok, with SerpApi error" : "ok", {
-      status, ms: Date.now() - started, results, offers: fresh.offers.length, today, error: message && `"${message}"`,
+      status, ms: Date.now() - started, results: stats.rows, offers: fresh.offers.length, today, error: message && `"${message}"`,
+      skipped: skipped || undefined,
     }, !!message);
     cache.set(cacheKey, fresh);
     return fresh;

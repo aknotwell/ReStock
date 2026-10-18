@@ -168,6 +168,30 @@ describe("SerpApi results", () => {
     });
     expect(offers).toEqual([{ title: "Charmin 24 Mega Rolls", store: "Target", cents: 3299 }]);
     expect(parseOffers({ error: "Invalid API key" })).toEqual([]);
+  });
+
+  it("reads grouped results and text prices, and counts why rows were dropped", () => {
+    const stats = { rows: 0, malformed: 0, noPrice: 0, blocked: 0, outOfRange: 0, duplicate: 0 };
+    const offers = parseOffers(
+      {
+        shopping_results: [{ title: "HDX Dish Soap (3-Pack)", source: "Home Depot", extracted_price: 21.75 }],
+        categorized_shopping_results: [
+          {
+            title: "Popular products",
+            shopping_results: [
+              { title: "Dawn Ultra Dish Soap, 28 fl oz", source: "Walmart", extracted_price: 4.97 },
+              { title: "Palmolive Dish Soap, 32.5 oz", source: "Target", price: "$5.49" },
+              { title: "Seventh Generation Dish Soap", source: "Amazon.com", price: "From $4" },
+              { title: "Dawn Ultra Dish Soap, 28 fl oz", source: "Walmart", extracted_price: 4.97 },
+              { title: "", source: "Walmart", extracted_price: 3 },
+            ],
+          },
+        ],
+      },
+      stats,
+    );
+    expect(offers.map((o) => `${o.store} ${o.cents}`)).toEqual(["Home Depot 2175", "Walmart 497", "Target 549"]);
+    expect(stats).toEqual({ rows: 6, malformed: 1, noPrice: 1, blocked: 0, outOfRange: 0, duplicate: 1 });
     expect(parseOffers("garbage")).toEqual([]);
   });
 

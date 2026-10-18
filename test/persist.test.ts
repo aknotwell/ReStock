@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-vi.mock("../src/ai/client.js", () => ({ anthropic: undefined, MODEL: "test" }));
+vi.mock("../src/ai/client.js", () => ({ gemini: undefined, MODEL: "test" }));
 
 let dir: string;
 let file: string;

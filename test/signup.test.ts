@@ -151,7 +151,12 @@ describe("HTTP API", () => {
     expect((await post("/signup/api/start", { name: "Alex", phone: "4255550101" })).status).toBe(400);
     const res = await post("/signup/api/start", { name: "Alex", phone: "4255550101", consent: true });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ line: CONSOLE_LINE, householdName: null, smsLink: `sms:${CONSOLE_LINE}&body=hi` });
+    expect(await res.json()).toEqual({
+      line: CONSOLE_LINE,
+      householdName: null,
+      smsLink: `sms:${CONSOLE_LINE}&body=hi`,
+      contactLink: expect.stringMatching(/\/contact\/%2B16285550100\.vcf$/), // "save restock to contacts"
+    });
   });
 
   it("serves the sign-up pages and rejects bad invite codes", async () => {

@@ -1,11 +1,10 @@
 // Owner: Person 1. Match what someone typed ("tp", "the good coffee") to a catalog product.
 // The AI only picks an ID from our catalog; price and name always come from the catalog, never the model.
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { catalog, getProduct, keywordMatch, type Product } from "../core/catalog.js";
 import { checkInput } from "../safety/guardrails.js";
 import { wrapUntrusted } from "./prompt.js";
-import { anthropic, MODEL } from "./client.js";
+import { gemini } from "./client.js";
 import { aiErrorSummary } from "./errors.js";
 
 const MatchSchema = z.object({
@@ -30,19 +29,18 @@ export async function matchItem(requested: string): Promise<ItemMatch> {
     const p = keywordMatch(requested);
     return p ? { product: p, source: "keyword" as const } : undefined;
   };
-  if (!anthropic) return fallback();
+  if (!gemini) return fallback();
 
   try {
-    const response = await anthropic.messages.parse({
-      model: MODEL,
-      max_tokens: 1024,
+    const response = await gemini.generate({
       system: SYSTEM,
-      messages: [{ role: "user", content: wrapUntrusted("member", requested) }],
-      output_config: { effort: "low", format: zodOutputFormat(MatchSchema) },
+      user: wrapUntrusted("member", requested),
+      schema: MatchSchema,
+      maxOutputTokens: 1024,
     });
-    const parsed = MatchSchema.safeParse(response.parsed_output);
+    const parsed = MatchSchema.safeParse(response.output);
     const out = parsed.success ? parsed.data : undefined;
-    if (response.stop_reason !== "end_turn" || !out) return fallback();
+    if (!response.finished || !out) return fallback();
 
     // Validate: the ID must exist in our catalog, and low-confidence matches are not trusted.
     const product = out.productId ? getProduct(out.productId) : undefined;

@@ -6,8 +6,9 @@ What the AI in Restock does, what data it uses, and what controls keep it safe. 
 
 | | |
 |---|---|
-| **System type** | Hybrid AI: a hosted LLM API (Claude) plus a curated product dataset and deterministic business logic |
-| **Model** | Anthropic Claude, `claude-opus-5-5`, through the Messages API (`@anthropic-ai/sdk`), with structured outputs validated by Zod |
+| **System type** | Hybrid AI: a hosted LLM API (Google Gemini) plus a curated product dataset and deterministic business logic |
+| **Model** | Google Gemini, `gemini-3.5-flash-lite` by default (`GEMINI_MODEL` overrides it), called through the Gemini REST API (`generateContent`) with JSON-Schema structured output. Thinking stays at the model's default (minimal for 3.5 Flash-Lite) and is turned off for 2.5 Flash. Redirects are refused, so the API key and prompt only ever go to Google's endpoint. Every output is re-validated by Zod. No SDK: the client is `src/ai/client.ts`. |
+| **Data sharing** | Messages the model sees (phone numbers already replaced with `[phone]`, card numbers and other sensitive inputs never sent) go to Google's Gemini API. On the **free tier, Google may use prompts and responses to improve its products**, so use a paid-tier key for anything beyond the demo's test data. |
 | **Where it runs** | Server side, in `src/ai/`. The client and model are configured in `src/ai/client.ts`. |
 | **Users** | Members of a household group chat (roommates, families) texting through Photon (iMessage/SMS) |
 | **Purpose** | Turn casual chat into a shared shopping cart, match requests to real products, and suggest restocks |
@@ -32,7 +33,7 @@ What the AI in Restock does, what data it uses, and what controls keep it safe. 
 
 ## Human oversight and controls
 
-- **Confirm-to-act:** Claude may *propose* a checkout or a membership change from casual wording (`checkout`, `start_household`, `add_member`, `remove_member` intents), but it can never perform one. Restock asks a yes/no question, and only the asked person's explicit "yes" within 10 minutes runs the action, re-checked in code (owner-only for membership). Phone numbers are replaced with `[phone]` before the model sees the message (`src/messaging/confirm.ts`, `src/messaging/inbound.ts`).
+- **Confirm-to-act:** the model may *propose* a checkout or a membership change from casual wording (`checkout`, `start_household`, `add_member`, `remove_member` intents), but it can never perform one. Restock asks a yes/no question, and only the asked person's explicit "yes" within 10 minutes runs the action, re-checked in code (owner-only for membership). Phone numbers are replaced with `[phone]` before the model sees the message (`src/messaging/confirm.ts`, `src/messaging/inbound.ts`).
 
 1. **No autonomous spending.** The AI can't place an order or charge anyone. Charges happen only after a member explicitly texts "order now", and only for the cart everyone can see. Expensive personal items need the budget owner to approve them.
 1. **No autonomous spending.** The AI can't place an order or charge anyone. Charges happen only after a member explicitly texts "order now", and only for the cart everyone can see. Items from someone who isn't allowed to approve (for example, kids in a family) wait until an approver texts "yes": the owner, or a member the owner allowed (`canApprove`). Items over the household's `approvalOverCents` wait even when an approver added them, and the person who added one can't approve it themselves. The rules are deterministic code in `src/core/approvals.ts`; the model can't approve anything.
@@ -52,7 +53,7 @@ What the AI in Restock does, what data it uses, and what controls keep it safe. 
 9. **Output redaction** (`src/safety/redact.ts`): every outbound text is stripped of emails, phone numbers, IDs, card numbers, and API keys.
 10. **Factual grounding.** General answers use only reviewed facts with versioned sources or exact demo catalog lookups. Unsupported questions get a fixed uncertainty reply. Restock reasons are computed from purchase dates rather than copied from model prose. The currently reviewed general fact is France’s capital, verified against the EU country profile on 2026-10-17. This is deliberately limited coverage, not a general knowledge assistant.
 11. **Audit endpoint** (`POST /api/agent`): runs the real pipeline for a sandbox household so VEYZL can test it. Optionally protected with a bearer token (`AGENT_API_TOKEN`).
-12. **Sensitive data protection.** The card-number guard runs before household lookup or AI parsing. A card-number message gets a fixed warning with no setup link; a member can request a Stripe-hosted test-mode link by texting "add card". AI fallback warnings omit exception details that could contain message text: they log only the HTTP status, the API's error type, Anthropic's request ID and a fixed hint (for example `AI parse failed: 401 authentication_error (the API key is wrong or revoked; check ANTHROPIC_API_KEY), request req_…`), never the error message or the member's words (`src/ai/errors.ts`). At startup the server logs whether Claude is on, so a missing key is visible in the deploy log.
+12. **Sensitive data protection.** The card-number guard runs before household lookup or AI parsing. A card-number message gets a fixed warning with no setup link; a member can request a Stripe-hosted test-mode link by texting "add card". AI fallback warnings omit exception details that could contain message text: they log only the HTTP status, Google's status code and a fixed hint (for example `AI parse failed: 429 RESOURCE_EXHAUSTED (rate limited or out of free-tier quota; …)`), never the error message or the member's words (`src/ai/errors.ts`). At startup the server logs whether Gemini is on, so a missing key is visible in the deploy log.
 
 ## Known risks and mitigations
 

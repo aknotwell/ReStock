@@ -34,6 +34,14 @@ registerState("muted", { dump: () => [...muted], load: (data) => { muted.clear()
 export const isMuted = (phone: string) => muted.has(phone);
 export const mute = (phone: string) => void muted.add(phone);
 export const unmute = (phone: string) => void muted.delete(phone);
+/**
+ * Forget what we learned from Photon about this phone ("delete my data", or removed from a household):
+ * its DM space and any private texts held for it. The STOP opt-out is kept, so they stay unsubscribed.
+ */
+export function forgetHandle(phone: string): void {
+  dmByHandle.delete(phone);
+  pendingByHandle.delete(phone);
+}
 export function resetMuted(): void {
   muted.clear();
 }

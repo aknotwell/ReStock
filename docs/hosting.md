@@ -25,7 +25,7 @@ People sign up on the web (`/start`, or an owner's `/join/<code>` link) and acti
 
 ## Real-user checklist
 
-- **Photon key needs `platforms:write`** (as well as `project:read` and `project:write`), so web sign-up can assign each person a Restock line. Without it, sign-up shows "Restock can't create new lines right now".
+- **Photon key needs `platforms:write` and `platforms:read`** (as well as `project:read` and `project:write`). `platforms:write` lets web sign-up assign each person a Restock line; without it, sign-up shows "Restock can't create new lines right now". Deleting an account ("delete my data", or the owner's "remove member") releases that person's line in Photon too, and `platforms:read` lets it also find and release lines Restock lost track of. A release that fails is retried every 10 minutes.
 - **Attach a Railway volume** to the service (any mount path). The server then saves to `<mount>/restock.db` automatically (`RAILWAY_VOLUME_MOUNT_PATH`), so deploys and restarts keep households.
 - **Capacity:** each person uses one Photon shared-line seat (25 on the free plan, 100 on Pro). Sign-ups that never text "hi" are freed after 24 hours, and at most 20 can be waiting at once.
 - **Limits:** sign-up is limited to 10 per IP and 5 per phone per hour, and `/api/agent` to 60 requests per IP per minute.

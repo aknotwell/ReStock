@@ -38,12 +38,44 @@ export async function assignLine(phone: string, firstName: string, idempotencyKe
   }
 }
 
-/** Free the seat when a sign-up expires or someone leaves. Best effort: a failure only means a slot stays used. */
-export async function releaseLine(assignmentId: string): Promise<void> {
-  if (!photon || !config.photonProjectId || assignmentId.startsWith("console-")) return;
+/**
+ * Free the seat when a sign-up expires or someone leaves. Photon keeps the released row for audit and
+ * repeating the call is safe. Returns false when Photon couldn't be reached, so the caller can retry.
+ */
+export async function releaseLine(assignmentId: string): Promise<boolean> {
+  if (!photon || !config.photonProjectId || assignmentId.startsWith("console-")) return true;
   try {
     await photon.projects.platforms.imessage.assignments.release({ path: { id: config.photonProjectId, assignmentId } });
+    return true;
   } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return true; // already gone
     console.warn("Photon line release failed:", err instanceof ApiError ? `${err.status}` : err instanceof Error ? err.message : err);
+    return false;
   }
+}
+
+/**
+ * Release every active assignment Photon has for this phone, including ones we lost track of (a demo
+ * reset, or a sign-up made before a restart). Needs platforms:read to list; returns false if it couldn't.
+ */
+export async function releaseLinesForHandle(phone: string): Promise<boolean> {
+  if (!photon || !config.photonProjectId) return true;
+  const ids: string[] = [];
+  try {
+    let pageToken: string | undefined;
+    do {
+      const page = await photon.projects.platforms.imessage.assignments.list({
+        path: { id: config.photonProjectId },
+        query: { pageSize: 100, ...(pageToken ? { pageToken } : {}) },
+      });
+      for (const a of page.assignments) if (a.handle === phone && !a.releasedAt) ids.push(a.assignmentId);
+      pageToken = page.nextPageToken;
+    } while (pageToken);
+  } catch (err) {
+    console.warn("Photon line lookup failed:", err instanceof ApiError ? `${err.status}` : err instanceof Error ? err.message : err);
+    return false;
+  }
+  let ok = true;
+  for (const id of ids) ok = (await releaseLine(id)) && ok;
+  return ok;
 }

@@ -87,6 +87,9 @@ export function findMyHousehold(phone: string, query: string): Household | undef
   return mine.find((h) => named(h) === q || named(h) === `${q}'s household`) ?? (q.length >= 3 ? mine.find((h) => named(h).includes(q)) : undefined);
 }
 
+/** The person's own name, from any household they're in (so starting or joining another doesn't ask again). */
+export const knownName = (phone: string) => householdsForPhone(phone).flatMap((h) => h.members).find((m) => m.phone === phone)?.name;
+
 export const allMemberIds = () => new Set([...db.households.values()].flatMap((h) => h.members.map((m) => m.id)));
 
 export type NewHousehold = { name?: string; groupType?: Household["groupType"]; budgetCents?: Cents | null };

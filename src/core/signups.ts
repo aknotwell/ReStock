@@ -5,7 +5,7 @@
 // proves they own the phone and activates them. Unactivated sign-ups expire and free their line.
 // Saved with the rest of the store (persist.ts). We keep names, phones and line IDs; never message text.
 import { randomBytes } from "node:crypto";
-import { addMember, cleanName, createHousehold, MembershipError, normalizePhone } from "./households.js";
+import { addMember, ALREADY_USES_RESTOCK, cleanName, createHousehold, MembershipError, normalizePhone } from "./households.js";
 import { registerState } from "./persist.js";
 import { db, householdsForPhone } from "./store.js";
 import { assignLine, releaseLine } from "../messaging/photonLines.js";
@@ -79,7 +79,7 @@ export async function startSignup(input: { name: string; phone: string; inviteCo
   const phone = normalizePhone(input.phone);
   if (!name) throw new SignupError("Please enter your first name (letters only).");
   if (!phone) throw new SignupError("Please enter a 10-digit US mobile number.");
-  if (householdsForPhone(phone).length) throw new SignupError("That number is already in a household. Text your Restock number to use it.");
+  if (householdsForPhone(phone).length) throw new SignupError(ALREADY_USES_RESTOCK);
 
   let household: Household | undefined;
   if (input.inviteCode) {

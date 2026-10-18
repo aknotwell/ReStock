@@ -36,6 +36,29 @@ registerState("live-deals", {
   },
 });
 
+/**
+ * One log line per price lookup, so the server logs show what SerpApi did: `[serpapi] "<search>" <outcome> k=v…`.
+ * Only the search terms (a catalog product name) and counts are logged: never the request URL (it carries the
+ * API key), and nothing about the household or its messages.
+ */
+function logSearch(query: string, outcome: string, details: Record<string, string | number | undefined> = {}, warn = false): void {
+  const extra = Object.entries(details)
+    .filter(([, v]) => v !== undefined)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(" ");
+  (warn ? console.warn : console.log)(`[serpapi] "${query}" ${outcome}${extra ? ` ${extra}` : ""}`);
+}
+
+const minutesOld = (at: number, now: number) => `${Math.max(0, Math.round((now - at) / 60_000))}m`;
+
+/** SerpApi reports some problems ("no results", "out of searches") as an `error` field, sometimes with HTTP 200. */
+function serpError(json: unknown): string | undefined {
+  const e = json && typeof json === "object" ? (json as { error?: unknown }).error : undefined;
+  return typeof e === "string" ? e.replace(/[\u0000-\u001f\u007f"]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120) : undefined;
+}
+
+let loggedOff = false;
+
 export function liveDealsEnabled(): boolean {
   return !!config.serpapiKey;
 }
@@ -85,27 +108,53 @@ export async function searchOffers(
   { now = Date.now(), maxAgeHours = DEFAULT_MAX_AGE_HOURS }: { now?: number; maxAgeHours?: number } = {},
 ): Promise<Cached | undefined> {
   const key = config.serpapiKey;
-  if (!key) return undefined;
+  if (!key) {
+    // Once per process: a missing or misspelled variable otherwise fails silently.
+    if (!loggedOff) console.log("[serpapi] off: SERPAPI_KEY is not set, so options use catalog prices.");
+    loggedOff = true;
+    return undefined;
+  }
   const cacheKey = `${query.toLowerCase()}|${config.dealsLocation ?? ""}`;
   const hit = cache.get(cacheKey);
-  if (hit && now - hit.at <= maxAgeHours * 3_600_000) return hit;
+  const fallback = hit ? `cached (${minutesOld(hit.at, now)} old)` : "catalog";
+  if (hit && now - hit.at <= maxAgeHours * 3_600_000) {
+    logSearch(query, "cache hit", { age: minutesOld(hit.at, now), offers: hit.offers.length });
+    return hit;
+  }
 
   const day = new Date(now).toISOString().slice(0, 10);
   if (usage.day !== day) usage = { day, count: 0 };
-  if (usage.count >= config.dealsDailyLimit) return hit;
+  if (usage.count >= config.dealsDailyLimit) {
+    logSearch(query, "skipped: daily cap reached", { today: `${usage.count}/${config.dealsDailyLimit}`, fallback }, true);
+    return hit;
+  }
   usage.count++;
+  const today = `${usage.count}/${config.dealsDailyLimit}`;
 
   const params = new URLSearchParams({ engine: "google_shopping", q: query, gl: "us", hl: "en", api_key: key });
   if (config.dealsLocation) params.set("location", config.dealsLocation);
+  const started = Date.now();
+  let status: number | undefined;
   try {
     const res = await fetch(`${SEARCH_URL}?${params}`, { signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS) });
-    if (!res.ok) throw new Error(`status ${res.status}`);
-    const fresh = { at: now, offers: parseOffers(await res.json()) };
+    status = res.status;
+    const json: unknown = await res.json().catch(() => undefined);
+    const message = serpError(json);
+    if (!res.ok) throw Object.assign(new Error(`status ${res.status}`), { name: "HttpError", serp: message });
+    const fresh = { at: now, offers: parseOffers(json) };
+    const raw = Top.safeParse(json);
+    const results = raw.success ? (raw.data.shopping_results?.length ?? 0) : 0;
+    logSearch(query, message ? "ok, with SerpApi error" : "ok", {
+      status, ms: Date.now() - started, results, offers: fresh.offers.length, today, error: message && `"${message}"`,
+    }, !!message);
     cache.set(cacheKey, fresh);
     return fresh;
   } catch (err) {
-    // Never log the request URL: it carries the API key.
-    console.warn(`Live price search failed (${err instanceof Error ? err.name : "error"}); using the catalog.`);
+    // Never log the request URL or the raw error text: either can carry the API key.
+    const name = err instanceof Error ? err.name : "error";
+    const serp = (err as { serp?: string } | undefined)?.serp;
+    logSearch(query, "failed", { reason: name, status, ms: Date.now() - started, today, error: serp && `"${serp}"`, fallback }, true);
+    console.warn(`Live price search failed (${name}); using the catalog.`);
     return hit;
   }
 }
@@ -139,11 +188,12 @@ export async function liveOptionsFor(
   product: Product,
   opts: { now?: number; maxAgeHours?: number } = {},
 ): Promise<{ products: Product[]; checkedAt: number } | undefined> {
-  const result = await searchOffers(searchQuery(product), opts);
+  const query = searchQuery(product);
+  const result = await searchOffers(query, opts);
   if (!result) return undefined;
   // By default only major retailers we recognize, under their usual names. DEALS_ANY_STORE=1 keeps every seller.
-  const products = result.offers
-    .filter((o) => relevant(o, product))
+  const relevantOffers = result.offers.filter((o) => relevant(o, product));
+  const products = relevantOffers
     .flatMap((o) => {
       const store = config.dealsAnyStore ? o.store : knownStore(o.store);
       return store ? [{ ...o, store }] : [];
@@ -164,11 +214,43 @@ export async function liveOptionsFor(
         checkedAt: new Date(result.at).toISOString(),
       };
     });
+  // Why listings drop out: off-topic or mispriced (relevant), then sellers we don't recognize (stores).
+  logSearch(query, "listings", {
+    kept: products.length, offers: result.offers.length, relevant: relevantOffers.length,
+    sized: products.filter((p) => p.units).length,
+  });
   return { products, checkedAt: result.at };
+}
+
+// Store listings someone picked, by cart item name, so "the usual" can find a store purchase again.
+const picked = new Map<string, Product>();
+registerState("live-picked", {
+  dump: () => [...picked],
+  load: (data) => {
+    picked.clear();
+    for (const [k, v] of data as [string, Product][]) picked.set(k, v);
+  },
+});
+
+export function rememberPicked(product: Product): void {
+  if (product.store) picked.set(product.name, product);
+}
+
+/** A store listing someone picked before, by its cart item name. */
+export function pickedByName(name: string): Product | undefined {
+  return picked.get(name);
+}
+
+/** The same store listing (same seller and title) in today's search, with today's price. */
+export async function currentListing(listing: Product, searchFor: Product): Promise<Product | undefined> {
+  const live = await liveOptionsFor(searchFor);
+  return live?.products.find((p) => p.id === listing.id);
 }
 
 /** Tests only. */
 export function clearLiveDeals(): void {
   cache.clear();
+  loggedOff = false;
+  picked.clear();
   usage = { day: "", count: 0 };
 }

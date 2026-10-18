@@ -4,6 +4,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { catalog, getProduct, type Product } from "../core/catalog.js";
 import { anthropic, MODEL } from "./client.js";
+import { aiErrorSummary } from "./errors.js";
 
 export type PurchaseRecord = { productId: string; orderedAt: string };
 
@@ -71,8 +72,8 @@ export async function suggestRestock(
       .map((s) => grounded.get(s.productId))
       .filter((s): s is RestockSuggestion => !!s)
       .slice(0, 3);
-  } catch {
-    console.warn("AI restock suggestion failed; using interval rule.");
+  } catch (err) {
+    console.warn(`AI restock suggestion failed: ${aiErrorSummary(err)}. Using the interval rule.`);
     return dueByInterval(history, inCart, now);
   }
 }

@@ -6,6 +6,7 @@ import { catalog, getProduct, keywordMatch, type Product } from "../core/catalog
 import { checkInput } from "../safety/guardrails.js";
 import { wrapUntrusted } from "./prompt.js";
 import { anthropic, MODEL } from "./client.js";
+import { aiErrorSummary } from "./errors.js";
 
 const MatchSchema = z.object({
   productId: z.string().nullable().describe("ID from the catalog, or null if nothing fits"),
@@ -47,8 +48,8 @@ export async function matchItem(requested: string): Promise<ItemMatch> {
     const product = out.productId ? getProduct(out.productId) : undefined;
     if (!product || out.confidence === "low") return fallback();
     return { product, source: "ai" };
-  } catch {
-    console.warn("AI match failed; using keyword match.");
+  } catch (err) {
+    console.warn(`AI match failed: ${aiErrorSummary(err)}. Using keyword match.`);
     return fallback();
   }
 }

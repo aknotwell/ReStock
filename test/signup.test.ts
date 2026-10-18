@@ -62,7 +62,7 @@ describe("start a household on the web", () => {
     await expect(startSignup({ name: "Alex", phone: "555-0101" })).rejects.toThrow(/10-digit/);
     await startSignup({ name: "Alex", phone: ALEX });
     await dm(ALEX, "hi");
-    await expect(startSignup({ name: "Alex", phone: ALEX })).rejects.toThrow(/already in a household/);
+    await expect(startSignup({ name: "Alex", phone: ALEX })).rejects.toThrow(/already uses Restock.*delete my data/);
   });
 
   it("unactivated sign-ups expire after 24 hours", async () => {

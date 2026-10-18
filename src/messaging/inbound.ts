@@ -1,5 +1,6 @@
 // Owner: Person 1. Pipeline: identify household + sender -> guard -> AI parse -> act -> reply.
 import { answerQuestion, OFFLINE_REPLY } from "../ai/answerQuestion.js";
+import { findDeals } from "../ai/findDeals.js";
 import { matchItem } from "../ai/matchItem.js";
 import { parseMessage } from "../ai/parseMessage.js";
 import { addItem, db, findHouseholdByGroupChat, findMemberByPhone, householdsForPhone, pendingItems, UNBOUND_GROUP } from "../core/store.js";
@@ -13,6 +14,7 @@ import type { Debt, Household, Item } from "../types.js";
 import { checkInput, INJECTION_REPLY } from "../safety/guardrails.js";
 import { isMuted, mute, reply, sendGroup, sendPrivate, unmute, type InboundMessage } from "./photon.js";
 import { parseCommand } from "./commands.js";
+import { stripIntensifiers } from "./casualAdd.js";
 import { balanceSummary, CARD_NUMBER_WARNING, fmt, groupSummary, helpMessage, inviteToAddCard } from "./templates.js";
 import { sendOrderTexts } from "./afterOrder.js";
 import { handleMembershipCommand, parseMembershipCommand } from "./membership.js";
@@ -24,10 +26,11 @@ import { config } from "../config.js";
 import { cleanName, findPhone } from "../core/households.js";
 import { handleOnboarding, setupInProgress } from "./onboarding.js";
 import { parseDealRequest, stripDealWords } from "../deals/request.js";
-import { currentListing, liveDealsEnabled, offCatalogProduct } from "../deals/live.js";
+import { currentListing, listingProduct, liveDealsEnabled, offCatalogProduct } from "../deals/live.js";
+import { describeFilters, hasFilters } from "../deals/rank.js";
 import { describeParts, parseSplitCommand, parseSplitInAdd, payersOf, setPayers, splitLabel, unclearReply, type SplitRequest } from "./splitWith.js";
 import {
-  buildDealChoice, hasPendingChoice, isCancel, lastBought, namedSpecifically, parsePick, queueChoices, resolvePick, stripUsual, wantsUsual,
+  buildChoice, buildDealChoice, hasPendingChoice, isCancel, lastBought, namedSpecifically, parsePick, queueChoices, resolvePick, stripUsual, wantsUsual,
   type Choice,
 } from "./options.js";
 import type { Product } from "../core/catalog.js";
@@ -395,6 +398,8 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
 
   // 3. Act.
   for (const intent of intents) {
+    // "fucking dish soap" is dish soap, whether the parser or the model kept the swearing.
+    if (intent.itemName) intent.itemName = stripIntensifiers(intent.itemName) || intent.itemName;
     if (intent.itemName && checkInput(intent.itemName)) {
       await respond("I can only help with ordinary household supplies.");
       continue;
@@ -407,7 +412,23 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
         await respond(unclearReply(splitAsk.request.words, household, requested));
         continue;
       }
-      const match = await matchItem(requested);
+      // With Claude and store prices on, Claude searches the stores and picks the best listings while the catalog
+      // match runs alongside. "The usual" keeps its own path below, so it can re-add last time's pick.
+      const askedFor = hasFilters(dealOptions) ? `${requested} (${describeFilters(dealOptions)})` : requested;
+      const [match, deals] = await Promise.all([matchItem(requested), usual ? undefined : findDeals(askedFor)]);
+      const dealBase = match?.product ?? offCatalogProduct(requested);
+      if (deals?.length && dealBase) {
+        // Names, prices, stores and links come from the listings; code still ranks them and labels the budget.
+        const options = deals.map((d) => listingProduct(d.offer, dealBase, d.at));
+        const choice = buildChoice(household.id, dealBase, intent.shared, dealOptions, options, member.id);
+        if (payers) choice.splitWith = payers;
+        choices.push(choice);
+        continue;
+      }
+      if (deals && !match) {
+        await respond("I couldn't find store listings for that right now. Try another household item name?");
+        continue;
+      }
       if (!match) {
         // Not in the demo catalog. With store prices on, search the stores for what they asked for: the member
         // still picks from real listings, and nothing is added until they do.

@@ -57,6 +57,12 @@ describe("changing who pays for an item already in the cart", () => {
     expect(parseSplitCommand("everyone", h, sam)).toEqual({ kind: "everyone" });
     expect(parseSplitCommand("not me", h, jake)).toEqual({ kind: "not_me" });
     expect(parseSplitCommand("not me for the chips", h, jake)).toEqual({ kind: "not_me", itemName: "chips" });
+    expect(parseSplitCommand("count me out of the chips", h, jake)).toEqual({ kind: "not_me", itemName: "chips" });
+    expect(parseSplitCommand("i'm out", h, jake)).toEqual({ kind: "not_me" });
+    expect(parseSplitCommand("im out on the chips", h, jake)).toEqual({ kind: "not_me", itemName: "chips" });
+    // Running out of something is a shopping request, not opting out of a split.
+    expect(parseSplitCommand("Im out of fucking dish soap", h, jake)).toBeUndefined();
+    expect(parseSplitCommand("i'm out of dish soap", h, jake)).toBeUndefined();
     expect(parseSplitCommand("split with sarah", h, sam)?.kind).toBe("unclear");
   });
 

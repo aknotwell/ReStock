@@ -18,6 +18,8 @@ export type Product = {
   /** Live store results only (src/deals/live.ts): the seller and when the price was checked. */
   store?: string;
   checkedAt?: string;
+  /** Live store results only: a short Restock link (/l/…) to the listing's page, so members can look first. */
+  url?: string;
 };
 
 const raw = JSON.parse(readFileSync(new URL("../../data/catalog.json", import.meta.url), "utf8")) as { products: Product[] };

@@ -5,6 +5,7 @@ import path from "node:path";
 import { config } from "../config.js";
 import { fmt } from "../messaging/templates.js";
 import { createCardSetupLink, openCardSetupLink, openPayBackLink } from "../payments/links.js";
+import { resolveShortLink } from "../deals/links.js";
 import { householdView, ownRecord, spacesView } from "./appState.js";
 import { rateLimiter } from "./rateLimit.js";
 import { householdForInvite, inviteCodeFor, resetInvite, SignupError, startSignup, INVITE_TTL_MS } from "../core/signups.js";
@@ -31,6 +32,16 @@ webRoutes.get("/c/:token", async (req, res) => {
     res.status(502).send("We couldn't reach our payment provider. Please try the link again in a minute.");
   }
 });
+// Short links to store listings shown with "Which one?" options. Only Google Shopping product pages are stored.
+webRoutes.get("/l/:token", (req, res) => {
+  const url = resolveShortLink(req.params.token);
+  if (!url) {
+    res.status(404).send("This store link has expired. Ask Restock for today's prices again.");
+    return;
+  }
+  res.redirect(302, url);
+});
+
 // The member portal lists debts after login; individual texted links still open the specific debt.
 webRoutes.get("/p/:token", async (req, res) => {
   try {

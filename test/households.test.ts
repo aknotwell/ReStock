@@ -49,7 +49,7 @@ describe("parsing", () => {
 describe("household lifecycle over chat", () => {
   it("a stranger starts a household, adds people, and new members can use it right away", async () => {
     await dm(STRANGER, "hi");
-    expect(out()).toMatch(/start household as <your name>/);
+    expect(out()).toMatch(/Hi! I'm Restock[\s\S]*"just me" or "group"/); // setup by questions (onboarding.ts)
 
     await dm(ALEX, "start household");
     expect(out()).toMatch(/What should I call you/);

@@ -12,7 +12,6 @@ import { rateLimiter } from "./web/rateLimit.js";
 import { sweepExpiredSignups } from "./core/signups.js";
 
 const agentLimit = rateLimiter(60, 60 * 1000);
-import { devChat } from "./web/devChat.js";
 import { webRoutes } from "./web/routes.js";
 
 // Load saved data before anything else touches the store.
@@ -60,7 +59,6 @@ if (config.devInbound) {
     await handleInbound(msg);
     res.sendStatus(200);
   });
-  app.use(devChat); // dashboard "Test chat" tab: /dev/state, /dev/chat, /dev/reset
   console.warn("DEV_INBOUND=1: POST /dev/inbound is enabled. Never enable this on a public deploy.");
 }
 

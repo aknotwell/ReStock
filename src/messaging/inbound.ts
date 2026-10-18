@@ -20,6 +20,7 @@ import { clearAction, isNo, isYes, peekAction, proposeAction } from "./confirm.j
 import { activateFromFirstText, inviteCodeFor, isPendingSignup, type Activation } from "../core/signups.js";
 import { config } from "../config.js";
 import { cleanName, findPhone } from "../core/households.js";
+import { handleOnboarding, setupInProgress } from "./onboarding.js";
 import { parseDealRequest, stripDealWords } from "../deals/request.js";
 import {
   buildDealChoice, hasPendingChoice, isCancel, lastBought, namedSpecifically, parsePick, queueChoices, resolvePick, stripUsual, wantsUsual,
@@ -40,7 +41,10 @@ function resolveHousehold(msg: InboundMessage): Household | undefined {
     }
     return undefined;
   }
+  // One-on-one texts go to the sender's personal space when they have one.
   const mine = householdsForPhone(msg.fromPhone);
+  const personal = mine.find((h) => h.kind === "personal");
+  if (personal) return personal;
   return mine.length === 1 ? mine[0] : undefined; // TODO(P1): pick a household when someone is in several
 }
 
@@ -131,15 +135,24 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     await respond('Leave Restock and delete your data? This removes you from the household and can\'t be undone. Reply "yes" to confirm or "no" to cancel.');
     return;
   }
-  if (membership) {
+  // While Restock is asking setup questions here, the answers go to setup ("roommates" is an answer, not a command).
+  if (membership && !(membership.type === "members" && !member && setupInProgress(msg))) {
     await handleMembershipCommand({ command: membership, fromPhone: msg.fromPhone, spaceKind: msg.spaceKind, household, member: member || undefined, respond });
     return;
   }
 
+  // 3. Not set up yet (or new to this group): Restock says hi and sets things up by asking questions.
   if (!household || !member) {
-    if (msg.spaceKind !== "direct") return;
+    if (setupInProgress(msg) || msg.spaceKind === "group") {
+      await handleOnboarding({ msg, household, respond });
+      return;
+    }
+    if (heldPhone) {
+      await respond(INJECTION_REPLY);
+      return;
+    }
     // Someone new can start a household in their own words ("make me a household, I'm Alex"); they confirm with "yes".
-    const intents = heldPhone || confirmedOrder ? [] : await parseMessage(aiText, "member");
+    const intents = confirmedOrder ? [] : await parseMessage(aiText, "member");
     const start = intents.find((i) => i.type === "start_household");
     if (start) {
       const name = start.itemName ? cleanName(start.itemName) : undefined;
@@ -151,17 +164,14 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       }
       return;
     }
-    await respond(
-      heldPhone
-        ? INJECTION_REPLY
-        : `${helpMessage()}\nTo get started, text "start household as <your name>", or ask your household's budget owner to add you.`,
-    );
+    await handleOnboarding({ msg, household, respond });
     return;
   }
 
   // Group-wide news goes to the household chat once it's bound; otherwise answer where we were asked.
   // If the group chat can't be reached (e.g. not seen since a restart), say it here instead of failing.
   const announce = async (text: string) => {
+    if (household.kind === "personal") return respond(text);
     if (household.groupChatId === UNBOUND_GROUP) {
       // No shared group chat (everyone texts their own Restock number): tell the sender here, and relay to everyone else.
       await respond(text);

@@ -17,6 +17,8 @@ export type Member = {
 
 export type Household = {
   id: string;
+  kind?: "personal" | "group"; // personal = one person in a one-on-one chat; unset = group (older households)
+  groupType?: "roommates" | "family" | "other"; // decides who can approve by default (roommates: everyone)
   groupChatId: string;
   ownerId: MemberId;
   budgetCents?: Cents; // optional monthly limit. With none, orders still go on the owner's card

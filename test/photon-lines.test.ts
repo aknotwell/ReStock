@@ -50,11 +50,26 @@ describe("assignLine", () => {
     expect(await assignLine(PHONE, "Amber", "k1")).toEqual({ assignmentId: "asg_live", line: "+16285550133" });
   });
 
-  it("already connected but Photon won't list connections: uses the saved number", async () => {
+  it("already connected, list fails: uses the saved number once Photon confirms it's this phone's live one", async () => {
     assignments.create.mockRejectedValueOnce(apiError(409, "ASSIGNMENT_EXISTS"));
-    assignments.list.mockRejectedValueOnce(apiError(403, "INSUFFICIENT_SCOPE"));
+    assignments.list.mockRejectedValueOnce(apiError(503, "UPSTREAM_UNAVAILABLE"));
+    assignments.get.mockResolvedValueOnce(row("asg_saved", "+16285550144"));
     const saved = { assignmentId: "asg_saved", line: "+16285550144" };
     expect(await assignLine(PHONE, "Amber", "k1", saved)).toEqual(saved);
+  });
+
+  it("a saved number that's released, someone else's, or can't be checked is never shown", async () => {
+    const saved = { assignmentId: "asg_saved", line: "+16285550144" };
+    for (const answer of [
+      () => assignments.get.mockResolvedValueOnce(row("asg_saved", "+16285550144", "2026-10-16T00:00:00Z")),
+      () => assignments.get.mockResolvedValueOnce({ ...row("asg_saved", "+16285550144"), handle: "+12065550199" }),
+      () => assignments.get.mockRejectedValueOnce(apiError(403, "INSUFFICIENT_SCOPE")),
+    ]) {
+      assignments.create.mockRejectedValueOnce(apiError(409, "ASSIGNMENT_EXISTS"));
+      assignments.list.mockRejectedValueOnce(apiError(403, "INSUFFICIENT_SCOPE"));
+      answer();
+      await expect(assignLine(PHONE, "Amber", "k1", saved)).rejects.toThrow(/couldn't set up a number/);
+    }
   });
 
   it("already connected, can't list, and nothing saved: a friendly error, not a made-up number", async () => {

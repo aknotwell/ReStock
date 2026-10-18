@@ -51,8 +51,8 @@ const problemCode = (err: ApiError) => (err.body as { code?: unknown } | undefin
  * Connect this phone to a Restock number in Photon and return the number to text. Always asks Photon, even
  * when we saved a number for this phone before, so the connection exists when we show the number: texts from a
  * phone Photon hasn't connected get its own "not connected to an agent yet" reply and never reach Restock.
- * Never returns a released assignment. `saved` is only used if Photon says the phone is already connected
- * but can't tell us to which number (the key lacks platforms:read).
+ * Never returns a released assignment. `saved` is only used if Photon says the phone is already connected,
+ * the lookup of which number fails, and Photon confirms `saved` is that phone's live assignment.
  */
 export async function assignLine(phone: string, firstName: string, idempotencyKey: string, saved?: LineAssignment): Promise<LineAssignment> {
   if (!photon || !config.photonProjectId) {
@@ -82,8 +82,10 @@ export async function assignLine(phone: string, firstName: string, idempotencyKe
         console.log(`sign-up line: ${who} was already connected to Restock number …${existing.assignedPhoneNumber.slice(-4)} in Photon`);
         return toLine(existing);
       }
-      if (saved) {
-        console.log(`sign-up line: ${who} is already connected in Photon; using the saved number …${saved.line.slice(-4)}`);
+      // The saved number counts only if Photon confirms it's this phone's live assignment: an old, released one
+      // would send them to a number Photon no longer connects to their phone.
+      if (saved && (await isLiveFor(saved.assignmentId, phone))) {
+        console.log(`sign-up line: ${who} is already connected in Photon to the saved number …${saved.line.slice(-4)}`);
         return saved;
       }
     }
@@ -96,6 +98,18 @@ export async function assignLine(phone: string, firstName: string, idempotencyKe
       );
     }
     throw err;
+  }
+}
+
+/** Whether this assignment is live and belongs to this phone. Anything Photon can't confirm counts as no. */
+async function isLiveFor(assignmentId: string, phone: string): Promise<boolean> {
+  if (!photon || !config.photonProjectId) return false;
+  try {
+    const a = await photon.projects.platforms.imessage.assignments.get({ path: { id: config.photonProjectId, assignmentId } });
+    return a.handle === phone && !a.releasedAt;
+  } catch (err) {
+    console.warn("sign-up line: couldn't confirm the saved number:", err instanceof ApiError ? `${err.status}` : err instanceof Error ? err.message : err);
+    return false;
   }
 }
 

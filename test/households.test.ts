@@ -95,7 +95,7 @@ describe("household lifecycle over chat", () => {
     await dm(ALEX, "add member Amber 509-555-0103");
     expect(out()).toMatch(/already a Amber/);
     await dm(ALEX, "add member Ambs 425-555-0102");
-    expect(out()).toMatch(/already in a household/);
+    expect(out()).toMatch(/already in another household/);
     await dm(AMBER, "start household as Amber");
     expect(out()).toMatch(/already in Alex's household/);
     expect(db.households.size).toBe(1);

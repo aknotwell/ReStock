@@ -2,7 +2,9 @@
 //
 // - Someone texts Restock one-on-one and isn't set up yet: say hi, explain what Restock does, and ask
 //   whether it's just for them or for a group. "Just me" makes a personal space (name, then an optional
-//   monthly budget). "Group" tells them to add Restock to their group chat.
+//   monthly budget). "Group" sets up a household the same way and gives them an invite link for the others:
+//   on Photon's shared lines everyone texts their own Restock number, so a single group chat can't include
+//   Restock for everyone. Household news is relayed to each member's own thread.
 // - Restock gets a message in a group chat it doesn't know: say hi to everyone and ask what kind of group
 //   it is. Roommates means everyone can approve requests; family means only the main card does.
 //   Whoever replies "me" is the main card, then their name and an optional budget finish the setup.
@@ -13,7 +15,9 @@
 import { config } from "../config.js";
 import { allMemberIds, cleanName, inAGroup, memberId } from "../core/households.js";
 import { registerState } from "../core/persist.js";
-import { db, householdsForPhone, newId } from "../core/store.js";
+import { db, householdsForPhone, newId, UNBOUND_GROUP } from "../core/store.js";
+import { ALREADY_USES_RESTOCK } from "../core/households.js";
+import { inviteCodeFor } from "../core/signups.js";
 import { createCardSetupLink } from "../payments/links.js";
 import type { Cents, Household, Member } from "../types.js";
 import { sendPrivate, type InboundMessage } from "./photon.js";
@@ -21,7 +25,7 @@ import { fmt } from "./templates.js";
 
 type GroupType = NonNullable<Household["groupType"]>;
 type Setup =
-  | { flow: "direct"; step: "kind" | "name" | "budget"; name?: string; expires: number }
+  | { flow: "direct"; step: "kind" | "name" | "budget"; space?: "personal" | "group"; name?: string; expires: number }
   | { flow: "group"; step: "type" | "owner" | "name" | "budget"; groupType?: GroupType; ownerPhone?: string; name?: string; expires: number };
 
 /** Unfinished setups expire after a day, so an old "hi" doesn't leave a chat stuck halfway. */
@@ -113,8 +117,8 @@ async function direct(msg: InboundMessage, respond: Ctx["respond"]): Promise<boo
   }
   if (setup.step === "kind") {
     if (said(text, "group", "roommates?", "family", "friends", "team", "us", "we")) {
-      setups.delete(key);
-      await respond("Great! Add me to your group chat and say hi there. I'll set it up with everyone.");
+      setups.set(key, { ...setup, step: "name", space: "group", expires });
+      await respond("Great, I'll set up your group and you'll be the one whose card pays. What should I call you?");
     } else if (said(text, "me", "just me", "myself", "personal", "solo", "only me", "mine", "yes")) {
       setups.set(key, { ...setup, step: "name", expires });
       await respond("Nice. What should I call you?");
@@ -140,6 +144,21 @@ async function direct(msg: InboundMessage, respond: Ctx["respond"]): Promise<boo
     return true;
   }
   setups.delete(key);
+  if (setup.space === "group") {
+    if (householdsForPhone(msg.fromPhone).length) {
+      await respond(ALREADY_USES_RESTOCK);
+      return true;
+    }
+    const owner: Member = { id: memberId(setup.name!, allMemberIds()), name: setup.name!, phone: msg.fromPhone, role: "owner" };
+    const household = newSpace("group", owner, budget, { groupChatId: UNBOUND_GROUP, groupType: "roommates" });
+    await respond(
+      `You're set up, ${owner.name}! ${budgetLine(budget)}\n` +
+        `Invite everyone with this link. Each person signs up and gets their own Restock number: ${config.publicBaseUrl}/join/${inviteCodeFor(household, owner.id)}\n` +
+        `Add the main card so orders can go through. It opens Stripe's secure page; I never see the number: ${await createCardSetupLink(owner.id)}\n` +
+        'Try it: text "we\'re out of TP".',
+    );
+    return true;
+  }
   if (householdsForPhone(msg.fromPhone).some((h) => h.kind === "personal")) {
     await respond("You already have a personal space with me. Text what you need, like \"we're out of coffee\".");
     return true;
@@ -237,7 +256,7 @@ async function join(msg: InboundMessage, household: Household, respond: Ctx["res
     return true;
   }
   if (inAGroup(msg.fromPhone)) {
-    await respond("You're already in another group with me. For now, each number can be in one group.");
+    await respond('You\'re already in another group with me. Each number can be in one group for now; text "delete my data" there to leave it first.');
     return true;
   }
   if (household.members.some((m) => m.name.toLowerCase() === name.toLowerCase())) {

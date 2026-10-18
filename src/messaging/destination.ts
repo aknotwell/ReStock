@@ -13,7 +13,7 @@ import { groupName } from "./whichList.js";
 const TTL_MS = 10 * 60 * 1000;
 
 type Pending =
-  | { step: "household"; text: string; householdIds: string[]; expires: number }
+  | { step: "household"; text: string; householdIds: string[]; newPersonal: boolean; expires: number }
   | { step: "split"; text: string; householdId: string; expires: number };
 const pending = new Map<string, Pending>(); // phone -> the open question
 
@@ -49,6 +49,19 @@ export function namedHousehold(phone: string, text: string): { household: Househ
   return best && { household: best.household, phrase: best.phrase };
 }
 
+// "for my personal", "to my personal list", "in my personal cart", "on my personal account".
+const PERSONAL = /(?:^|\s)(?:for|in|to|into|on)\s+(?:my\s+)?personal(?:\s+(?:list|cart|order|space|account))?(?=$|[\s.,!?])/i;
+const hasPersonal = (phone: string) => householdsForPhone(phone).some((h) => h.kind === "personal");
+
+/**
+ * "for my personal" from someone who has no personal list yet: the words to drop. The caller creates the list
+ * (only them, on their own card). Someone who has one is matched by namedHousehold instead.
+ */
+export function newPersonalNamed(phone: string, text: string): string | undefined {
+  if (hasPersonal(phone)) return undefined;
+  return PERSONAL.exec(text)?.[0];
+}
+
 /** The add without the household words: "order toilet paper for everyone for we da fam" -> "… for everyone". */
 export function withoutHousehold(text: string, phrase: string): string {
   return text.replace(phrase, " ").replace(/\s+/g, " ").replace(/\s+([.,!?])/g, "$1").trim();
@@ -62,8 +75,11 @@ export function splitStated(text: string, household: Household, sender: Member):
 
 export function askWhichHousehold(phone: string, text: string, now = Date.now()): string {
   const mine = householdsForPhone(phone);
-  pending.set(phone, { step: "household", text, householdIds: mine.map((h) => h.id), expires: now + TTL_MS });
+  // Always a way to order just for themselves: their personal list, or a new one.
+  const newPersonal = !mine.some((h) => h.kind === "personal");
+  pending.set(phone, { step: "household", text, householdIds: mine.map((h) => h.id), newPersonal, expires: now + TTL_MS });
   const lines = mine.map((h, i) => `\n${i + 1}. ${groupName(h, phone)}`);
+  if (newPersonal) lines.push(`\n${mine.length + 1}. Just me: a new personal list, on your own card`);
   return `Which household is this for?${lines.join("")}\nReply with a number or name, or "cancel".`;
 }
 
@@ -76,6 +92,7 @@ export function askWhoFor(phone: string, text: string, household: Household, sen
 
 export type DestinationReply =
   | { kind: "household"; household: Household; text: string }
+  | { kind: "newPersonal"; text: string }
   | { kind: "split"; householdId: string; text: string }
   | { kind: "ask"; prompt: string }
   | { kind: "cancelled" };
@@ -101,9 +118,14 @@ export function answerDestination(phone: string, answer: string, member: (h: Hou
   if (p.step === "household") {
     const options = householdsForPhone(phone).filter((h) => p.householdIds.includes(h.id));
     const number = /^#?(\d{1,2})$/.exec(a);
+    const personalAnswer = /^(?:just me|me|mine|personal|my personal(?: list)?|personal list|new personal list|a new personal list)$/.test(a);
+    if (p.newPersonal && ((number && Number(number[1]) === options.length + 1) || personalAnswer)) {
+      pending.delete(phone);
+      return { kind: "newPersonal", text: p.text };
+    }
     const chosen = number ? options[Number(number[1]) - 1] : options.find((h) => namesFor(h, phone).some((n) => n === a || n.replace(/'s.*$/, "") === a));
     if (!chosen) {
-      if (number) return { kind: "ask", prompt: `Reply with a number from 1 to ${options.length}, or "cancel".` };
+      if (number) return { kind: "ask", prompt: `Reply with a number from 1 to ${options.length + (p.newPersonal ? 1 : 0)}, or "cancel".` };
       pending.delete(phone);
       return undefined;
     }

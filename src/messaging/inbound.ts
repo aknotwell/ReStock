@@ -28,8 +28,8 @@ import {
 import { isRestockLine } from "./photonLines.js";
 import { CONTACT_NAME, contactLink } from "../web/contactCard.js";
 import { config } from "../config.js";
-import { activeHousehold, adoptCards, cleanName, findPhone, householdName, setActiveHousehold } from "../core/households.js";
-import { answerDestination, askWhichHousehold, askWhoFor, namedHousehold, splitStated, withoutHousehold } from "./destination.js";
+import { activeHousehold, adoptCards, cleanName, findPhone, householdName, MembershipError, personalSpaceFor, setActiveHousehold } from "../core/households.js";
+import { answerDestination, askWhichHousehold, askWhoFor, namedHousehold, newPersonalNamed, splitStated, withoutHousehold } from "./destination.js";
 import { handleOnboarding, setupInProgress } from "./onboarding.js";
 import { parseDealRequest, stripDealWords } from "../deals/request.js";
 import { currentListing, listingProduct, liveDealsEnabled, offCatalogProduct } from "../deals/live.js";
@@ -171,9 +171,19 @@ export async function handleInbound(
       setActiveHousehold(msg.fromPhone, h.id);
       return handleInbound({ ...msg, messageId: `${msg.messageId}:to`, text }, { destinationChosen: true, ...more });
     };
+    // "Just me" without a personal list yet: make one (only them, on their own card), then add there.
+    const toNewPersonal = async (text: string) => {
+      try {
+        await toHousehold(personalSpaceFor(msg.fromPhone), text);
+      } catch (err) {
+        if (err instanceof MembershipError) await respond(err.message);
+        else throw err;
+      }
+    };
     const dest = answerDestination(msg.fromPhone, msg.text, (h) => findMemberByPhone(h, msg.fromPhone));
     if (dest) {
       if (dest.kind === "cancelled") await respond("OK, I didn't add it.");
+      else if (dest.kind === "newPersonal") await toNewPersonal(dest.text);
       else if (dest.kind === "ask") await respond(dest.prompt);
       else if (dest.kind === "household") await toHousehold(dest.household, dest.text, { askSplit: true });
       else {
@@ -188,6 +198,12 @@ export async function handleInbound(
         await toHousehold(named.household, withoutHousehold(msg.text, named.phrase), { askSplit: true });
         return;
       }
+    }
+    // "for my personal" works from any household, even their only one.
+    const personal = !opts.destinationChosen && !membership && householdsForPhone(msg.fromPhone).length ? newPersonalNamed(msg.fromPhone, msg.text) : undefined;
+    if (personal) {
+      await toNewPersonal(withoutHousehold(msg.text, personal));
+      return;
     }
   }
 

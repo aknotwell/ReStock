@@ -34,6 +34,10 @@ export type Choice = {
   /** What was asked for, in plain words ("dish soap"), and its product group, to name and dedupe queued questions. */
   item?: string;
   group?: string;
+  /** A line under the options suggesting a brand or size to search for (vague requests). */
+  hint?: string;
+  /** With a hint: what was asked, so a brand or size reply can be searched again with it. */
+  refine?: { requested: string; shared: boolean | null };
 };
 type Pending = { queue: Choice[]; expires: number };
 
@@ -204,7 +208,8 @@ export function choicePrompt(choice: Choice): string {
     : choice.demoPrices
       ? "\nStore prices aren't available right now, so these are Restock demo prices."
       : "";
-  return `${head}Which one?\n${lines.join("\n")}${checked}\nReply ${replies}, or "cancel".`;
+  const hint = choice.hint ? `\n${choice.hint}` : "";
+  return `${head}Which one?\n${lines.join("\n")}${checked}\nReply ${replies}, or "cancel".${hint}`;
 }
 
 /** Queue choices for a member. Returns the prompt for the first one if nothing was already waiting. */
@@ -232,6 +237,20 @@ export function queueChoices(householdId: string, memberId: string, choices: Cho
 /** "dish soap", "dish soap and sponges", "dish soap, sponges and TP". */
 function joinWords(names: string[]): string {
   return names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+}
+
+/** The "Which one?" this member is answering now, if any. */
+export function currentChoice(householdId: string, memberId: string, now = Date.now()): Choice | undefined {
+  return hasPendingChoice(householdId, memberId, now) ? pending.get(key(householdId, memberId))!.queue[0] : undefined;
+}
+
+/** Drop the current "Which one?" without a reply (they answered it with a brand or size instead). */
+export function dropCurrentChoice(householdId: string, memberId: string): void {
+  const k = key(householdId, memberId);
+  const p = pending.get(k);
+  if (!p) return;
+  p.queue.shift();
+  if (!p.queue.length) pending.delete(k);
 }
 
 export function hasPendingChoice(householdId: string, memberId: string, now = Date.now()): boolean {

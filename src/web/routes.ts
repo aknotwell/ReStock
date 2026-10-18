@@ -9,7 +9,8 @@ import { householdView, ownRecord, spacesView } from "./appState.js";
 import { rateLimiter } from "./rateLimit.js";
 import { householdForInvite, inviteCodeFor, resetInvite, SignupError, startSignup, INVITE_TTL_MS } from "../core/signups.js";
 import { findMember } from "../core/store.js";
-import { LineUnavailableError } from "../messaging/photonLines.js";
+import { isRestockLine, LineUnavailableError } from "../messaging/photonLines.js";
+import { CONTACT_NAME, contactCard, contactLink } from "./contactCard.js";
 import { createPayBackCheckout, logout, myDebts, SESSION_TTL_MS, sessionMember, startLogin, verifyLogin } from "../payments/payback.js";
 
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "public");
@@ -145,6 +146,20 @@ webRoutes.get("/start", signupPage);
 webRoutes.get("/join/:code", signupPage);
 webRoutes.get("/privacy", (_req, res) => res.sendFile(path.join(publicDir, "privacy.html")));
 
+// "Save restock to your contacts": a vCard for one of Restock's own numbers, named "restock" with the logo.
+// Only real Restock lines get a card, so this can't be used to make a "restock" contact for any number.
+webRoutes.get("/contact/:file", (req, res) => {
+  const line = /^(\+\d{10,15})\.vcf$/.exec(decodeURIComponent(req.params.file))?.[1];
+  if (!line || !isRestockLine(line)) {
+    res.status(404).send("That isn't a Restock number.");
+    return;
+  }
+  res.setHeader("Cache-Control", "public, max-age=86400");
+  res.type("text/vcard; charset=utf-8");
+  res.setHeader("Content-Disposition", `inline; filename="${CONTACT_NAME}.vcf"`);
+  res.send(contactCard(line));
+});
+
 webRoutes.get("/signup/api/invite/:code", (req, res) => {
   const household = householdForInvite(text(req.params.code, 64));
   if (!household) {
@@ -171,7 +186,7 @@ webRoutes.post("/signup/api/start", async (req, res) => {
       phone: text(req.body?.phone, 40),
       inviteCode: text(req.body?.inviteCode, 64) || undefined,
     });
-    res.json({ ...result, smsLink: `sms:${result.line}&body=hi` });
+    res.json({ ...result, smsLink: `sms:${result.line}&body=hi`, contactLink: contactLink(result.line) });
   } catch (err) {
     if (err instanceof SignupError || err instanceof LineUnavailableError) {
       res.status(400).json({ error: err.message });

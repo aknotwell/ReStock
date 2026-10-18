@@ -80,8 +80,16 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   }
 
   // Group-wide news goes to the household chat once it's bound; otherwise answer where we were asked.
-  const announce = (text: string) =>
-    household.groupChatId === UNBOUND_GROUP ? respond(text) : sendGroup(household.id, text, `${msg.messageId}:${part++}`);
+  // If the group chat can't be reached (e.g. not seen since a restart), say it here instead of failing.
+  const announce = async (text: string) => {
+    if (household.groupChatId === UNBOUND_GROUP) return respond(text);
+    try {
+      await sendGroup(household.id, text, `${msg.messageId}:${part++}`);
+    } catch (err) {
+      console.warn("group announcement failed, replying here instead:", err instanceof Error ? err.message : err);
+      await respond(text);
+    }
+  };
 
   const addToCart = async (product: Product, shared: boolean | null, prefix = "Added") => {
     const item = addItem({
@@ -201,7 +209,10 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       try {
         const result = await placeOrder(household.id);
         await announce(groupSummary(household, result));
-        await sendOrderTexts(household, result);
+        const { waiting } = await sendOrderTexts(household, result);
+        if (waiting.length) {
+          await respond(waitingForDm(waiting));
+        }
       } catch (err) {
         if (err instanceof OwnerCardRequiredError) {
           // The add-card link goes only to the owner, privately. The group just hears why we stopped.
@@ -220,4 +231,11 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   // Ask "Which one?" once, after the other replies. Later items wait their turn.
   const prompt = queueChoices(household.id, member.id, choices);
   if (prompt) await respond(prompt);
+}
+
+/** "Abdul hasn't texted me…" / "Abdul and David haven't texted me…" */
+export function waitingForDm(names: string[]): string {
+  const who = names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+  const verb = names.length === 1 ? "hasn't" : "haven't";
+  return `${who} ${verb} texted me directly yet. I'll send their private messages as soon as they do.`;
 }

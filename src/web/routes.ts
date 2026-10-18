@@ -8,10 +8,10 @@ import { createCardSetupLink, openCardSetupLink, openPayBackLink } from "../paym
 import { resolveShortLink } from "../deals/links.js";
 import { householdView, ownRecord, spacesView } from "./appState.js";
 import { rateLimiter } from "./rateLimit.js";
-import { householdForInvite, inviteCodeFor, joinWithInvite, resetInvite, SignupError, startSignup, INVITE_TTL_MS } from "../core/signups.js";
+import { householdForInvite, inviteCodeFor, joinWithInvite, lineFor, resetInvite, SignupError, startSignup, INVITE_TTL_MS } from "../core/signups.js";
 import { sendPrivate } from "../messaging/photon.js";
 import { findMember } from "../core/store.js";
-import { cleanHouseholdName, createHousehold, householdName, MembershipError } from "../core/households.js";
+import { cleanHouseholdName, createHousehold, householdName, knownName, MembershipError, normalizePhone } from "../core/households.js";
 import type { Household } from "../types.js";
 import { isRestockLine, LineUnavailableError } from "../messaging/photonLines.js";
 import { CONTACT_NAME, contactCard, contactLink } from "./contactCard.js";
@@ -205,7 +205,8 @@ webRoutes.post("/signup/api/join", (req, res) => {
         console.warn("join notice failed:", err instanceof Error ? err.message : err),
       );
     }
-    res.json({ householdName: householdName(household), name: member.name });
+    const line = lineFor(me.phone);
+    res.json({ householdName: householdName(household), name: member.name, ...(line ? { line, smsLink: `sms:${line}` } : {}) });
   } catch (err) {
     if (err instanceof SignupError) {
       res.status(400).json({ error: err.message });
@@ -213,6 +214,40 @@ webRoutes.post("/signup/api/join", (req, res) => {
     }
     throw err;
   }
+});
+
+// "Already use Restock?" on an invite page, not logged in: they type only their phone number, and we show their own
+// Restock number with Messages ready to text "join <code>" to it. Each person texts their own number (Photon's
+// shared lines only take texts from assigned phones), so the page can't fill it in without knowing who they are.
+// Nothing joins here: the text from their phone does, which proves it's theirs. Needs a live invite and is rate
+// limited like sign-up, since the answer says whether a number uses Restock.
+webRoutes.post("/signup/api/my-line", (req, res) => {
+  const phoneKey = text(req.body?.phone, 40).replace(/\D/g, "");
+  if (!signupsPerIp(req.ip ?? "unknown") || !signupsPerPhone(phoneKey || "none")) {
+    res.status(429).json({ error: "Too many tries. Please wait a bit and try again." });
+    return;
+  }
+  const code = text(req.body?.inviteCode, 64);
+  const household = householdForInvite(code);
+  if (!household) {
+    res.status(404).json({ error: "This invite link has expired or was reset. Ask for a new one." });
+    return;
+  }
+  const phone = normalizePhone(text(req.body?.phone, 40));
+  if (!phone) {
+    res.status(400).json({ error: "Please enter a 10-digit US mobile number." });
+    return;
+  }
+  if (household.members.some((m) => m.phone === phone)) {
+    res.status(400).json({ error: `You're already in ${householdName(household)}.` });
+    return;
+  }
+  const line = knownName(phone) ? lineFor(phone) : undefined;
+  if (!line) {
+    res.status(404).json({ error: "We don't have that number yet. Sign up with the form below instead." });
+    return;
+  }
+  res.json({ line, joinText: `join ${code}`, smsLink: `sms:${line}&body=${encodeURIComponent(`join ${code}`)}`, contactLink: contactLink(line) });
 });
 
 webRoutes.post("/signup/api/start", async (req, res) => {

@@ -1,17 +1,19 @@
 // Chat commands for starting a household and managing who's in it.
 // Deterministic and authorized in code (owner-only changes); the AI never decides membership.
 import {
-  activeHousehold, cleanHouseholdName, cleanName, knownName, createHousehold, findMyHousehold, householdName, MembershipError, normalizePhone, removeMember,
-  setActiveHousehold,
+  activeHousehold, cleanHouseholdName, cleanName, knownName, createHousehold, describeBalances, findMyHousehold, householdBalances, householdName,
+  MembershipError, normalizePhone, removeEveryone, removeMember, setActiveHousehold,
 } from "../core/households.js";
 import { db, householdsForPhone } from "../core/store.js";
 import type { Household, Member } from "../types.js";
 import { cancelInvite, invitedTo, inviteCodeFor, inviteToHousehold, releaseLineFor, resetInvite } from "../core/signups.js";
 import { LineUnavailableError } from "./photonLines.js";
 import { deleteHousehold } from "../core/households.js";
-import { openDebtsFor, owedTo } from "../core/ledger.js";
+import { openBalancesOf, openDebtsFor, owedTo } from "../core/ledger.js";
 import { config } from "../config.js";
-import { forgetHandle } from "./photon.js";
+import { forgetHandle, sendPrivate } from "./photon.js";
+import { proposeAction } from "./confirm.js";
+import { removedFromHousehold } from "./templates.js";
 import { deleteStripeCustomer } from "../payments/deleteCustomer.js";
 
 export type MembershipCommand =
@@ -21,7 +23,10 @@ export type MembershipCommand =
   | { type: "rename"; name: string }
   | { type: "leave"; householdId?: string }
   | { type: "add_member"; name: string; phone: string }
-  | { type: "remove_member"; name: string }
+  // `confirmed`/`householdId`: set when the owner said "yes" to a warning about this household.
+  | { type: "remove_member"; name: string; confirmed?: boolean; householdId?: string }
+  | { type: "remove_everyone"; confirmed?: boolean; householdId?: string }
+  | { type: "delete_household"; confirmed?: boolean; householdId?: string }
   | { type: "members" }
   | { type: "invite"; reset: boolean }
   | { type: "delete_self" };
@@ -46,6 +51,10 @@ export function parseMembershipCommand(text: string): MembershipCommand | undefi
   const remove = /^remove\s+(?:member|roommate)\s+(.+)$/i.exec(t);
   if (remove?.[1]) return { type: "remove_member", name: remove[1] };
   if (/^delete my (?:data|account|info)$/i.test(t)) return { type: "delete_self" };
+  if (/^(?:remove|kick(?: out)?)\s+(?:everyone|everybody|all\s+(?:the\s+)?(?:members|roommates|people))(?:\s+else)?(?:\s+from\s+(?:the\s+|this\s+|my\s+|our\s+)?(?:household|group|house))?$/i.test(t)) {
+    return { type: "remove_everyone" };
+  }
+  if (/^(?:delete|disband|close)\s+(?:the\s+|this\s+|my\s+|our\s+)?(?:household|group|house)$/i.test(t)) return { type: "delete_household" };
   const invite = /^(reset\s+)?invite(?:\s+link)?$|^(?:get|send)\s+(?:me\s+)?(?:an?\s+|the\s+)?invite(?:\s+link)?$/i.exec(t);
   if (invite) return { type: "invite", reset: !!invite[1] };
   if (/^(?:members|roommates|who(?:'s| is) in (?:the |my |our )?(?:house(?:hold)?|home|group)\??)$/i.test(t)) return { type: "members" };
@@ -68,7 +77,8 @@ type Ctx = {
 async function forgetPerson(member: Member): Promise<void> {
   // Each household membership has its own Stripe customer. Their number stays while they're in another household.
   if (member.stripeCustomerId) await deleteStripeCustomer(member.stripeCustomerId);
-  if (householdsForPhone(member.phone).length) return;
+  // Keep their number while money is still owed to or by them: logging in to pay back texts them a code.
+  if (householdsForPhone(member.phone).length || openBalancesOf([member.id]).length) return;
   forgetHandle(member.phone);
   await releaseLineFor(member.phone);
 }
@@ -255,6 +265,23 @@ export async function handleMembershipCommand({ command, fromPhone, spaceKind, h
     }
 
     // Inviting and removing people changes who shares the bill: owner only, checked here in code.
+    if (command.type === "remove_everyone" || command.type === "delete_household" || command.type === "remove_member") {
+      // After a "yes", act on the household the owner was warned about, even if they switched since.
+      const target = command.householdId ? db.households.get(command.householdId) : household;
+      if (!target) {
+        await respond("That household is already gone.");
+        return true;
+      }
+      const owner = target.members.find((m) => m.phone === fromPhone);
+      if (!owner || owner.id !== target.ownerId) {
+        await respond(
+          command.type === "delete_household" ? "Only the budget owner can delete the household." : "Only the budget owner can invite or remove people.",
+        );
+        return true;
+      }
+      return await handleRemoval(command, target, owner, fromPhone, respond);
+    }
+
     if (member.id !== household.ownerId) {
       await respond("Only the budget owner can invite or remove people.");
       return true;
@@ -275,19 +302,7 @@ export async function handleMembershipCommand({ command, fromPhone, spaceKind, h
       );
       return true;
     }
-
-    // Not a member yet, but invited: take the invite back.
-    if (!household.members.some((m) => m.name.toLowerCase() === command.name.trim().toLowerCase())) {
-      const cancelled = await cancelInvite(household.id, command.name);
-      if (cancelled) {
-        await respond(`Cancelled ${cancelled}'s invite.`);
-        return true;
-      }
-    }
-    const removed = removeMember(household, command.name);
-    await forgetPerson(removed);
-    await respond(`Removed ${removed.name} from ${householdName(household)}.`);
-    return true;
+    return false;
   } catch (err) {
     if (err instanceof MembershipError || err instanceof LineUnavailableError) {
       await respond(err.message);
@@ -295,6 +310,90 @@ export async function handleMembershipCommand({ command, fromPhone, spaceKind, h
     }
     throw err;
   }
+}
+
+type Removal = Extract<MembershipCommand, { type: "remove_member" | "remove_everyone" | "delete_household" }>;
+
+/**
+ * The owner removing one person, everyone, or deleting the whole household. Removing everyone and deleting
+ * always ask first. Open debts never block it silently: the owner sees who owes whom, is told to settle up
+ * first, and has to say "yes" to go ahead anyway. The debts stay on the ledger and can still be paid back.
+ */
+async function handleRemoval(command: Removal, household: Household, owner: Member, fromPhone: string, respond: (text: string) => Promise<void>): Promise<boolean> {
+  const title = householdName(household);
+  let leaving = household.members.filter((m) => m.id !== owner.id);
+
+  if (command.type === "remove_member") {
+    const name = command.name.trim().toLowerCase();
+    const found = household.members.find((m) => m.name.toLowerCase() === name);
+    // Not a member yet, but invited: take the invite back.
+    if (!found) {
+      const cancelled = await cancelInvite(household.id, command.name);
+      await respond(cancelled ? `Cancelled ${cancelled}'s invite.` : `I couldn't find ${command.name.trim()} in your household.`);
+      return true;
+    }
+    if (found.id === owner.id) throw new MembershipError("The budget owner can't be removed.");
+    leaving = [found];
+  } else if (command.type === "remove_everyone" && !leaving.length) {
+    await respond(`There's nobody else in ${title} to remove.`);
+    return true;
+  }
+
+  const affected = command.type === "delete_household" ? household.members : leaving;
+  const balances = openBalancesOf(affected.map((m) => m.id));
+  const asksFirst = command.type !== "remove_member" || balances.length > 0;
+  if (asksFirst && !command.confirmed) {
+    proposeAction(fromPhone, { kind: "membership", command: { ...command, confirmed: true, householdId: household.id } });
+    const names = leaving.map((m) => m.name).join(", ");
+    const question =
+      command.type === "delete_household"
+        ? `Delete ${title}? This removes everyone${names ? ` (${names})` : ""}, clears the cart and can't be undone.`
+        : command.type === "remove_everyone"
+          ? `Remove everyone else from ${title} (${names})? You'll stay as the budget owner.`
+          : `Remove ${names} from ${title}?`;
+    const warning = balances.length
+      ? `\nHeads up, there are open balances:\n${describeBalances(balances)}\n` +
+        `I recommend settling up first (text "what do I owe?"). If you go ahead, these stay on the ledger and can still be paid back at ${config.publicBaseUrl}/pay.`
+      : "";
+    const verb = command.type === "delete_household" ? "delete it" : "remove";
+    await respond(`${question}${warning}\nReply "yes" to ${balances.length ? `${verb} anyway` : "confirm"} or "no" to cancel.`);
+    return true;
+  }
+
+  // Tell each person first: once they're out of the household, Restock can't look up where to text them.
+  const deleted = command.type === "delete_household";
+  for (const m of leaving) {
+    const owes = openDebtsFor(m.id).reduce((sum, d) => sum + d.cents, 0);
+    await sendPrivate(m.id, removedFromHousehold(owner.name, title, deleted, owes, `${config.publicBaseUrl}/pay`), `removed:${household.id}:${m.id}`).catch((err) =>
+      console.warn("removal notice failed:", err instanceof Error ? err.message : err),
+    );
+  }
+
+  if (command.type === "remove_member") {
+    removeMember(household, leaving[0]!.name, { keepBalances: true });
+    await forgetPerson(leaving[0]!);
+    await respond(`Removed ${leaving[0]!.name} from ${title}.`);
+    return true;
+  }
+  for (const p of invitedTo(household.id)) await cancelInvite(household.id, p.name);
+  if (command.type === "remove_everyone") {
+    removeEveryone(household);
+    for (const m of leaving) await forgetPerson(m);
+    await respond(`Done. Removed ${leaving.map((m) => m.name).join(", ")} from ${title}. You're still its budget owner.`);
+    return true;
+  }
+
+  deleteHousehold(household);
+  const next = activeHousehold(fromPhone);
+  try {
+    await respond(
+      `Done. ${title} is deleted and its cart is cleared.` +
+        (next ? ` Texts to me now go to ${householdName(next)}.` : ` To start a new one, sign up again at ${config.publicBaseUrl}/start.`),
+    );
+  } finally {
+    for (const m of [...leaving, owner]) await forgetPerson(m);
+  }
+  return true;
 }
 
 /** "+12065550142" -> "(206) 555-0142"; other numbers as they are. */

@@ -6,7 +6,7 @@ import { config } from "../config.js";
 import { registerState } from "../core/persist.js";
 import { householdName } from "../core/households.js";
 import { findMember, getHousehold, householdsForPhone } from "../core/store.js";
-import { rememberRestockLine } from "./photonLines.js";
+import { forgetLineTextedBy, rememberLineTextedBy, rememberRestockLine } from "./photonLines.js";
 import { redact } from "../safety/redact.js";
 
 /** Normalized inbound message, independent of Photon's wire format. */
@@ -42,6 +42,7 @@ export const unmute = (phone: string) => void muted.delete(phone);
  * its DM space and any private texts held for it. The STOP opt-out is kept, so they stay unsubscribed.
  */
 export function forgetHandle(phone: string): void {
+  forgetLineTextedBy(phone);
   dmByHandle.delete(phone);
   pendingByHandle.delete(phone);
 }
@@ -107,6 +108,7 @@ export function rememberInbound(msg: InboundMessage): void {
   if (msg.agentUserId) agentBySpace.set(msg.spaceId, msg.agentUserId);
   if (msg.spaceKind === "direct") dmByHandle.set(msg.fromPhone, msg.spaceId);
   rememberRestockLine(msg.agentLine);
+  if (msg.spaceKind === "direct") rememberLineTextedBy(msg.fromPhone, msg.agentLine);
 }
 
 async function send(spaceId: string, rawText: string, idempotencyKey: string): Promise<void> {

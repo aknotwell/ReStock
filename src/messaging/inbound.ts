@@ -722,7 +722,7 @@ export async function handleInbound(msg: InboundMessage, opts: { refined?: boole
       } else if (!household.members.some((m) => m.name.toLowerCase() === name.toLowerCase()) && !invitedTo(household.id).some((p) => p.name.toLowerCase() === name.toLowerCase())) {
         await respond(`I couldn't find ${name} in your household.`);
       } else {
-        proposeAction(msg.fromPhone, { kind: "membership", command: { type: "remove_member", name } });
+        proposeAction(msg.fromPhone, { kind: "membership", command: { type: "remove_member", name, householdId: household.id } });
         await respond(`Remove ${name} from the household? Reply "yes" to confirm or "no" to cancel.`);
       }
     } else if (intent.type === "help") {

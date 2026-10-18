@@ -34,6 +34,23 @@ export function rememberRestockLine(line: string | undefined): void {
   if (line && /^\+\d{10,15}$/.test(line)) knownLines.add(line);
 }
 
+// Which Restock number each person texts us one-on-one on, from their own texts. Covers people who never signed
+// up on the web (they started by texting Restock), so pages like the invite page can still show their number.
+const textedOn = new Map<string, string>(); // phone -> Restock line
+registerState("texted-lines", {
+  dump: () => [...textedOn],
+  load: (data) => {
+    textedOn.clear();
+    for (const [phone, line] of data as [string, string][]) textedOn.set(phone, line);
+  },
+});
+
+export function rememberLineTextedBy(phone: string, line: string | undefined): void {
+  if (line && /^\+\d{10,15}$/.test(line)) textedOn.set(phone, line);
+}
+export const lineTextedBy = (phone: string) => textedOn.get(phone);
+export const forgetLineTextedBy = (phone: string) => void textedOn.delete(phone);
+
 /** Whether this number is one of Restock's own lines. Without Photon, the fake console line counts. */
 export function isRestockLine(line: string): boolean {
   return knownLines.has(line) || (!photon && line === CONSOLE_LINE);

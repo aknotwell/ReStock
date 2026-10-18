@@ -1,10 +1,10 @@
 // Creating households and managing members.
 // Membership is security-sensitive (it decides who shares a bill), so it's plain code: never the LLM.
 // The persistence layer saves these changes automatically (src/core/persist.ts).
-import type { Cents, Household, Member } from "../types.js";
+import type { Cents, Debt, Household, Member } from "../types.js";
 import { registerState } from "./persist.js";
-import { db, householdsForPhone, newId, UNBOUND_GROUP } from "./store.js";
-import { openDebtsFor, owedTo } from "./ledger.js";
+import { db, findMember, formerMembers, householdsForPhone, newId, UNBOUND_GROUP } from "./store.js";
+import { openBalancesOf } from "./ledger.js";
 
 export const DEFAULT_BUDGET_CENTS = 20000;
 
@@ -141,16 +141,52 @@ export function checkCanJoin(household: Household, name: string, phone: string):
   }
 }
 
-export function removeMember(household: Household, name: string): Member {
+/**
+ * Take someone out of a household. With open debts to or from them this throws, unless the owner was warned
+ * and confirmed (`keepBalances`): then the debts stay on the ledger and they can still pay them back.
+ */
+export function removeMember(household: Household, name: string, { keepBalances = false } = {}): Member {
   const member = household.members.find((m) => m.name.toLowerCase() === name.trim().toLowerCase());
   if (!member) throw new MembershipError(`I couldn't find ${name.trim()} in your household.`);
   if (member.id === household.ownerId) throw new MembershipError("The budget owner can't be removed.");
-  if (openDebtsFor(member.id).length || owedTo(member.id).length) {
+  if (openBalancesOf([member.id]).length && !keepBalances) {
     throw new MembershipError(`${member.name} still has an open balance. Settle up first, then remove them.`);
   }
+  rememberIfOwed(household, member);
   household.members = household.members.filter((m) => m.id !== member.id);
   return member;
 }
+
+/** Everyone except the budget owner, removed at once. Their open debts stay on the ledger. */
+export function removeEveryone(household: Household): Member[] {
+  const others = household.members.filter((m) => m.id !== household.ownerId);
+  for (const m of others) removeMember(household, m.name, { keepBalances: true });
+  return others;
+}
+
+/** Open debts owed to or by anyone in this household. */
+export const householdBalances = (household: Household): Debt[] => openBalancesOf(household.members.map((m) => m.id));
+
+/** "• Amber owes Alex $12.34", one line per open debt. */
+export function describeBalances(debts: Debt[]): string {
+  const name = (id: string) => findMember(id)?.member.name ?? "someone";
+  return debts.map((d) => `• ${name(d.debtorId)} owes ${name(d.creditorId)} $${(d.cents / 100).toFixed(2)}`).join("\n");
+}
+
+/** Keep a leaving member's name and number while money is owed to or by them (no card or Stripe IDs). */
+function rememberIfOwed(household: Household, member: Member): void {
+  if (!openBalancesOf([member.id]).length) return;
+  const { stripeCustomerId: _c, paymentMethodId: _p, cardLast4: _l, ...kept } = member;
+  formerMembers.set(member.id, { household: { ...household, members: [] }, member: kept });
+}
+
+registerState("formerMembers", {
+  dump: () => [...formerMembers],
+  load: (data) => {
+    formerMembers.clear();
+    for (const [id, entry] of data as [string, { household: Household; member: Member }][]) formerMembers.set(id, entry);
+  },
+});
 
 /** The first real phone number written anywhere in a message, e.g. "her number is 425 555 0123". */
 export function findPhone(text: string): { raw: string; phone: string } | undefined {
@@ -162,8 +198,12 @@ export function findPhone(text: string): { raw: string; phone: string } | undefi
   return undefined;
 }
 
-/** Delete a household and its pending cart (owner leaving with nobody else in it). Orders/charges stay as records. */
+/**
+ * Delete a household and its pending cart. Orders, charges and debts stay as records, and anyone with an open
+ * debt is remembered so it can still be paid back.
+ */
 export function deleteHousehold(household: Household): void {
+  for (const m of household.members) rememberIfOwed(household, m);
   for (const [id, item] of db.items) if (item.householdId === household.id && item.status === "pending") db.items.delete(id);
   db.households.delete(household.id);
 }

@@ -98,6 +98,13 @@ export function paidBack(debtorName: string, cents: Cents, orders: number): stri
   return `${debtorName} paid you back ${fmt(cents)}${orders > 1 ? ` for ${orders} orders` : ""}.`;
 }
 
+/** Private text to someone the owner removed, or whose household the owner deleted. */
+export function removedFromHousehold(ownerName: string, householdName: string, deleted: boolean, owesCents: Cents, payLink: string): string {
+  const what = deleted ? `${ownerName} deleted ${householdName}, so its cart is cleared` : `${ownerName} removed you from ${householdName}`;
+  const owes = owesCents > 0 ? ` You still owe ${fmt(owesCents)} from earlier orders. Pay it back anytime: ${payLink}` : "";
+  return `${what} and you won't get its texts anymore.${owes}`;
+}
+
 export function cardAdded(last4: string): string {
   return `Card added, ending ${last4}. From the next order on, your share is charged to it automatically.`;
 }

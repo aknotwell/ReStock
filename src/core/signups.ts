@@ -8,7 +8,7 @@ import { randomBytes } from "node:crypto";
 import { addMember, atSpaceLimit, checkCanJoin, knownName, cleanName, createHousehold, householdName, MembershipError, normalizePhone, TOO_MANY_SPACES } from "./households.js";
 import { registerState } from "./persist.js";
 import { db } from "./store.js";
-import { assignLine, releaseLine, releaseLinesForHandle } from "../messaging/photonLines.js";
+import { assignLine, lineTextedBy, releaseLine, releaseLinesForHandle } from "../messaging/photonLines.js";
 import type { Household, Member } from "../types.js";
 
 export const SIGNUP_TTL_MS = 24 * 60 * 60 * 1000;
@@ -207,7 +207,7 @@ export function isPendingSignup(phone: string, now = Date.now()): boolean {
 }
 
 export function lineFor(phone: string): string | undefined {
-  return lines.get(phone)?.line ?? pending.get(phone)?.line;
+  return lines.get(phone)?.line ?? pending.get(phone)?.line ?? lineTextedBy(phone);
 }
 
 /**

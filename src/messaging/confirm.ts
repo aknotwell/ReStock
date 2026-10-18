@@ -43,7 +43,8 @@ export function resetConfirmations(): void {
   pending.clear();
 }
 
-const YES = /^(?:yes|y|yep|yeah|yup|sure|confirm|confirmed|do it|go ahead|ok|okay)[.!]*$/i;
+// "yes, delete" / "yes remove them" also count, so the owner can answer a removal warning in its own words.
+const YES = /^(?:yes|y|yep|yeah|yup|sure|confirm|confirmed|do it|go ahead|ok|okay)(?:,?\s+(?:delete|remove)(?:\s+(?:it|them|everyone|anyway))*)?[.!]*$/i;
 const NO = /^(?:no|n|nope|nah|cancel|never ?mind|stop|don't)[.!]*$/i;
 export const isYes = (text: string) => YES.test(text.trim());
 export const isNo = (text: string) => NO.test(text.trim());

@@ -19,8 +19,8 @@ let n = 0;
 let logs: string[];
 const out = () => logs.join("\n");
 
-async function dm(from: string, text: string) {
-  const msg = { messageId: `mh${++n}`, spaceId: `pho_spc_dm_${from}`, spaceKind: "direct" as const, fromPhone: from, text, agentUserId: "pho_usr_agent" };
+async function dm(from: string, text: string, agentLine?: string) {
+  const msg = { messageId: `mh${++n}`, spaceId: `pho_spc_dm_${from}`, spaceKind: "direct" as const, fromPhone: from, text, agentUserId: "pho_usr_agent", ...(agentLine ? { agentLine } : {}) };
   rememberInbound(msg);
   await handleInbound(msg);
 }
@@ -233,7 +233,7 @@ describe("dashboard New group", () => {
     const maple = createHousehold("Alex", ALEX, { name: "Maple House" });
     const code = inviteCodeFor(maple, maple.ownerId);
     createHousehold("Amber", AMBER);
-    await dm(AMBER, "hi");
+    await dm(AMBER, "hi", "+16285550111"); // she texts Restock on her own Restock number
     expect((await post("/signup/api/join", { inviteCode: code })).status).toBe(401); // not logged in
 
     const cookie = await login(AMBER);
@@ -243,11 +243,38 @@ describe("dashboard New group", () => {
 
     const res = await post("/signup/api/join", { inviteCode: code }, cookie);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ householdName: "Maple House", name: "Amber" });
+    // Her own Restock number comes back, so "Open Messages" is addressed to it.
+    expect(await res.json()).toEqual({ householdName: "Maple House", name: "Amber", line: "+16285550111", smsLink: "sms:+16285550111" });
     expect(maple.members.map((m) => m.name)).toEqual(["Alex", "Amber"]);
     const again = await (await fetch(`${base}/signup/api/invite/${code}`, { headers: { cookie } })).json();
     expect(again).toMatchObject({ joinAs: null, alreadyIn: true });
     expect((await post("/signup/api/join", { inviteCode: "x".repeat(16) }, cookie)).status).toBe(400);
+  });
+
+  it("\"Already use Restock?\" finds your Restock number from your phone number, without logging in", async () => {
+    const maple = createHousehold("Alex", ALEX, { name: "Maple House" });
+    const code = inviteCodeFor(maple, maple.ownerId);
+    createHousehold("Amber", AMBER); // started by texting Restock, never signed up on the web
+    await dm(AMBER, "hi", "+16285550111");
+
+    const res = await post("/signup/api/my-line", { inviteCode: code, phone: "(425) 555-0102" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      line: "+16285550111",
+      joinText: `join ${code}`,
+      smsLink: `sms:+16285550111&body=join%20${code}`,
+    });
+    expect(maple.members).toHaveLength(1); // nothing joins until she texts it from her phone
+
+    expect((await post("/signup/api/my-line", { inviteCode: code, phone: "509-555-0103" })).status).toBe(404); // not a Restock user
+    expect((await post("/signup/api/my-line", { inviteCode: code, phone: "425-555-0101" })).status).toBe(400); // already in it
+    expect((await post("/signup/api/my-line", { inviteCode: "x".repeat(16), phone: "425-555-0102" })).status).toBe(404); // bad invite
+    expect((await post("/signup/api/my-line", { inviteCode: code, phone: "12" })).status).toBe(400);
+
+    // Then her text to that number joins her.
+    logs = [];
+    await dm(AMBER, `join ${code}`, "+16285550111");
+    expect(out()).toMatch(/Welcome, Amber! You're in Maple House/);
   });
 
   it("checks the input and needs a login", async () => {

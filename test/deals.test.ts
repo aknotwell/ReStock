@@ -5,7 +5,7 @@ vi.mock("../src/ai/client.js", () => ({ anthropic: undefined, MODEL: "test" }));
 import { seedDemo } from "../scripts/seed.js";
 import { config } from "../src/config.js";
 import { getProduct, type Product } from "../src/core/catalog.js";
-import { db, pendingItems } from "../src/core/store.js";
+import { addItem, db, pendingItems } from "../src/core/store.js";
 import { clearLiveDeals, liveOptionsFor, parseOffers, searchOffers, searchQuery } from "../src/deals/live.js";
 import { applyFilters, bestValueId, optionCount, parseUnits, rankOptions } from "../src/deals/rank.js";
 import { knownStore, parseDealRequest, stripDealWords } from "../src/deals/request.js";
@@ -42,6 +42,12 @@ function stubSerpApi(json: unknown = TP_RESULTS) {
   const fetch = vi.fn(async (_url: string) => new Response(JSON.stringify(json), { status: 200 }));
   vi.stubGlobal("fetch", fetch);
   return fetch;
+}
+
+/** Mark items as ordered in a past order, so "the usual" can find them. */
+function orderItems(itemIds: string[], createdAt: string) {
+  for (const id of itemIds) db.items.get(id)!.status = "ordered";
+  db.orders.set(`past-${createdAt}`, { id: `past-${createdAt}`, householdId: H, itemIds, totalCents: 0, rule: "smart" as const, createdAt });
 }
 
 beforeEach(() => {
@@ -312,34 +318,49 @@ describe("SerpApi request logs", () => {
 });
 
 describe("options with live listings", () => {
-  it("ranks live listings and catalog options together by price per unit", async () => {
+  it("with store listings, the options are listings only, best value first", async () => {
     stubSerpApi();
     const live = (await liveOptionsFor(TP()))!.products;
     const choice = buildChoice(H, TP(), null, {}, live);
-    // Walmart $0.78/roll, Costco $0.87, then the catalog's bulk pack at $0.92 beats Target's $1.37
-    expect(choice.options.map((p) => p.store ?? p.id)).toEqual(["Walmart", "Costco", "tp-24"]);
+    // Walmart $0.78/roll, Costco $0.87, Target $1.37. The demo catalog isn't mixed in.
+    expect(choice.options.map((p) => p.store)).toEqual(["Walmart", "Costco", "Target"]);
     expect(choice.bestValueId).toBe(choice.options[0]!.id);
     expect(choice.checkedAt).toBeDefined();
+    expect(choice.demoPrices).toBeUndefined();
   });
 
-  it("a cheaper live listing beats the catalog; a pricier one loses to it", () => {
+  it("even one listing is shown on its own, never padded with demo prices", () => {
     const at = new Date().toISOString();
-    const cheap: Product = { ...TP(), id: "live-x", name: "Store TP (Target)", store: "Target", cents: 999, units: 12, checkedAt: at };
-    expect(buildChoice(H, TP(), null, {}, [cheap]).options.map((p) => p.id)).toEqual(["live-x", "tp-24", "tp-12"]);
-    const pricey: Product = { ...cheap, id: "live-y", cents: 2000 }; // $1.67/roll
-    const choice = buildChoice(H, TP(), null, {}, [pricey]);
-    expect(choice.options.map((p) => p.id)).toEqual(["tp-24", "tp-12", "tp-soft"]);
-    expect(choice.checkedAt).toBeUndefined(); // no live listing shown, so no "checked" line
+    const pricey: Product = { ...TP(), id: "live-y", name: "Store TP (Target)", store: "Target", cents: 2000, units: 12, checkedAt: at };
+    expect(buildChoice(H, TP(), null, {}, [pricey]).options.map((p) => p.id)).toEqual(["live-y"]);
   });
 
-  it("options without a comparable size come after sized ones, by price; 'cheapest' ranks everything by price", () => {
+  it("listings without a comparable size come after sized ones, by price; 'cheapest' ranks by price", () => {
     const at = new Date().toISOString();
     const live: Product[] = [
       { ...TP(), id: "live-hd", name: "Jumbo roll (Home Depot)", store: "Home Depot", cents: 2884, units: 12, checkedAt: at },
+      { ...TP(), id: "live-w", name: "Store TP (Walmart)", store: "Walmart", cents: 2497, units: 32, checkedAt: at },
       { ...TP(), id: "live-t", name: "Bamboo TP (Target)", store: "Target", cents: 1599, units: undefined, unit: undefined, checkedAt: at },
     ];
-    expect(buildChoice(H, TP(), null, {}, live).options.map((p) => p.id)).toEqual(["tp-24", "tp-12", "tp-soft"]);
-    expect(buildChoice(H, TP(), null, { sort: "cheapest" }, live).options.map((p) => p.id)).toEqual(["tp-12", "tp-soft", "live-t"]);
+    expect(buildChoice(H, TP(), null, {}, live).options.map((p) => p.id)).toEqual(["live-w", "live-hd", "live-t"]);
+    expect(buildChoice(H, TP(), null, { sort: "cheapest" }, live).options.map((p) => p.id)).toEqual(["live-t", "live-w", "live-hd"]);
+  });
+
+  it("with fewer than two sized listings, listings go by price", () => {
+    const at = new Date().toISOString();
+    const live: Product[] = [
+      { ...TP(), id: "live-l", name: "Sponges 6 pack (Lowe's)", store: "Lowe's", cents: 1299, units: 6, checkedAt: at },
+      { ...TP(), id: "live-t", name: "Scrub sponges (Target)", store: "Target", cents: 559, units: undefined, unit: undefined, checkedAt: at },
+    ];
+    expect(buildChoice(H, TP(), null, {}, live).options.map((p) => p.id)).toEqual(["live-t", "live-l"]);
+  });
+
+  it("without store listings, demo prices are labelled when live prices were expected", () => {
+    const choice = buildChoice(H, TP(), null, {}, []);
+    expect(choice.options.map((p) => p.id)).toEqual(["tp-24", "tp-12", "tp-soft"]);
+    expect(choice.demoPrices).toBe(true);
+    config.serpapiKey = undefined;
+    expect(buildChoice(H, TP(), null, {}, []).demoPrices).toBeUndefined(); // no key: catalog as before, no label
   });
 
   it("respects count, price caps and stores, and says when nothing matched", async () => {
@@ -348,9 +369,9 @@ describe("options with live listings", () => {
     expect(buildChoice(H, TP(), null, { count: 1 }, live).options).toHaveLength(1);
     expect(buildChoice(H, TP(), null, { stores: ["Costco"] }, live).options.map((p) => p.store)).toEqual(["Costco"]);
     const capped = buildChoice(H, TP(), null, { maxPriceCents: 1500 }, live);
-    expect(capped.options.map((p) => p.store ?? p.id)).toEqual(["tp-12", "CVS"]);
+    expect(capped.options.map((p) => p.store)).toEqual(["CVS"]);
     const none = buildChoice(H, TP(), null, { maxPriceCents: 100 }, live);
-    expect(none.note).toBe("Nothing matched under $1.00, so here are the usual options.");
+    expect(none.note).toBe("No store listing matched under $1.00, so here are the closest ones.");
     expect(none.options).toHaveLength(3);
   });
 
@@ -380,7 +401,7 @@ describe("in the chat", () => {
   it("'add tp' shows live store options and adds the picked price", async () => {
     stubSerpApi();
     await say(SAM, "add tp");
-    expect(out()).toMatch(/Which one\?\n1\. Great Value Ultra Strong Toilet Paper, 32 Rolls \(Walmart\): \$24\.97 \(\$0\.78\/roll, best value\)\n2\. .*\(Costco\).*\n3\. Toilet paper, 24 rolls \(bulk\): \$21\.99 \(\$0\.92\/roll\)/);
+    expect(out()).toMatch(/Which one\?\n1\. Great Value Ultra Strong Toilet Paper, 32 Rolls \(Walmart\): \$24\.97 \(\$0\.78\/roll, best value\)\n2\. .*\(Costco\).*\n3\. Charmin Ultra Soft Toilet Paper, 24 Rolls \(Target\): \$32\.99 \(\$1\.37\/roll\)/);
     expect(out()).toMatch(/Store prices checked just now\.\nReply 1, 2 or 3/);
     await say(SAM, "1");
     expect(pendingItems(H).at(-1)).toMatchObject({ name: "Great Value Ultra Strong Toilet Paper, 32 Rolls (Walmart)", cents: 2497, shared: true });
@@ -389,7 +410,7 @@ describe("in the chat", () => {
   it("deal words shape the options and don't break item matching", async () => {
     stubSerpApi();
     await say(SAM, "add tp under $15");
-    expect(out()).toMatch(/1\. Toilet paper, 12 rolls: \$11\.99 \(\$1\.00\/roll\)\n2\. Quilted Northern Toilet Paper 12 Double Rolls \(CVS\): \$13\.49\n/);
+    expect(out()).toMatch(/Which one\?\n1\. Quilted Northern Toilet Paper 12 Double Rolls \(CVS\): \$13\.49\nStore prices checked just now\.\nReply 1, or "cancel"/);
     expect(out()).not.toMatch(/Walmart|Costco|Target/);
   });
 
@@ -398,6 +419,58 @@ describe("in the chat", () => {
     await say(SAM, "add tp");
     expect(out()).toMatch(/Which one\?\n1\. Toilet paper, 24 rolls \(bulk\): \$21\.99 \(\$0\.92\/roll, best value\)/);
     expect(out()).not.toMatch(/Store prices checked/);
+    expect(out()).toMatch(/Store prices aren't available right now, so these are Restock demo prices\.\nReply 1, 2 or 3/);
+  });
+
+  it("asking for a specific variant ('bulk tp') shows store listings instead of the demo price", async () => {
+    const fetch = stubSerpApi();
+    const before = pendingItems(H).length;
+    await say(SAM, "add bulk tp");
+    expect(new URL(fetch.mock.calls[0]![0]).searchParams.get("q")).toBe("Toilet paper 24 rolls");
+    expect(out()).toMatch(/Which one\?\n1\. .*\(Walmart\)/);
+    expect(pendingItems(H)).toHaveLength(before);
+  });
+
+  it("a specific variant falls back to the catalog when there are no listings", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("oops", { status: 500 })));
+    await say(SAM, "add bulk tp");
+    expect(pendingItems(H).at(-1)).toMatchObject({ name: "Toilet paper, 24 rolls (bulk)", cents: 2199 });
+  });
+
+  it("'the usual' re-adds last time's store listing at today's price", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-17T08:00:00Z"));
+    stubSerpApi();
+    await say(SAM, "add tp");
+    await say(SAM, "1"); // Walmart, $24.97
+    orderItems([pendingItems(H).at(-1)!.id], "2026-10-17T08:05:00Z");
+    vi.setSystemTime(new Date("2026-10-17T21:00:00Z")); // cache is stale: search again
+    stubSerpApi({ shopping_results: [row("Great Value Ultra Strong Toilet Paper, 32 Rolls", "Walmart", 22.97)] });
+    await say(SAM, "add the usual tp");
+    expect(pendingItems(H).at(-1)).toMatchObject({ name: "Great Value Ultra Strong Toilet Paper, 32 Rolls (Walmart)", cents: 2297 });
+    expect(out()).toMatch(/Added your usual: Great Value/);
+  });
+
+  it("'the usual' shows today's listings when last time's listing is gone", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-17T08:00:00Z"));
+    stubSerpApi();
+    await say(SAM, "add tp");
+    await say(SAM, "1");
+    orderItems([pendingItems(H).at(-1)!.id], "2026-10-17T08:05:00Z");
+    vi.setSystemTime(new Date("2026-10-17T21:00:00Z"));
+    stubSerpApi({ shopping_results: [row("Kirkland Signature Bath Tissue Toilet Paper, 30 Rolls", "Costco", 25.99)] });
+    logs = [];
+    await say(SAM, "add the usual tp");
+    expect(out()).toMatch(/Your usual, Great Value Ultra Strong Toilet Paper, 32 Rolls \(Walmart\), isn't listed right now\. Here are today's store prices\.\nWhich one\?\n1\. Kirkland/);
+  });
+
+  it("a usual bought at a demo price is offered at today's store prices instead", async () => {
+    const item = addItem({ householdId: H, name: getProduct("tp-soft")!.name, addedBy: "sam", cents: 1549, shared: true });
+    orderItems([item.id], "2026-10-01T12:00:00Z");
+    stubSerpApi();
+    await say(SAM, "add the usual tp");
+    expect(out()).toMatch(/Last time you got Toilet paper, 12 rolls, ultra-soft\. Here are today's store prices\.\nWhich one\?/);
   });
 
   it("an over-budget pick by a member waits for an approver's yes", async () => {

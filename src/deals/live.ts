@@ -222,9 +222,35 @@ export async function liveOptionsFor(
   return { products, checkedAt: result.at };
 }
 
+// Store listings someone picked, by cart item name, so "the usual" can find a store purchase again.
+const picked = new Map<string, Product>();
+registerState("live-picked", {
+  dump: () => [...picked],
+  load: (data) => {
+    picked.clear();
+    for (const [k, v] of data as [string, Product][]) picked.set(k, v);
+  },
+});
+
+export function rememberPicked(product: Product): void {
+  if (product.store) picked.set(product.name, product);
+}
+
+/** A store listing someone picked before, by its cart item name. */
+export function pickedByName(name: string): Product | undefined {
+  return picked.get(name);
+}
+
+/** The same store listing (same seller and title) in today's search, with today's price. */
+export async function currentListing(listing: Product, searchFor: Product): Promise<Product | undefined> {
+  const live = await liveOptionsFor(searchFor);
+  return live?.products.find((p) => p.id === listing.id);
+}
+
 /** Tests only. */
 export function clearLiveDeals(): void {
   cache.clear();
   loggedOff = false;
+  picked.clear();
   usage = { day: "", count: 0 };
 }

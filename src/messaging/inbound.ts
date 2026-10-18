@@ -22,6 +22,7 @@ import { config } from "../config.js";
 import { cleanName, findPhone } from "../core/households.js";
 import { handleOnboarding, setupInProgress } from "./onboarding.js";
 import { parseDealRequest, stripDealWords } from "../deals/request.js";
+import { currentListing, liveDealsEnabled } from "../deals/live.js";
 import { describeParts, parseSplitCommand, parseSplitInAdd, payersOf, setPayers, splitLabel, unclearReply, type SplitRequest } from "./splitWith.js";
 import {
   buildDealChoice, hasPendingChoice, isCancel, lastBought, namedSpecifically, parsePick, queueChoices, resolvePick, stripUsual, wantsUsual,
@@ -365,11 +366,31 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
         await respond("I couldn’t find that in the demo catalog. Try another household item name?");
         continue;
       }
+      // Real prices first: when store prices are on, the usual and specific requests use today's listings too,
+      // and the demo catalog price is the fallback when there are none.
+      const liveChoice = async (note?: string) => {
+        if (!liveDealsEnabled()) return false;
+        const choice = await buildDealChoice(household.id, match.product, intent.shared, dealOptions);
+        if (!choice.checkedAt) return false; // no store listings: fall back
+        if (note) choice.note = note;
+        if (payers) choice.splitWith = payers;
+        choices.push(choice);
+        return true;
+      };
       const usualProduct = usual ? lastBought(household.id, match.product) : undefined;
-      if (usualProduct) {
-        await addToCart(usualProduct, intent.shared, "Added your usual:", undefined, payers);
+      if (usualProduct?.store) {
+        // Last time it was a store listing: re-add it at today's price, or show today's listings.
+        const fresh = await currentListing(usualProduct, match.product);
+        if (fresh) await addToCart(fresh, intent.shared, "Added your usual:", undefined, payers);
+        else if (!(await liveChoice(`Your usual, ${usualProduct.name}, isn't listed right now. Here are today's store prices.`))) {
+          await addToCart(usualProduct, intent.shared, "Added your usual (last time's price):", undefined, payers);
+        }
+      } else if (usualProduct) {
+        if (!(await liveChoice(`Last time you got ${usualProduct.name}. Here are today's store prices.`))) {
+          await addToCart(usualProduct, intent.shared, "Added your usual:", undefined, payers);
+        }
       } else if (namedSpecifically(requested, match.product)) {
-        await addToCart(match.product, intent.shared, "Added", undefined, payers);
+        if (!(await liveChoice())) await addToCart(match.product, intent.shared, "Added", undefined, payers);
       } else {
         if (usual) await respond(`I don't see an earlier order for ${requested}, so here are the options.`);
         const choice = await buildDealChoice(household.id, match.product, intent.shared, dealOptions);

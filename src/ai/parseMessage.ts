@@ -24,9 +24,9 @@ export async function parseMessage(text: string, senderName: string): Promise<In
       return parseCommand(text);
     }
     return response.parsed_output.intents;
-  } catch (err) {
+  } catch {
     // The demo must keep working without the LLM (AGENTS.md).
-    console.warn("AI parse failed, using fallback parser:", err instanceof Error ? err.message : err);
+    console.warn("AI parse failed, using fallback parser");
     return parseCommand(text);
   }
 }

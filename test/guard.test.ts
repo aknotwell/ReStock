@@ -6,6 +6,8 @@ describe("containsCardNumber", () => {
     expect(containsCardNumber("my card is 4242424242424242")).toBe(true);
     expect(containsCardNumber("4242 4242 4242 4242 exp 12/29")).toBe(true);
     expect(containsCardNumber("5555-5555-5555-4444")).toBe(true);
+    expect(containsCardNumber("4242  4242  4242  4242")).toBe(true);
+    expect(containsCardNumber("4242\n4242\n4242\n4242")).toBe(true);
   });
 
   it("ignores normal messages and non-card numbers", () => {

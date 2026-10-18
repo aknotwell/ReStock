@@ -69,8 +69,8 @@ export async function suggestRestock(
       .map((s) => ({ product: getProduct(s.productId), reason: s.reason }))
       .filter((s): s is RestockSuggestion => !!s.product && !inCart.has(s.product.id))
       .slice(0, 3);
-  } catch (err) {
-    console.warn("AI restock suggestion failed, using interval rule:", err instanceof Error ? err.message : err);
+  } catch {
+    console.warn("AI restock suggestion failed, using interval rule");
     return dueByInterval(history, inCart, now);
   }
 }

@@ -30,13 +30,13 @@ What the AI in Restock does, what data it uses, and what controls keep it safe. 
 
 ## Human oversight and controls
 
-1. **No autonomous spending.** The AI can't place an order or charge anyone. Charges happen only after a member explicitly texts "order now", and only for the cart everyone can see. Expensive personal items need the budget owner to approve them.
+1. **No autonomous spending.** The AI can't place an order or charge anyone. The inbound handler parses the exact human command "order now" deterministically, bypassing the AI, and rejects any `order_now` intent from other text. Expensive personal items need the budget owner to approve them.
 2. **The money math is deterministic.** Shares are computed by `computeShares` in `src/core/split.ts`, in integer cents, never by the model.
 3. **Transparent results.** Every change the AI makes is echoed back, e.g. "Added Dish soap, 3 pack (shared, $8.49). Reply 'personal' to change." Users can correct or undo it with a text.
 4. **Output validation.** Every model response must match a Zod schema, and product IDs must exist in the catalog. Low-confidence matches, refusals, malformed output, and API errors all fall back to deterministic code.
 5. **AI disclosure.** The agent tells users it's an AI assistant (the "help" reply, `helpMessage` in `src/messaging/templates.ts`) and never poses as a household member.
 6. **Prompt-injection resistance.** The system prompts tell the model to ignore instructions inside chat messages, and the model has no tools that could act on them.
-7. **Sensitive data protection.** The card-number guard runs before the AI, and adding a card happens only on Stripe-hosted pages, in test mode.
+7. **Sensitive data protection.** The card-number guard runs before any household lookup or AI call, and adding a card happens only on Stripe-hosted pages, in test mode. AI fallback warnings do not print exception details that could contain message text.
 
 ## Known risks and mitigations
 

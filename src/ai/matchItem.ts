@@ -43,8 +43,8 @@ export async function matchItem(requested: string): Promise<ItemMatch> {
     const product = out.productId ? getProduct(out.productId) : undefined;
     if (!product || out.confidence === "low") return fallback();
     return { product, source: "ai" };
-  } catch (err) {
-    console.warn("AI match failed, using keyword match:", err instanceof Error ? err.message : err);
+  } catch {
+    console.warn("AI match failed, using keyword match");
     return fallback();
   }
 }

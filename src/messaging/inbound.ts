@@ -4,11 +4,14 @@ import { parseMessage } from "../ai/parseMessage.js";
 import { addItem, findHouseholdByGroupChat, findMemberByPhone } from "../core/store.js";
 import { OrderError, placeOrder } from "../core/orders.js";
 import { createCardSetupLink } from "../payments/links.js";
+import { parseCommand } from "./commands.js";
 import { containsCardNumber } from "./guard.js";
 import { sendGroup, sendPrivate, type InboundMessage } from "./photon.js";
 import { cardNumberWarning, fmt, groupSummary, helpMessage } from "./templates.js";
 
 export async function handleInbound(msg: InboundMessage): Promise<void> {
+  // Check the raw text before any household or member lookup touches the database.
+  const hasCardNumber = containsCardNumber(msg.text);
   const household = findHouseholdByGroupChat(msg.groupChatId);
   if (!household) return; // TODO(P1): onboarding a new household
 
@@ -18,14 +21,14 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     return;
   }
 
-  // 1. Card-number guard runs before anything else sees the text.
-  if (containsCardNumber(msg.text)) {
+  if (hasCardNumber) {
     await sendPrivate(member.id, cardNumberWarning(await createCardSetupLink(member.id)));
     return;
   }
 
-  // 2. Understand the message.
-  const intents = await parseMessage(msg.text, member.name);
+  // Keep the spending command deterministic even when the AI is unavailable or mistaken.
+  const isOrderCommand = msg.text.trim().toLowerCase() === "order now";
+  const intents = isOrderCommand ? parseCommand(msg.text) : await parseMessage(msg.text, member.name);
 
   // 3. Act. TODO(P1): remove_item, set_shared, what_do_i_owe, approve
   for (const intent of intents) {
@@ -49,6 +52,8 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     } else if (intent.type === "help") {
       await sendGroup(household.id, helpMessage());
     } else if (intent.type === "order_now") {
+      // A model-produced intent cannot authorize a charge on its own.
+      if (!isOrderCommand) continue;
       try {
         const result = await placeOrder(household.id);
         await sendGroup(household.id, groupSummary(household, result));

@@ -3,7 +3,8 @@ import { Router, type Request } from "express";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { config } from "../config.js";
-import { openCardSetupLink } from "../payments/links.js";
+import { fmt } from "../messaging/templates.js";
+import { openCardSetupLink, openPayBackLink } from "../payments/links.js";
 import { createPayBackCheckout, logout, myDebts, SESSION_TTL_MS, sessionMember, startLogin, verifyLogin } from "../payments/payback.js";
 
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "public");
@@ -24,8 +25,20 @@ webRoutes.get("/c/:token", async (req, res) => {
     res.status(502).send("We couldn't reach our payment provider. Please try the link again in a minute.");
   }
 });
-// Older texted pay-back links all lead to the pay-back site, which asks people to log in.
-webRoutes.get("/p/:token", (_req, res) => res.redirect(303, "/pay"));
+// The member portal lists debts after login; individual texted links still open the specific debt.
+webRoutes.get("/p/:token", async (req, res) => {
+  try {
+    const page = await openPayBackLink(req.params.token);
+    if (page.kind === "checkout") res.redirect(303, page.url);
+    else if (page.kind === "paid") res.redirect(303, "/pay/success");
+    else if (page.kind === "too_small") {
+      res.send(`This is ${fmt(page.cents)}, which is under the $0.50 card minimum. Please settle it with ${page.creditorName} directly.`);
+    } else res.status(404).send("This pay-back link has expired. Ask Restock in your group chat for a new one.");
+  } catch (err) {
+    console.error("pay-back link failed:", err instanceof Error ? err.message : err);
+    res.status(502).send("We couldn't reach our payment provider. Please try the link again in a minute.");
+  }
+});
 
 // Pay-back site: log in with a texted code, see what you owe, pay on Stripe's page.
 const PAY_COOKIE = "restock_pay";

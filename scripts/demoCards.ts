@@ -11,6 +11,11 @@ export const DEMO_TEST_CARDS: Record<string, string> = {
   jake: "pm_card_visa_debit", // Visa debit 5556 (Stripe has no built-in test card ending 1881)
 };
 
+/** Test card for a member: the named demo cards, or a Visa for any DEMO_MEMBERS person seeded with a placeholder card. */
+export function demoTestCardFor(member: Member): string | undefined {
+  return DEMO_TEST_CARDS[member.id] ?? (member.paymentMethodId?.startsWith("pm_test_") ? "pm_card_visa" : undefined);
+}
+
 /**
  * Finds or creates each demo member's sandbox Customer and saved card, and writes the real Stripe IDs
  * and last 4 onto the seeded members. Safe to run on every server start: it reuses what exists.
@@ -18,15 +23,15 @@ export const DEMO_TEST_CARDS: Record<string, string> = {
  */
 export async function attachDemoCards(household: Household, stripe: Stripe | null = stripeClient ?? null): Promise<void> {
   if (!stripe) {
-    console.log("Demo cards: no STRIPE_SECRET_KEY, so Sam and Jake keep placeholder cards.");
+    console.log("Demo cards: no STRIPE_SECRET_KEY, so demo members keep placeholder cards.");
     return;
   }
   try {
     for (const member of household.members) {
-      const testCard = DEMO_TEST_CARDS[member.id];
+      const testCard = demoTestCardFor(member);
       if (testCard) await attachCard(stripe, member, testCard);
     }
-    const withCards = household.members.filter((m) => DEMO_TEST_CARDS[m.id]);
+    const withCards = household.members.filter((m) => m.stripeCustomerId);
     console.log(`Demo cards: ${withCards.map((m) => `${m.name} ending ${m.cardLast4}`).join(", ")} (Stripe sandbox)`);
   } catch (err) {
     console.warn("Demo cards: couldn't set up sandbox cards:", err instanceof Error ? err.message : err);

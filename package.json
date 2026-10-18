@@ -9,7 +9,6 @@
     "start": "tsx src/server.ts",
     "seed": "tsx scripts/seed.ts",
     "typecheck": "tsc --noEmit",
-    "audit:tunnel": "scripts/audit-tunnel.sh",
     "veyzl:probes": "tsx scripts/veyzl-probes.ts",
     "veyzl:check": "scripts/check-veyzl-log.sh",
     "veyzl:log": "git log --grep \"^VEYZL: \" --format=\"%h %s  [%(trailers:key=VEYZL,valueonly,separator=%x2C )]\"",
@@ -18,7 +17,7 @@
     "test:watch": "vitest"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",

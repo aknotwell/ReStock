@@ -15,6 +15,12 @@ import { reply, sendGroup, sendPrivate, type InboundMessage } from "./photon.js"
 import { parseCommand } from "./commands.js";
 import { balanceSummary, CARD_NUMBER_WARNING, fmt, groupSummary, helpMessage, inviteToAddCard } from "./templates.js";
 import { sendOrderTexts } from "./afterOrder.js";
+import { handleMembershipCommand, parseMembershipCommand } from "./membership.js";
+import {
+  buildChoice, hasPendingChoice, isCancel, lastBought, namedSpecifically, parsePick, queueChoices, resolvePick, stripUsual, wantsUsual,
+  type Choice,
+} from "./options.js";
+import type { Product } from "../core/catalog.js";
 
 /** Which household a message belongs to. Binds an unbound household to its group chat on first contact. */
 function resolveHousehold(msg: InboundMessage): Household | undefined {
@@ -38,7 +44,14 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   const respond = (text: string) => reply(msg, text, part++);
 
   // 1. Guardrails run before anything else sees the text — even for unknown senders.
-  const hit = checkInput(msg.text);
+  // "add member <name> <phone>" must contain a phone number, which the PII guardrail would refuse. For that
+  // one deterministic command, check everything except the number (it goes to the store, never to the AI).
+  // The exemption applies only if the phone number is the *only* thing the guardrails object to.
+  const membership = parseMembershipCommand(msg.text);
+  let hit = checkInput(msg.text);
+  if (hit?.rule === "injection" && membership?.type === "add_member" && !checkInput(msg.text.replace(membership.phone, "[phone]"))) {
+    hit = undefined;
+  }
   if (hit?.reply) {
     await respond(hit.reply);
     return;
@@ -53,9 +66,17 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
 
   const household = resolveHousehold(msg);
   const member = household && findMemberByPhone(household, msg.fromPhone);
+
+  // 2. Household membership commands (start / add member / remove member / members). Plain code, never the AI.
+  if (membership) {
+    await handleMembershipCommand({ command: membership, fromPhone: msg.fromPhone, spaceKind: msg.spaceKind, household, member: member || undefined, respond });
+    return;
+  }
+
   if (!household || !member) {
-    // TODO(P1): join flow — create a Member with no card and send inviteToAddCard privately
-    if (msg.spaceKind === "direct") await respond(`${helpMessage()}\nAsk your household's budget owner to add you to Restock.`);
+    if (msg.spaceKind === "direct") {
+      await respond(`${helpMessage()}\nTo get started, text "start household as <your name>", or ask your household's budget owner to add you.`);
+    }
     return;
   }
 
@@ -63,8 +84,48 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   const announce = (text: string) =>
     household.groupChatId === UNBOUND_GROUP ? respond(text) : sendGroup(household.id, text, `${msg.messageId}:${part++}`);
 
+  const addToCart = async (product: Product, shared: boolean | null, prefix = "Added") => {
+    const waits = needsApproval(household, member, product.cents);
+    const item = addItem({
+      householdId: household.id,
+      name: product.name,
+      addedBy: member.id,
+      cents: product.cents,
+      shared: shared ?? product.defaultShared,
+      ...(waits ? { needsApproval: true } : {}),
+    });
+    if (waits) {
+      const ask = `${member.name} asked for ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}). ${approverNames(household, member.id)}: reply "yes" to add it to the cart.`;
+      await respond(
+        msg.spaceKind === "direct"
+          ? `Best match: ${item.name} (${fmt(item.cents)}). I've asked ${approverNames(household, member.id)} to approve it.`
+          : ask,
+      );
+      if (msg.spaceKind === "direct" && household.groupChatId !== UNBOUND_GROUP) {
+        await sendGroup(household.id, ask, `${msg.messageId}:ask:${item.id}`);
+      }
+      return;
+    }
+    await respond(`${prefix} ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}). Reply "${item.shared ? "personal" : "shared"}" to change.`);
+  };
+
+  // A reply to "Which one?" (1/2/3 or cancel) is handled in code, before any AI parsing.
+  if (hasPendingChoice(household.id, member.id)) {
+    const pick = parsePick(msg.text);
+    const cancel = pick === undefined && isCancel(msg.text);
+    if (pick !== undefined || cancel) {
+      const result = resolvePick(household.id, member.id, cancel ? "cancel" : pick!);
+      if (result?.kind === "invalid") await respond(result.prompt);
+      else if (result?.kind === "picked") await addToCart(result.product, result.shared);
+      else if (result?.kind === "cancelled") await respond("OK, I didn't add that one.");
+      if (result && result.kind !== "invalid" && result.next) await respond(result.next);
+      return;
+    }
+  }
+
   // 2. Understand the message.
   const intents = await parseMessage(msg.text, member.name);
+  const choices: Choice[] = [];
 
   // In a DM, never leave someone without an answer; in the group, casual chat is ignored.
   if (msg.spaceKind === "direct" && intents.every((i) => i.type === "unknown")) {
@@ -79,29 +140,21 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       continue;
     }
     if (intent.type === "add_item" && intent.itemName) {
-      const match = await matchItem(intent.itemName);
+      const usual = wantsUsual(intent.itemName) || wantsUsual(msg.text);
+      const requested = stripUsual(intent.itemName) || intent.itemName;
+      const match = await matchItem(requested);
       if (!match) {
         await respond("I couldn’t find that in the demo catalog. Try another household item name?");
         continue;
       }
-      const waits = needsApproval(household, member, match.product.cents);
-      const item = addItem({
-        householdId: household.id,
-        name: match.product.name,
-        addedBy: member.id,
-        cents: match.product.cents,
-        shared: intent.shared ?? match.product.defaultShared,
-        ...(waits ? { needsApproval: true } : {}),
-      });
-      if (waits) {
-        // Show the best match and ask the people who can approve. A DM request is also shown in the group so they see it.
-        const ask = `${member.name} asked for ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}). ${approverNames(household, member.id)}: reply "yes" to add it to the cart.`;
-        await respond(msg.spaceKind === "direct" ? `Best match: ${item.name} (${fmt(item.cents)}). I've asked ${approverNames(household, member.id)} to approve it.` : ask);
-        if (msg.spaceKind === "direct" && household.groupChatId !== UNBOUND_GROUP) await sendGroup(household.id, ask, `${msg.messageId}:ask:${item.id}`);
+      const usualProduct = usual ? lastBought(household.id, match.product) : undefined;
+      if (usualProduct) {
+        await addToCart(usualProduct, intent.shared, "Added your usual:");
+      } else if (namedSpecifically(requested, match.product)) {
+        await addToCart(match.product, intent.shared);
       } else {
-        await respond(
-          `Added ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}). Reply "${item.shared ? "personal" : "shared"}" to change.`,
-        );
+        if (usual) await respond(`I don't see an earlier order for ${requested}, so here are the options.`);
+        choices.push(buildChoice(household.id, match.product, intent.shared));
       }
     } else if (intent.type === "question") {
       await respond(await answerQuestion(msg.text, member.name));
@@ -177,4 +230,8 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       }
     }
   }
+
+  // Ask "Which one?" once, after the other replies. Later items wait their turn.
+  const prompt = queueChoices(household.id, member.id, choices);
+  if (prompt) await respond(prompt);
 }

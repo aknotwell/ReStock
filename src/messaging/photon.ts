@@ -3,6 +3,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { ApiError, Photon } from "@photon-ai/api";
 import { config } from "../config.js";
+import { registerState } from "../core/persist.js";
 import { findMember, getHousehold } from "../core/store.js";
 import { redact } from "../safety/redact.js";
 
@@ -30,7 +31,29 @@ const dmByHandle = new Map<string, string>();
 /** A text that was captured instead of sent. Private texts carry `memberId`; the rest carry the space they were for. */
 export type CapturedText = { text: string; spaceId?: string; memberId?: string };
 
-// When set, outbound texts are collected here instead of sent (used by POST /api/agent and the dev test chat).
+// Polling position. Saved so texts that arrive during a restart are answered once, not twice or never.
+const POLL_RESUME_LIMIT_MS = 10 * 60 * 1000; // after a longer outage, skip the backlog instead of replaying it
+const SEEN_KEEP = 500;
+const poll = { since: "", seen: [] as string[] };
+
+registerState("photon", {
+  dump: () => ({ agentBySpace: [...agentBySpace], dmByHandle: [...dmByHandle], since: poll.since, seen: poll.seen }),
+  load: (data) => {
+    const saved = data as { agentBySpace?: [string, string][]; dmByHandle?: [string, string][]; since?: string; seen?: string[] };
+    for (const [k, v] of saved.agentBySpace ?? []) agentBySpace.set(k, v);
+    for (const [k, v] of saved.dmByHandle ?? []) dmByHandle.set(k, v);
+    poll.since = saved.since ?? "";
+    poll.seen = (saved.seen ?? []).slice(-SEEN_KEEP);
+  },
+});
+
+/** Where polling starts: the saved position if it's recent, otherwise a few seconds ago. */
+export function pollStart(now = Date.now()): string {
+  const saved = Date.parse(poll.since);
+  return Number.isFinite(saved) && now - saved <= POLL_RESUME_LIMIT_MS ? poll.since : new Date(now - 5_000).toISOString();
+}
+// When set, outbound texts are collected here instead of sent (used by POST /api/agent).
+// When set, outbound texts are collected here instead of sent (used by POST /api/agent).
 const capture = new AsyncLocalStorage<CapturedText[]>();
 
 /** Run `fn` and return every text it would have sent, without sending anything. */
@@ -63,6 +86,7 @@ async function send(spaceId: string, rawText: string, idempotencyKey: string): P
   }
   const senderId = agentBySpace.get(spaceId);
   if (!senderId) throw new Error(`No agent identity known for space ${spaceId} yet (it must message us first)`);
+  console.log(`[photon] sending reply to ${spaceId.slice(0, 12)}…`);
   await photon.projects.sendMessage({
     path: { id: config.photonProjectId },
     headers: { "idempotency-key": idempotencyKey },
@@ -144,8 +168,8 @@ export function startPolling(handle: (msg: InboundMessage) => Promise<void>, int
     return () => {};
   }
   const projectId = config.photonProjectId;
-  const seen = new Set<string>();
-  let since = new Date(Date.now() - 5_000).toISOString();
+  const seen = new Set<string>(poll.seen);
+  let since = pollStart();
   let stopped = false;
 
   const tick = async () => {
@@ -167,9 +191,14 @@ export function startPolling(handle: (msg: InboundMessage) => Promise<void>, int
           if (!isKnown(m) || seen.has(m.id)) continue;
           seen.add(m.id);
           if (m.createdAt > since) since = m.createdAt;
+          poll.since = since;
+          poll.seen.push(m.id);
+          if (poll.seen.length > SEEN_KEEP) poll.seen.splice(0, poll.seen.length - SEEN_KEEP);
           const msg = toInbound(m);
           if (!msg) continue;
           rememberInbound(msg);
+          // Traffic log for debugging live tests: chat type and the sender's last 4 digits only, never content.
+          console.log(`[photon] received ${msg.spaceKind} message from …${msg.fromPhone.slice(-4)}`);
           await handle(msg).catch((err) => console.error("handler failed:", err instanceof Error ? err.message : err));
         }
         pageToken = page.nextPageToken;

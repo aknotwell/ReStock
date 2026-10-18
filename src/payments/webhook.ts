@@ -2,7 +2,8 @@
 import type { Request, Response } from "express";
 import type Stripe from "stripe";
 import { config } from "../config.js";
-import { findMember } from "../core/store.js";
+import { markDebtPaid } from "../core/ledger.js";
+import { db, findMember } from "../core/store.js";
 import { sendPrivate } from "../messaging/photon.js";
 import { cardAdded } from "../messaging/templates.js";
 import { settlePayBack } from "./payback.js";
@@ -28,7 +29,17 @@ export async function stripeWebhook(req: Request, res: Response): Promise<void> 
     switch (event.type) {
       case "checkout.session.completed":
         if (event.data.object.mode === "setup") await saveCardFromSetupSession(event.data.object);
-        else if (event.data.object.mode === "payment" && event.data.object.payment_status === "paid") await settlePayBack(event.data.object);
+        else if (event.data.object.mode === "payment" && event.data.object.payment_status === "paid") {
+          if (event.data.object.metadata?.memberId) await settlePayBack(event.data.object);
+          else markDebtPaidFromSession(event.data.object);
+        }
+        break;
+      // Bank payments (offered through Link) finish Checkout as "processing" and clear days later.
+      case "checkout.session.async_payment_succeeded":
+        if (event.data.object.mode === "payment") {
+          if (event.data.object.metadata?.memberId) await settlePayBack(event.data.object);
+          else markDebtPaidFromSession(event.data.object);
+        }
         break;
       default:
         break;
@@ -40,6 +51,32 @@ export async function stripeWebhook(req: Request, res: Response): Promise<void> 
     return;
   }
   res.json({ received: true });
+}
+
+/**
+ * A member finished a pay-back page. Mark their Debt paid.
+ * Idempotent: marking a paid debt paid again changes nothing.
+ */
+export function markDebtPaidFromSession(
+  session: Stripe.Checkout.Session,
+): "paid" | "not_a_pay_back" | "unknown_debt" | "not_paid" | "amount_mismatch" {
+  // Payment sessions we didn't create for a debt (e.g. `stripe trigger`) have no debtId. Ignore them.
+  const debtId = session.metadata?.debtId;
+  if (!debtId) return "not_a_pay_back";
+  const debt = db.debts.get(debtId);
+  if (!debt) {
+    console.warn("pay-back completed for a debt we don't know; ignoring");
+    return "unknown_debt";
+  }
+  if (session.payment_status !== "paid") return "not_paid";
+  if (session.amount_total !== debt.cents) {
+    // We set the amount from the debt, so this shouldn't happen. Don't guess; leave it open and log.
+    console.error(`pay-back amount ${session.amount_total} doesn't match debt ${debt.id} (${debt.cents})`);
+    return "amount_mismatch";
+  }
+  markDebtPaid(debt.id);
+  // TODO(P1): text the creditor "{debtor} paid you back {amount}".
+  return "paid";
 }
 
 /**

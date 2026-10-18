@@ -37,7 +37,8 @@ describe("family: only the people the owner picks can approve", () => {
   });
 
   it("a kid's request shows the best match and waits for the owner's yes", async () => {
-    const out = await say(PRIYA, "add coffee");
+    expect(texts(await say(PRIYA, "add coffee"))).toMatch(/Which one\?/);
+    const out = await say(PRIYA, "1");
     expect(texts(out)).toMatch(/Priya asked for Ground coffee, 24 oz .*\$12\.99.*Sam: reply "yes"/);
     expect(waiting().map((i) => i.name)).toEqual(["Ground coffee, 24 oz"]);
 
@@ -49,7 +50,8 @@ describe("family: only the people the owner picks can approve", () => {
   });
 
   it("a request sent privately still reaches the group, where the approver sees it", async () => {
-    const out = await say(PRIYA, "add coffee", "direct");
+    expect(texts(await say(PRIYA, "add coffee", "direct"))).toMatch(/Which one\?/);
+    const out = await say(PRIYA, "1", "direct");
     expect(out.find((o) => o.spaceId === `dm-${PRIYA}`)?.text).toMatch(/Best match: Ground coffee.*asked Sam to approve/);
     expect(out.find((o) => o.spaceId === "grp")?.text).toMatch(/Priya asked for Ground coffee/);
   });
@@ -57,12 +59,14 @@ describe("family: only the people the owner picks can approve", () => {
 
 describe("roommates: everyone can approve", () => {
   it("an approver's everyday request goes straight into the cart", async () => {
-    expect(texts(await say(JAKE, "add coffee"))).toMatch(/^Added Ground coffee/);
+    expect(texts(await say(JAKE, "add coffee"))).toMatch(/Which one\?/);
+    expect(texts(await say(JAKE, "1"))).toMatch(/^Added Ground coffee/);
     expect(waiting()).toHaveLength(0);
   });
 
   it("an item over the limit needs someone else's yes, not the person who added it", async () => {
-    expect(texts(await say(JAKE, "add air fryer"))).toMatch(/Jake asked for Air fryer.*Sam or Priya: reply "yes"/);
+    expect(texts(await say(JAKE, "add air fryer"))).toMatch(/Which one\?/);
+    expect(texts(await say(JAKE, "1"))).toMatch(/Jake asked for Air fryer.*Sam or Priya: reply "yes"/);
     expect(texts(await say(JAKE, "yes"))).toMatch(/Only Sam or Priya can approve that/);
     expect(waiting()).toHaveLength(1);
     expect(texts(await say(PRIYA, "yes"))).toMatch(/Approved by Priya: Air fryer/);

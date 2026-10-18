@@ -6,7 +6,7 @@ import { seedDemo } from "../scripts/seed.js";
 import { config } from "../src/config.js";
 import { getProduct, type Product } from "../src/core/catalog.js";
 import { addItem, db, pendingItems } from "../src/core/store.js";
-import { clearLiveDeals, liveOptionsFor, parseOffers, searchOffers, searchQuery } from "../src/deals/live.js";
+import { clearLiveDeals, liveOptionsFor, offCatalogProduct, parseOffers, searchOffers, searchQuery, searchTermsFor } from "../src/deals/live.js";
 import { applyFilters, bestValueId, optionCount, parseUnits, rankOptions } from "../src/deals/rank.js";
 import { knownStore, parseDealRequest, stripDealWords } from "../src/deals/request.js";
 import { handleInbound } from "../src/messaging/inbound.js";
@@ -483,5 +483,68 @@ describe("in the chat", () => {
     expect(out()).toMatch(/would exceed this month's budget\. Sam or Priya: reply "yes"/);
     await say(SAM, "yes");
     expect(pendingItems(H).at(-1)?.needsApproval).toBe(false);
+  });
+});
+
+describe("items that aren't in the demo catalog", () => {
+  const BATTERY_RESULTS = {
+    shopping_results: [
+      row("Energizer MAX AA Batteries, 24 Pack", "Target", 18.49),
+      row("Duracell Coppertop AA Batteries, 20 Count", "Walmart", 16.97),
+      row("Battery Storage Organizer Case", "Amazon", 21.99), // an accessory, not batteries
+      row("Amazon Basics AA Batteries 48 Pack", "Amazon.com", 15.99),
+    ],
+  };
+
+  it("searches the stores with the member's words and adds the picked listing", async () => {
+    const fetch = stubSerpApi(BATTERY_RESULTS);
+    const before = pendingItems(H).length;
+    await say(SAM, "add AA batteries");
+    expect(new URL(fetch.mock.calls[0]![0]).searchParams.get("q")?.toLowerCase()).toBe("aa batteries");
+    expect(out()).toMatch(/Which one\?\n1\. .*Batteries.*\(Amazon\): \$15\.99/);
+    expect(out()).not.toMatch(/Organizer|demo catalog|demo prices/);
+    // Nothing is added until the member picks.
+    expect(pendingItems(H)).toHaveLength(before);
+    await say(SAM, "1");
+    expect(pendingItems(H).at(-1)).toMatchObject({ name: "Amazon Basics AA Batteries 48 Pack (Amazon)", cents: 1599, shared: true });
+  });
+
+  it("logs the search by an id, never the member's words", async () => {
+    stubSerpApi(BATTERY_RESULTS);
+    await say(SAM, "add AA batteries");
+    const serpLines = logs.filter((l) => l.startsWith("[serpapi]"));
+    expect(serpLines.length).toBeGreaterThan(0);
+    expect(serpLines.join("\n")).not.toMatch(/batteries/i);
+    expect(serpLines.join("\n")).toMatch(/"search-[0-9a-f]{12}"/);
+  });
+
+  it("says so when the search finds nothing, and never offers demo prices for it", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("oops", { status: 500 })));
+    await say(SAM, "add AA batteries");
+    expect(out()).toMatch(/couldn’t find store listings for that right now/);
+    expect(out()).not.toMatch(/Which one\?/);
+  });
+
+  it("without a SerpApi key, says it isn't in the demo catalog and never searches", async () => {
+    config.serpapiKey = undefined;
+    const fetch = stubSerpApi(BATTERY_RESULTS);
+    await say(SAM, "add AA batteries");
+    expect(out()).toMatch(/couldn’t find that in the demo catalog/);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("catalog items still search by the catalog name, not the member's words", async () => {
+    const fetch = stubSerpApi();
+    await say(SAM, "add tp");
+    expect(new URL(fetch.mock.calls[0]![0]).searchParams.get("q")).toBe("Toilet paper 12 rolls");
+  });
+
+  it("cleans the search words and refuses anything a guardrail objects to", () => {
+    expect(searchTermsFor("AA batteries!!! 🔋")).toBe("AA batteries");
+    expect(searchTermsFor("!!!")).toBeUndefined();
+    expect(searchTermsFor("sam@example.com")).toBeUndefined();
+    expect(searchTermsFor("x".repeat(100))).toHaveLength(60);
+    // The same words always make the same id, so "the usual" finds the group again.
+    expect(offCatalogProduct("AA batteries")?.id).toBe(offCatalogProduct("aa batteries")?.id);
   });
 });

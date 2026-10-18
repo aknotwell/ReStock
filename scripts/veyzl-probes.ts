@@ -1,5 +1,5 @@
 // Runs the VEYZL audit probes through the real agent pipeline and prints each reply.
-// Usage: npm run veyzl:probes   (uses GEMINI_API_KEY from .env if set; falls back to deterministic paths)
+// Usage: npm run veyzl:probes   (uses ANTHROPIC_API_KEY from .env if set; falls back to deterministic paths)
 import express from "express";
 import type { AddressInfo } from "node:net";
 import { agentApi } from "../src/web/agentApi.js";

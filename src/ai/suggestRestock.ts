@@ -1,8 +1,9 @@
 // Owner: Person 1. Proactive restock suggestions from the household's order history.
 // Suggestions are only ever *offered* in chat ("Add them?"). Nothing is added or charged without a reply.
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { catalog, getProduct, type Product } from "../core/catalog.js";
-import { gemini } from "./client.js";
+import { anthropic, MODEL } from "./client.js";
 import { aiErrorSummary } from "./errors.js";
 
 export type PurchaseRecord = { productId: string; orderedAt: string };
@@ -43,21 +44,27 @@ export async function suggestRestock(
   inCart: Set<string>,
   now: Date = new Date(),
 ): Promise<RestockSuggestion[]> {
-  if (!gemini || history.length === 0) return dueByInterval(history, inCart, now);
+  if (!anthropic || history.length === 0) return dueByInterval(history, inCart, now);
 
   const catalogText = catalog.map((p) => `${p.id}: ${p.name}, restock every ${p.restockDays ?? "n/a"} days`).join("\n");
   const historyText = history.map((h) => `${h.orderedAt.slice(0, 10)} ${h.productId}`).join("\n");
 
   try {
-    const response = await gemini.generate({
+    const response = await anthropic.messages.parse({
+      model: MODEL,
+      max_tokens: 2048,
       system: SYSTEM,
-      user: `Catalog:\n${catalogText}\n\nPurchase history:\n${historyText}\n\nIn cart: ${[...inCart].join(", ") || "nothing"}\nToday: ${now.toISOString().slice(0, 10)}`,
-      schema: SuggestionSchema,
-      maxOutputTokens: 2048,
+      messages: [
+        {
+          role: "user",
+          content: `Catalog:\n${catalogText}\n\nPurchase history:\n${historyText}\n\nIn cart: ${[...inCart].join(", ") || "nothing"}\nToday: ${now.toISOString().slice(0, 10)}`,
+        },
+      ],
+      output_config: { effort: "low", format: zodOutputFormat(SuggestionSchema) },
     });
-    const parsed = SuggestionSchema.safeParse(response.output);
+    const parsed = SuggestionSchema.safeParse(response.parsed_output);
     const out = parsed.success ? parsed.data : undefined;
-    if (!response.finished || !out) return dueByInterval(history, inCart, now);
+    if (response.stop_reason !== "end_turn" || !out) return dueByInterval(history, inCart, now);
 
     // Validate every suggestion against the catalog and the cart; cap at 3.
     const grounded = new Map(dueByInterval(history, inCart, now).map((s) => [s.product.id, s]));

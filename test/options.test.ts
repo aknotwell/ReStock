@@ -1,6 +1,6 @@
 // "Add TP" -> three options to choose from; "the usual" -> what the household bought last time.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-vi.mock("../src/ai/client.js", () => ({ gemini: undefined, MODEL: "test" }));
+vi.mock("../src/ai/client.js", () => ({ anthropic: undefined, MODEL: "test" }));
 import { seedDemo } from "../scripts/seed.js";
 import { alternativesFor, catalog, getProduct, groupOf } from "../src/core/catalog.js";
 import { addItem, db, pendingItems } from "../src/core/store.js";

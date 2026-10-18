@@ -11,9 +11,7 @@ export const config = {
   publicBaseUrl:
     process.env.PUBLIC_BASE_URL ??
     (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "http://localhost:3000"),
-  geminiApiKey: optional("GEMINI_API_KEY"),
-  /** Gemini model for the AI layer. Defaults to a free-tier model open to new projects (2.5 models are limited to past users). */
-  geminiModel: optional("GEMINI_MODEL") ?? "gemini-3.5-flash-lite",
+  anthropicApiKey: optional("ANTHROPIC_API_KEY"),
   photonApiKey: optional("PHOTON_API_KEY"),
   photonProjectId: optional("PHOTON_PROJECT_ID"),
   photonPlatform: (process.env.PHOTON_PLATFORM ?? "imessage") as "imessage" | "sms" | "whatsapp" | "telegram",

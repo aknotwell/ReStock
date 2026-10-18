@@ -1,7 +1,7 @@
 // Live store options: SerpApi parsing, ranking, filters, budget labels, caching, and the catalog fallback.
 // fetch is always stubbed: tests never call SerpApi.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-vi.mock("../src/ai/client.js", () => ({ gemini: undefined, MODEL: "test" }));
+vi.mock("../src/ai/client.js", () => ({ anthropic: undefined, MODEL: "test" }));
 import { seedDemo } from "../scripts/seed.js";
 import { config } from "../src/config.js";
 import { getProduct, type Product } from "../src/core/catalog.js";

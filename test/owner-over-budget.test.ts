@@ -1,6 +1,6 @@
 // "over budget, needs Sam's OK" must never be shown to Sam, the owner: the owner needs nobody's OK.
 import { beforeEach, describe, expect, it, vi } from "vitest";
-vi.mock("../src/ai/client.js", () => ({ gemini: undefined, MODEL: "test" }));
+vi.mock("../src/ai/client.js", () => ({ anthropic: undefined, MODEL: "test" }));
 
 const { seedDemo } = await import("../scripts/seed.js");
 const { db, getHousehold, pendingItems } = await import("../src/core/store.js");

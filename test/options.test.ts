@@ -214,6 +214,22 @@ describe("the usual", () => {
   });
 });
 
+describe("everyday phrasing in the chat, with no LLM", () => {
+  it("'we're out of toilet paper' offers the toilet paper options", async () => {
+    const before = pendingItems(H).length;
+    await say(SAM, "We're out of toilet paper");
+    expect(out()).toMatch(/Which one\?\n1\. Toilet paper, 24 rolls \(bulk\)/);
+    expect(pendingItems(H)).toHaveLength(before);
+  });
+
+  it("'we're out of TP and dish soap' asks about both, one at a time", async () => {
+    await say(SAM, "we're out of TP and dish soap");
+    expect(out()).toMatch(/Which one\?\n1\. Toilet paper/);
+    await say(SAM, "1");
+    expect(out()).toMatch(/Which one\?\n1\. Dish soap/);
+  });
+});
+
 describe("parsing replies", () => {
   it.each([["1", 1], ["2.", 2], ["#3", 3], ["option 2", 2], ["the second one", 2], ["first", 1], ["Three please", 3]])("%j -> %d", (t, v) => {
     expect(parsePick(t as string)).toBe(v);

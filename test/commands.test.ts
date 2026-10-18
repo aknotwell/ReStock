@@ -26,3 +26,37 @@ describe("AI identity disclosure (AGENTS.md: the agent says it's an AI when aske
     expect(parseCommand("who added the chips?")[0]?.type).not.toBe("help");
   });
 });
+
+describe("everyday ways to add items (works without the LLM)", () => {
+  const adds = (text: string) => parseCommand(text).map((i) => (i.type === "add_item" ? i.itemName : i.type));
+
+  it.each([
+    ["We're out of toilet paper", ["toilet paper"]],
+    ["we\u2019re out of TP and dish soap", ["tp", "dish soap"]],
+    ["running low on paper towels!", ["paper towels"]],
+    ["ugh we ran out of eggs", ["eggs"]],
+    ["can we get oat milk?", ["oat milk"]],
+    ["we need more trash bags please", ["trash bags"]],
+    ["grab some coffee", ["coffee"]],
+    ["add sponges to the list", ["sponges"]],
+    ["out of laundry detergent, eggs and coffee", ["laundry detergent", "eggs", "coffee"]],
+  ])("%j -> %j", (text, items) => {
+    expect(adds(text)).toEqual(items);
+  });
+
+  it("keeps 'for me' as personal", () => {
+    expect(parseCommand("I need coffee for me")[0]).toMatchObject({ type: "add_item", itemName: "coffee", shared: false });
+  });
+
+  it.each(["I'm out of town this weekend", "we need to talk", "short on time today", "let's get pizza", "out of curiosity, do we have soap?"])(
+    "leaves ordinary chat alone: %j",
+    (text) => {
+      expect(parseCommand(text).some((i) => i.type === "add_item")).toBe(false);
+    },
+  );
+
+  it("still handles the plain commands", () => {
+    expect(adds("add dish soap")).toEqual(["dish soap"]);
+    expect(parseCommand("order now")[0]?.type).toBe("order_now");
+  });
+});

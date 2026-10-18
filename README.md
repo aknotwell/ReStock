@@ -10,16 +10,19 @@ Built at **DubHacks '26**.
 
 | | Link |
 |---|---|
-| **Dashboard**: log in with your phone number and see your household live | [restock-production-daab.up.railway.app/dashboard](https://restock-production-daab.up.railway.app/dashboard) |
+| **Home**: see how Restock works | [restock-production-daab.up.railway.app](https://restock-production-daab.up.railway.app/) |
+| **Start or join a household** | [restock-production-daab.up.railway.app/start](https://restock-production-daab.up.railway.app/start) |
+| **Dashboard**: switch between your Personal space and all your Groups | [restock-production-daab.up.railway.app/dashboard](https://restock-production-daab.up.railway.app/dashboard) |
 | **Pay back**: log in and settle what you owe | [restock-production-daab.up.railway.app/pay](https://restock-production-daab.up.railway.app/pay) |
+| Privacy | [restock-production-daab.up.railway.app/privacy](https://restock-production-daab.up.railway.app/privacy) |
 | Health check | [restock-production-daab.up.railway.app/health](https://restock-production-daab.up.railway.app/health) |
 
 **Sign up on the web:**
-1. **Start a household** at [restock-production-daab.up.railway.app/start](https://restock-production-daab.up.railway.app/start): your first name, mobile number, and consent. Restock gives you **your own Restock iMessage number**.
-2. **Text "hi" to that number** (the page has an *Open Messages* button). Your first text activates you, and you're the budget owner. Restock replies with your **invite link**.
-3. **Invite roommates** with that link (or text Restock `invite`). They sign up at `/join/<code>`, get their own Restock number, and text "hi" to join. Everyone hears "Amber joined the household."
+1. **Start a household** at [restock-production-daab.up.railway.app/start](https://restock-production-daab.up.railway.app/start): enter your first name and mobile number and give consent. Restock gives you **your own Restock iMessage number**.
+2. **Text "hi" to that number** (the page has an *Open Messages* button). Your first text activates you as the budget owner, and Restock replies with an invite link.
+3. **Invite roommates** with that link (or text Restock `invite`). They open `/join/<code>`, sign up, and text "hi" to join. Everyone hears "Amber joined the household."
 4. **Add your card:** text `add card` and use the secure Stripe link (test mode).
-5. **Log in to the [dashboard](https://restock-production-daab.up.railway.app/dashboard)** with the same phone number. Restock texts you a 6-digit code.
+5. **Log in to the [dashboard](https://restock-production-daab.up.railway.app/dashboard)** with the same phone number. Restock texts you a 6-digit code. Use the Groups and Personal navigation to switch between spaces.
 
 Each person texts their own Restock number, and Restock relays household news (items added, orders, who joined) to everyone's thread. Text `STOP` to stop texts and `delete my data` to leave. Orders are a demo: nothing ships, and payments are Stripe test mode.
 
@@ -89,7 +92,7 @@ Natural phrasing like "we're out of dish soap" is understood by Claude. Without 
 | Rubric | How Restock answers it |
 |---|---|
 | **Innovation** | Shopping moves into the group chat people already use. The AI turns casual messages ("we're out of TP") into a shared cart and splits it by who added what. |
-| **User experience** | No app and no signup for roommates: you just text. Only the owner needs a card. Every action is confirmed in plain language and can be undone by replying. |
+| **User experience** | No app to install: after joining through a web invite, roommates use text. Only the owner needs a card. Every action is confirmed in plain language and can be undone by replying. |
 | **Technical execution** | Claude (structured outputs, validated against schemas) for intent parsing, catalog matching and grounded answers. A real Photon 2.0 iMessage integration. Real Stripe (test mode) hold-then-capture charges per member. |
 | **Commerce impact** | Fewer forgotten essentials, faster checkout, value-ranked options, and no one fronting money: unpaid shares are tracked and paid back with one link. |
 | **Trust & responsibility** | See [Trust and safety](#trust-and-safety) and the VEYZL audit below. |
@@ -165,7 +168,7 @@ flowchart LR
 | Data | A 39-product catalog (`data/catalog.json`); SQLite persistence |
 | Payments | Stripe test mode: Checkout for adding cards and paying back, PaymentIntents (hold then capture) for orders |
 | Server | TypeScript, Node 22+, Express, deployed on Railway |
-| Quality | Vitest (239 tests); CI runs type-check, tests, the VEYZL log check and VEYZL probes on every PR |
+| Quality | Vitest (417 tests); CI runs type-check, tests, the VEYZL log check and VEYZL probes on every PR |
 
 ---
 
@@ -180,7 +183,9 @@ npm run test:probes    # VEYZL probes with the real model (needs ANTHROPIC_API_K
 npm run seed           # demo household (Sam, Jake, Priya)
 ```
 
-- `http://localhost:3000/dashboard` shows a read-only preview of the household, cart, split options and budget.
+- `http://localhost:3000/` serves the landing page (`src/web/public/landing.html`).
+- `http://localhost:3000/dashboard` serves the dashboard (`src/web/public/dashboard.html`). Log in with your phone to see your personal space and group chats, including carts, spending, splits, member card status, approvals, and debts. Live dashboard data is read-only; **Try the demo** previews sample spaces without sending or saving anything.
+- `http://localhost:3000/start` starts the web signup flow; invitees use `/join/<code>`.
 - Without API keys, everything falls back to deterministic code (command parser, keyword catalog match), so the demo still works.
 
 ## Repo map

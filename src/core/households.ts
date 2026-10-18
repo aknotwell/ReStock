@@ -119,6 +119,25 @@ export function createHousehold(ownerName: string, ownerPhone: string, options: 
   return household;
 }
 
+/**
+ * This phone's personal space (only them, on their own card), created if they don't have one yet: for "add TP to my
+ * personal list" from someone who's only in group households. It becomes their active household.
+ */
+export function personalSpaceFor(phone: string): Household {
+  const existing = householdsForPhone(phone).find((h) => h.kind === "personal");
+  if (existing) {
+    setActiveHousehold(phone, existing.id);
+    return existing;
+  }
+  if (atSpaceLimit(phone)) throw new MembershipError(TOO_MANY_SPACES);
+  const name = knownName(phone) ?? "You";
+  const owner: Member = { id: memberId(name, allMemberIds()), name, phone, role: "owner" };
+  const household: Household = { id: newId(), kind: "personal", groupChatId: `personal:${phone}`, ownerId: owner.id, spentCents: 0, members: [owner] };
+  db.households.set(household.id, household);
+  setActiveHousehold(phone, household.id);
+  return household;
+}
+
 /** Add someone to a household. It becomes their active household. */
 export function addMember(household: Household, name: string, phone: string): Member {
   checkCanJoin(household, name, phone);

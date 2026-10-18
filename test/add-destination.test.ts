@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../src/ai/client.js", () => ({ anthropic: undefined, MODEL: "test" }));
 
 import { seedDemo } from "../scripts/seed.js";
-import { addItem, db, pendingItems } from "../src/core/store.js";
+import { addItem, db, householdsForPhone, pendingItems } from "../src/core/store.js";
 import { handleInbound } from "../src/messaging/inbound.js";
 import { rememberInbound } from "../src/messaging/photon.js";
 import { resetDestinations } from "../src/messaging/destination.js";
@@ -54,7 +54,7 @@ beforeEach(async () => {
 describe("asking where it goes, then who it's for", () => {
   it("asks which household, then who it's for, then which one", async () => {
     await say("add oat milk");
-    expect(out()).toMatch(/Which household is this for\?\n1\. Your household \(you, Jake and Priya\)\n2\. we da fam \(Alex and you\)\nReply with a number or name, or "cancel"\./);
+    expect(out()).toMatch(/Which household is this for\?\n1\. Your household \(you, Jake and Priya\)\n2\. we da fam \(Alex and you\)\n3\. Just me: a new personal list, on your own card\nReply with a number or name, or "cancel"\./);
     logs = [];
     await say("2");
     expect(out()).toMatch(/Who's it for in we da fam \(Alex and you\)\? Reply "everyone", "just me", or names like "me and Alex"\./);
@@ -153,3 +153,44 @@ describe("unchanged", () => {
     expect(out()).toMatch(/Which one\?/);
   });
 });
+
+describe("a personal order without a personal list yet", () => {
+  const personal = () => householdsForPhone(SAM).find((h) => h.kind === "personal");
+
+  it("'Order toilet paper for my personal' makes the list and adds there, no household question", async () => {
+    expect(personal()).toBeUndefined();
+    await say("Order toilet paper for my personal");
+    expect(out()).not.toMatch(/Which household|Who's it for/);
+    expect(out()).toMatch(/Which one\?/);
+    await say("1");
+    const list = personal()!;
+    expect(list.members).toMatchObject([{ name: "Sam", phone: SAM, role: "owner" }]);
+    expect(pendingItems(list.id).map((i) => i.name)).toEqual([expect.stringMatching(/Toilet paper/)]);
+    expect(pendingItems("fam-house").some((i) => /Toilet paper/.test(i.name))).toBe(false);
+  });
+
+  it("the household question offers 'Just me', by number or in words", async () => {
+    await say("add oat milk");
+    expect(out()).toMatch(/3\. Just me: a new personal list, on your own card\nReply with a number or name/);
+    logs = [];
+    await say("3");
+    expect(out()).not.toMatch(/Who's it for/); // only them in it
+    expect(out()).toMatch(/Which one\?/);
+    expect(personal()).toBeDefined();
+
+    // Next time their (now existing) personal list is listed by name, and "just me" still picks it.
+    db.households.delete(personal()!.id);
+    await say("add oat milk");
+    await say("just me");
+    expect(personal()).toBeDefined();
+  });
+
+  it("works for someone in only one household too", async () => {
+    const JAKE = "+15550000002";
+    const msg = { messageId: `ad${++n}`, spaceId: `pho_spc_dm_${JAKE}`, spaceKind: "direct" as const, fromPhone: JAKE, text: "add oat milk to my personal list", agentUserId: "pho_usr_agent" };
+    rememberInbound(msg);
+    await handleInbound(msg);
+    expect(householdsForPhone(JAKE).some((h) => h.kind === "personal")).toBe(true);
+  });
+});
+

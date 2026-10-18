@@ -49,10 +49,16 @@ describe("one-on-one: a personal space", () => {
     expect(householdsForPhone(ALEX)[0]?.budgetCents).toBeUndefined();
   });
 
-  it("sends groups to the group chat instead", async () => {
+  it("'group' sets up a household here and hands out an invite link (shared lines can't share one group chat)", async () => {
     await dm(ALEX, "hi");
-    expect(said(await dm(ALEX, "for my roommates"))).toMatch(/Add me to your group chat and say hi there/);
-    expect(householdsForPhone(ALEX)).toHaveLength(0);
+    expect(said(await dm(ALEX, "for my roommates"))).toMatch(/I'll set up your group.*What should I call you/s);
+    await dm(ALEX, "Alex");
+    const done = said(await dm(ALEX, "200"));
+    expect(done).toMatch(/You're set up, Alex! Monthly budget: \$200\.00\./);
+    expect(done).toMatch(/Invite everyone with this link\. .*\/join\/[A-Za-z0-9_-]{16}/);
+    expect(done).not.toMatch(/Add me to your group chat/);
+    const [h] = householdsForPhone(ALEX);
+    expect(h).toMatchObject({ kind: "group", groupType: "roommates", groupChatId: "unbound", budgetCents: 20000 });
   });
 
   it("after setup, texts go to the personal space", async () => {

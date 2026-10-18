@@ -5,11 +5,12 @@
 // 3. Paying opens a Stripe Checkout `payment` session. The card is typed on Stripe's page, never ours.
 //    They can also save the card so their share is charged automatically from the next order on.
 // 4. Stripe's webhook marks the debt paid and texts the person who was paid back.
-import { randomInt, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomInt, randomBytes, timingSafeEqual } from "node:crypto";
 import type Stripe from "stripe";
 import { config } from "../config.js";
 import { markDebtPaid, openDebtsFor } from "../core/ledger.js";
 import { db, findMember } from "../core/store.js";
+import { registerState } from "../core/persist.js";
 import { sendPrivate } from "../messaging/photon.js";
 import { fmt, paidBack } from "../messaging/templates.js";
 import type { Debt, Member } from "../types.js";
@@ -20,9 +21,22 @@ export const CODE_TTL_MS = 10 * 60 * 1000;
 export const SESSION_TTL_MS = 30 * 60 * 1000;
 export const MAX_CODE_TRIES = 5;
 
-// TODO(P2/P3): move into the database with the rest of the store.
-const codes = new Map<string, { code: string; expiresAt: number; tries: number }>(); // memberId -> code
-const sessions = new Map<string, { memberId: string; expiresAt: number }>(); // session token -> member
+// Saved with the rest of the store so a deploy doesn't log everyone out. Only hashes are kept:
+// the saved database never holds a usable login code or session token.
+const codes = new Map<string, { code: string; expiresAt: number; tries: number }>(); // memberId -> sha256(code)
+const sessions = new Map<string, { memberId: string; expiresAt: number }>(); // sha256(token) -> member
+const hash = (secret: string) => createHash("sha256").update(secret).digest("hex");
+registerState("login", {
+  dump: () => ({ codes: [...codes], sessions: [...sessions] }),
+  load: (data) => {
+    const saved = data as { codes?: [string, { code: string; expiresAt: number; tries: number }][]; sessions?: [string, { memberId: string; expiresAt: number }][] };
+    const now = Date.now();
+    codes.clear();
+    sessions.clear();
+    for (const [k, v] of saved.codes ?? []) if (v.expiresAt > now) codes.set(k, v);
+    for (const [k, v] of saved.sessions ?? []) if (v.expiresAt > now) sessions.set(k, v);
+  },
+});
 
 /** Match what someone typed to a member: phone numbers by their last 10 digits, iMessage emails exactly. */
 export function findMemberByHandle(input: string): Member | undefined {
@@ -45,7 +59,7 @@ export async function startLogin(handle: string, now = Date.now()): Promise<void
   const member = findMemberByHandle(handle);
   if (!member) return;
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
-  codes.set(member.id, { code, expiresAt: now + CODE_TTL_MS, tries: 0 });
+  codes.set(member.id, { code: hash(code), expiresAt: now + CODE_TTL_MS, tries: 0 });
   await sendPrivate(member.id, `Your Restock code is ${code}. It expires in 10 minutes. Don't share it with anyone.`, `login:${member.id}:${now}`);
 }
 
@@ -59,23 +73,23 @@ export function verifyLogin(handle: string, code: string, now = Date.now()): str
     codes.delete(member.id);
     return undefined;
   }
-  const given = Buffer.from(code.trim());
+  const given = Buffer.from(hash(code.trim()));
   const want = Buffer.from(entry.code);
   if (given.length !== want.length || !timingSafeEqual(given, want)) return undefined;
   codes.delete(member.id);
   const token = randomBytes(24).toString("base64url");
-  sessions.set(token, { memberId: member.id, expiresAt: now + SESSION_TTL_MS });
+  sessions.set(hash(token), { memberId: member.id, expiresAt: now + SESSION_TTL_MS });
   return token;
 }
 
 export function sessionMember(token: string | undefined, now = Date.now()): Member | undefined {
-  const s = token ? sessions.get(token) : undefined;
+  const s = token ? sessions.get(hash(token)) : undefined;
   if (!s || s.expiresAt < now) return undefined;
   return findMember(s.memberId)?.member;
 }
 
 export function logout(token: string | undefined): void {
-  if (token) sessions.delete(token);
+  if (token) sessions.delete(hash(token));
 }
 
 export type DebtView = { id: string; to: string; cents: number; amount: string; orderDate?: string };

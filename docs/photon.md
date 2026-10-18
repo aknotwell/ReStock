@@ -19,10 +19,19 @@ Restock talks to people through **Photon 2.0**, Photon's Beta platform: the `@ph
 5. Run `npm run dev`. The server polls Photon every 2 seconds for new messages, so it **doesn't need a public URL**.
 6. Text the agent's number "help" from one of those phones.
 
+## How households use it: one Restock number per person
+
+We first planned for Restock to sit in each household's iMessage **group chat**. Photon's free plan gives us **shared lines**, which can't put the agent in a group chat; that needs Photon's paid plan (a $250 subscription). So Restock works like this instead:
+
+- **Everyone gets their own Restock number.** Signing up at `/start`, opening an invite link (`/join/<code>`), or being invited by text (`invite Amber 425-…`) reserves a shared-line number for that person's phone. Their first text to it activates them.
+- **Restock keeps the household in sync.** What one person does ("Amber added dish soap", the order summary, "Jake joined") is relayed to every other member's thread (`relayToOthers` in `src/messaging/inbound.ts`). Private texts (receipts, "you owe", card links) go only to that person.
+- **A person can be in several households.** One-on-one texts go to their active household ("households" lists them, "switch to …" changes it), and Restock asks "Which household is this for?" or "Which cart should I order?" when it's unclear.
+- **Future plan: a shared group chat.** The group-chat path is already in the code. A household binds to the first group chat a member texts from, and an unknown group gets a setup conversation (`src/messaging/onboarding.ts`). Moving to it is a matter of Photon's paid plan, not a rewrite.
+
 ## How it works
 
 - **Inbound:** `startPolling` in `src/messaging/photon.ts` lists received messages, turns each one into an `InboundMessage`, and calls `handleInbound` (`src/messaging/inbound.ts`).
-- **Group binding:** the demo household starts unbound. The first group text from a member links the household to that group chat. To skip this step, set `DEMO_GROUP_SPACE_ID=pho_spc_…`.
+- **Group binding (paid plan only):** a household starts unbound, and household news is relayed to each member's own thread. If Restock is ever added to a group chat, the first group text from a member links the household to that chat, and news goes there instead. To skip this step, set `DEMO_GROUP_SPACE_ID=pho_spc_…`.
 - **Direct messages:** a member who texts the agent one-to-one gets private replies there. Later private messages, like receipts and "you owe" texts, go to that DM.
 - **Outbound:** replies use the agent identity that received the message (`receivedBy.id`), with an idempotency key per inbound message, so retries don't send duplicates.
 - **Local testing without Photon:** set `DEV_INBOUND=1`, then:
@@ -70,17 +79,22 @@ The AI understands natural phrasing. The fallback parser, used when there's no A
 | `add dish soap` / "we're out of TP" | Matched to the catalog and added (shared by default) | Same chat |
 | `personal` / `shared` | Flips the sender's most recent item | Same chat |
 | `remove dish soap` | Removes that item from the cart | Same chat |
-| `order now` | Places the order and posts a summary to the group | Group; then **private** receipts, and a "you owe" text with pay-back and add-card links for members without a card |
+| `order now` | Shows the cart grouped by who pays and asks "yes" (in several households it first asks which cart). The "yes" places the order | The summary to the sender and relayed to every member; then **private** receipts, and a "you owe" text with pay-back and add-card links for members without a card |
 | `what do I owe?` | The sender's own balances only | **Private** |
 | `yes` (owner only) | Approves items waiting for approval | Same chat |
 | `add card` | A secure Stripe add-card link | **Private** |
 | `contact` / `save contact` | A link that saves this Restock number as **"restock"** (with the logo) in their contacts: tap it, then "Create New Contact". It's also in the welcome text and on the sign-up page. The card is only made for Restock's own numbers (`/contact/<number>.vcf`). | Same chat |
 | `help` | What Restock is (an AI) and how it works | Same chat |
+| `households` / `switch to Maple House` | Lists your households / chooses which one your one-on-one texts go to | Same chat |
+| `new household called Soccer Team`, `rename household …` | Starts another household with you as owner / renames one (owner only) | Same chat |
+| `join <code>` (or the invite link) | Joins another household under the name you already use, without signing up again | Same chat; the others hear "… joined the household" |
+| `leave household` / `delete my data` | Leaves the active household / leaves all of them and deletes your data (both ask "yes" first) | Same chat |
 
-When a member adds a card, the Stripe webhook texts them "Card added, ending 4242" privately.
+When a member adds a card, Restock texts them "Card added, ending 4242" privately (once, whether the card is confirmed on the success page or by the Stripe webhook).
 
- (please verify on the real line)
+## Known limits
 
-- **Shared lines can't start conversations.** A person has to text the agent first. If a member hasn't DM'd the agent, a private message becomes a group nudge asking them to text it directly.
-- **Shared-line assignments are per sender.** Each teammate needs their own assignment, and each may get a different agent number. **We haven't confirmed that a group chat works on shared lines.** If it doesn't, the demo falls back to each person DMing the agent. Ask the Photon sponsor reps about groups on shared lines.
+- **Shared lines can't start conversations.** A person has to text the agent first. Private texts for someone who hasn't texted yet are held and delivered when they do.
+- **Shared-line assignments are per sender.** Each person needs their own assignment, and each may get a different agent number. That's why sign-up and invites hand out a number per person.
+- **No group chats on the free plan.** Confirmed: putting the agent in a group chat needs Photon's paid plan ($250). We relay household news to each person's thread instead (see above). The free plan includes 25 shared assignments, so open sign-ups are capped at 20 (`MAX_OPEN_SIGNUPS`).
 - **Polling adds up to 2 seconds of delay.** Photon's Socket.IO event stream (`/docs/beta/websocket`) can replace it later.

@@ -13,8 +13,9 @@ so the UI matches what the backend actually does. Ask me before changing anythin
 src/payments/, src/core/ or src/messaging/ (those belong to teammates: payments is Amber).
 
 ## What Restock is
-An AI agent in a household's group chat (iMessage via Photon). Roommates text things like "we're out
-of TP", items go into a shared cart, someone texts "order now", and Restock charges everyone's share
+An AI agent a household texts on iMessage (via Photon). Each person texts their own Restock number, and
+Restock relays household news to everyone (a shared group chat needs Photon's paid plan, so it's a future
+plan). Roommates text things like "we're out of TP", items go into a shared cart, someone texts "order now", and Restock charges everyone's share
 and texts receipts. The web frontend is a companion: it shows the household, the cart, who pays for
 what, who owes what, and lets people pay back or add a card. Texting stays the main way to use Restock.
 

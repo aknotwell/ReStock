@@ -313,7 +313,7 @@
   <section class="panel" id="panel" role="tabpanel">
     <form class="new-group" id="new-group-form" hidden novalidate>
       <h2 class="new-group-title">New group</h2>
-      <p class="note">You'll be its budget owner. Invite people with the link it gives you, or add Restock to your group chat and say hi.</p>
+      <p class="note">You'll be its budget owner. Invite people with the link it gives you. Each person texts their own Restock number, and Restock keeps everyone in the loop.</p>
       <div class="new-group-form">
         <label class="sr-only" for="new-group-name">Group name</label>
         <input class="text-input" id="new-group-name" maxlength="30" placeholder="Group name" autocomplete="off" required>
@@ -1088,7 +1088,7 @@
     const groupsPage = mode === "groups";
     $("#empty-title").textContent = groupsPage ? "Groups" : "Personal";
     $("#empty-text").textContent = groupsPage
-      ? "No groups yet. Tap New group to start one, or add Restock to your group chat and say hi."
+      ? "No groups yet. Tap New group to start one, or open an invite link from someone to join theirs."
       : "No personal space yet. Text Restock \"just me\" to set one up.";
   }
 

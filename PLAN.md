@@ -7,7 +7,9 @@ Rules, tracks, and engineering guardrails are in [AGENTS.md](AGENTS.md). Read it
 
 ## What we're building
 
-Restock is an AI agent in a household's group chat (built on **Photon 2.0**) for restocking supplies. Roommates add items in plain language ("we're out of TP") and the AI turns that into cart items, someone says "order now", and Restock places the order and splits the bill.
+Restock is an AI agent a household texts on iMessage (built on **Photon 2.0**) for restocking supplies. Roommates add items in plain language ("we're out of TP") and the AI turns that into cart items, someone says "order now", and Restock places the order and splits the bill.
+
+> **Pivot:** this plan started with Restock inside the household's group chat. A group chat with the agent needs Photon's paid plan (a $250 subscription), so we built on the free plan's shared lines instead: each person texts their own Restock number and Restock relays household news to everyone. See [Where it ended up](#where-it-ended-up) below.
 
 **Payment model (decided):** the budget owner's card is required. Everyone else's card is optional.
 
@@ -31,6 +33,16 @@ Even splits are done in **integer cents**. The remainder cents go one each to th
 > Stack suggestions (change them if the team prefers something else): TypeScript/Node, **Photon 2.0** for messaging (required for the Photon track), the Claude API for the AI layer, Stripe in test mode, SQLite or Postgres, and a small web server for the `/card` and `/pay` pages.
 
 ---
+
+## Where it ended up
+
+What we actually shipped by the deadline, where it differs from the plan below:
+
+- **Per-person threads instead of one group chat.** Photon's shared lines (free plan) can't put the agent in a group chat; that needs the $250 paid plan. Each person gets their own Restock number at sign-up (`/start`) or through an invite link (`/join/<code>`), and Restock relays "Amber added dish soap", order summaries, and joins to everyone's thread (`relayToOthers` in `src/messaging/inbound.ts`). Shared lines also can't text first, so private texts wait until a person has texted Restock once. The group-chat code (binding a household to a chat, group onboarding) is still there for when we upgrade. **Future plan:** move back to a shared group chat.
+- **Web sign-up and a dashboard.** People join on the web instead of by texting a group. The dashboard (`/dashboard`, texted-code login) shows each space's cart, splits, budget and debts, and lets you create a group, share its invite link, add a card, and remove people or delete a group.
+- **Several households per person.** One phone can be in up to five households (roommates, family, a team) plus a personal space. One-on-one texts go to the active household ("households", "switch to …"), "order now" and adds ask which one when it's unclear, and a card added in one household is used in all of them.
+- **Live store prices.** Options come from real store listings (SerpApi Google Shopping) when available, ranked by price per unit in code, with the demo catalog as the fallback. Orders themselves are still a demo: nothing ships, and payments are Stripe test mode.
+- **Charges are hold-then-capture.** Every share is authorized first and captured only once all holds succeed, so a declined card never leaves a partial order.
 
 ## Shared contracts (agree on these first, about 30 min, all four people)
 
@@ -81,7 +93,7 @@ sendPrivate(memberId, text): Promise<void>
 
 You own everything that comes in or goes out as a message, and the generative AI that makes sense of it.
 
-- [ ] Set up **Photon 2.0** (photon.co/beta): the agent's number, the inbound webhook, and the group thread on at least one channel (iMessage or SMS). This is required for the Photon track.
+- [ ] Set up **Photon 2.0** (photon.co/beta): the agent's number, the inbound webhook, and the group thread on at least one channel (iMessage or SMS). This is required for the Photon track. *(Shipped on iMessage with polling and per-person numbers; a group thread needs Photon's paid plan. See "Where it ended up".)*
 - [ ] **AI layer** (`src/ai/`, using the Claude API with tool use or structured output):
   - Intent parsing: "we're out of TP and dish soap" becomes two `add_item` intents. Also handle "order now", "make the chips personal", and "what do I owe?"
   - Normalize items and suggest a price from a small demo catalog, and suggest shared vs personal. The reply always shows what the AI decided and how to change it.
@@ -176,14 +188,14 @@ You own what judges see outside the texts, the VEYZL audit evidence, and you mak
 
   - Order total: $72.75
 - [ ] **Demo script** that shows both payment paths, using the `smart` rule:
-  1. Roommates add items in the group chat.
-  2. "order now" shows the cart grouped by who pays; "yes" places it and sends the group summary.
+  1. Roommates add items by texting Restock (each in their own thread; everyone sees what the others add).
+  2. "order now" shows the cart grouped by who pays; "yes" places it and sends everyone the order summary.
   3. Sam's and Jake's private receipts arrive.
   4. Priya gets "you owe Sam" with a pay link.
   5. Priya taps the link and pays, and the debt is marked paid.
   6. The air fryer lands on Jake alone, which shows the split is smart.
 - [ ] Pitch slides, covering the checklist in AGENTS.md:
-  - **Visa:** AI-native shopping in the group chat, real split payments at checkout, Restock never stores card numbers (only Stripe tokens), the card-number guard
+  - **Visa:** AI-native shopping over iMessage, real split payments at checkout, Restock never stores card numbers (only Stripe tokens), the card-number guard
   - **VEYZL:** the before/after audit
   - **Best Startup Idea:** users, viral loop, business model
 - [ ] End-to-end QA in the hour before the demo, with backup screenshots or a recording in case the SMS provider is slow.

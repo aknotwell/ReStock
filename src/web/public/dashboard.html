@@ -208,7 +208,12 @@
   .settings-note { grid-column: 1 / -1; }
   .invite { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-block: 12px; border-top: 1px dashed var(--rule); }
   .invite .text-input { flex: 1 1 200px; min-height: 42px; font-size: 14px; }
-  #new-group-hint { max-width: 34ch; }
+  .new-group { display: grid; gap: 14px; }
+  .new-group[hidden] { display: none; }
+  .new-group-title { margin: 0; font-size: 44px; font-weight: 900; font-stretch: 112%; letter-spacing: -0.02em; line-height: 1; }
+  .new-group .segmented { margin-bottom: 0; }
+  .new-group .error { margin: 0; }
+  .new-group-form .text-input.budget { width: 240px; }
 
   @media (prefers-reduced-motion: no-preference) {
     .swap { animation: swap .2s cubic-bezier(.16, 1, .3, 1); }
@@ -227,7 +232,8 @@
     .panel-head { flex-direction: column; align-items: flex-start; }
     .flags { justify-content: flex-start; }
     #space-title { font-size: 34px; }
-    .new-group-form .text-input { flex: 1 1 160px; width: auto; }
+    .new-group-form .text-input, .new-group-form .text-input.budget { flex: 1 1 160px; width: auto; }
+    .new-group-title { font-size: 34px; }
   }
   @media (max-width: 420px) {
     .account #account-name { display: none; }
@@ -295,12 +301,31 @@
   <div class="tabbar" id="tabbar">
     <div class="tabs" id="tabs" role="tablist" aria-label="Your groups"></div>
     <div class="tab-actions">
-      <button class="btn primary" id="add-group" type="button"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>New group</button>
-      <p class="note" id="new-group-hint" role="status" hidden>Add Restock to your group chat and say hi. It sets the group up by text.</p>
+      <button class="btn primary" id="add-group" type="button" aria-expanded="false" aria-controls="new-group-form"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>New group</button>
     </div>
   </div>
 
   <section class="panel" id="panel" role="tabpanel">
+    <form class="new-group" id="new-group-form" hidden novalidate>
+      <h2 class="new-group-title">New group</h2>
+      <p class="note">You'll be its budget owner. Invite people with the link it gives you, or add Restock to your group chat and say hi.</p>
+      <div class="new-group-form">
+        <label class="sr-only" for="new-group-name">Group name</label>
+        <input class="text-input" id="new-group-name" maxlength="30" placeholder="Group name" autocomplete="off" required>
+        <div class="segmented" id="new-group-type" role="group" aria-label="Kind of group">
+          <button type="button" data-type="roommates" aria-pressed="true">Roommates</button>
+          <button type="button" data-type="family" aria-pressed="false">Family</button>
+          <button type="button" data-type="other" aria-pressed="false">Other</button>
+        </div>
+        <label class="sr-only" for="new-group-budget">Monthly budget in dollars (optional)</label>
+        <input class="text-input budget" id="new-group-budget" inputmode="decimal" placeholder="Monthly budget (optional)" autocomplete="off">
+      </div>
+      <div class="new-group-form">
+        <button class="btn primary" type="submit" id="new-group-create">Create group</button>
+        <button class="btn" type="button" id="new-group-cancel">Cancel</button>
+      </div>
+      <p class="error" id="new-group-error" role="alert" hidden></p>
+    </form>
     <div class="panel-body empty" id="empty-body" hidden>
       <h2 id="empty-title"></h2>
       <p id="empty-text"></p>
@@ -687,6 +712,8 @@
     $("#app").hidden = false;
     $("#page-title").textContent = "Personal";
     $("#tabbar").hidden = true;
+    $("#new-group-form").hidden = true;
+    $("#add-group").setAttribute("aria-expanded", "false");
     $("#panel").classList.add("standalone");
     selectedId = "personal";
     renderSpace();
@@ -978,7 +1005,7 @@
     let url = "https://restock.example/join/demo";
     if (live) {
       try {
-        ({ url } = await api("/app/api/invite", {}));
+        ({ url } = await api("/app/api/invite", { memberId: spaceById(selectedId).me.id }));
       } catch (err) {
         return alert(err.message);
       }
@@ -1038,11 +1065,13 @@
     const groupsPage = mode === "groups";
     $("#empty-title").textContent = groupsPage ? "Groups" : "Personal";
     $("#empty-text").textContent = groupsPage
-      ? "No groups yet. Add Restock to your group chat and say hi. It sets the group up by text."
+      ? "No groups yet. Tap New group to start one, or add Restock to your group chat and say hi."
       : "No personal space yet. Text Restock \"just me\" to set one up.";
   }
 
   function renderSpace() {
+    $("#new-group-form").hidden = true; // showing a group (or Personal) closes an open New group form
+    $("#add-group").setAttribute("aria-expanded", "false");
     const space = spaceById(selectedId);
     const panel = $("#panel");
     $("#empty-body").hidden = !!space;
@@ -1083,10 +1112,87 @@
   });
   routineToggle.addEventListener("change", () => { spaceById(selectedId).routine = routineToggle.checked; });
 
-  // ---------- New group: groups are set up by text, in the group chat ----------
-  $("#add-group").addEventListener("click", () => {
-    const hint = $("#new-group-hint");
-    hint.hidden = !hint.hidden;
+  // ---------- New group: POST /app/api/households makes it, owned by you, and returns its invite link ----------
+  const newGroupForm = $("#new-group-form");
+  let newGroupType = "roommates";
+  // The form takes the panel's place, like a new tab that isn't made yet. Cancel puts the open group back.
+  function openNewGroup(open) {
+    newGroupForm.hidden = !open;
+    $("#add-group").setAttribute("aria-expanded", String(open));
+    $("#new-group-error").hidden = true;
+    if (!open) {
+      syncTabs();
+      return renderSpace();
+    }
+    $("#panel-body").hidden = true;
+    $("#empty-body").hidden = true;
+    for (const tab of tabsEl.querySelectorAll('[role="tab"]')) tab.setAttribute("aria-selected", "false");
+    newGroupForm.reset();
+    setNewGroupType("roommates");
+    swapIn(newGroupForm);
+    $("#new-group-name").focus();
+  }
+  function setNewGroupType(type) {
+    newGroupType = type;
+    for (const b of document.querySelectorAll("#new-group-type button")) b.setAttribute("aria-pressed", String(b.dataset.type === type));
+  }
+  function newGroupError(message) {
+    $("#new-group-error").textContent = message;
+    $("#new-group-error").hidden = false;
+  }
+  $("#add-group").addEventListener("click", () => openNewGroup(newGroupForm.hidden));
+  $("#new-group-cancel").addEventListener("click", () => openNewGroup(false));
+  for (const b of document.querySelectorAll("#new-group-type button")) b.addEventListener("click", () => setNewGroupType(b.dataset.type));
+
+  newGroupForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = $("#new-group-name").value.trim().replace(/\s+/g, " ");
+    const rawBudget = $("#new-group-budget").value.trim();
+    if (!name) return newGroupError("Give the group a name, like Maple House.");
+    if (rawBudget && !/^\$?\s*\d{1,5}(\.\d{1,2})?$/.test(rawBudget.replace(/,/g, ""))) return newGroupError("Enter the budget as an amount, like 200, or leave it empty.");
+    const budgetCents = rawBudget ? toCents(rawBudget) || null : null;
+    const create = $("#new-group-create");
+    create.disabled = true;
+    let id, inviteUrl;
+    try {
+      if (live) {
+        const result = await api("/app/api/households", { name, groupType: newGroupType, budgetCents });
+        await loadSpaces();
+        id = result.space.id;
+        inviteUrl = result.inviteUrl;
+      } else {
+        // Demo: only on this page.
+        const me = { id: `sam-${Date.now()}`, name: "Sam", role: "owner", cardLast4: null };
+        const view = {
+          id: `demo-${Date.now()}`,
+          me,
+          household: { name, kind: "group", groupType: newGroupType, budgetCents, spentCents: 0, approvalOverCents: null },
+          members: [{ id: me.id, name: "Sam", role: "owner", hasCard: false, canApprove: true, isMe: true }],
+          items: [],
+          sharesIfOrderedNow: {},
+          openDebts: [],
+        };
+        spaces.push(toSpace(view, spaces.length));
+        groups = spaces.filter((s) => s.kind === "group");
+        id = view.id;
+        inviteUrl = "https://restock.example/join/demo";
+      }
+    } catch (err) {
+      return newGroupError(err.message);
+    } finally {
+      create.disabled = false;
+    }
+    newGroupForm.hidden = true;
+    $("#add-group").setAttribute("aria-expanded", "false");
+    if (mode !== "groups") showGroups();
+    renderTabs();
+    selectedId = null;
+    selectSpace(id, { focus: true });
+    // Hand over the invite link straight away: that's the next thing they'll want.
+    $("#invite-button").hidden = true;
+    $("#invite-url").value = inviteUrl;
+    $("#invite-url").hidden = false;
+    $("#invite-copy").hidden = false;
   });
 </script>
 </body>

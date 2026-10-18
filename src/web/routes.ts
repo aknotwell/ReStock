@@ -10,6 +10,8 @@ import { householdView, ownRecord, spacesView } from "./appState.js";
 import { rateLimiter } from "./rateLimit.js";
 import { householdForInvite, inviteCodeFor, resetInvite, SignupError, startSignup, INVITE_TTL_MS } from "../core/signups.js";
 import { findMember } from "../core/store.js";
+import { cleanHouseholdName, createHousehold, householdName, MembershipError } from "../core/households.js";
+import type { Household } from "../types.js";
 import { isRestockLine, LineUnavailableError } from "../messaging/photonLines.js";
 import { CONTACT_NAME, contactCard, contactLink } from "./contactCard.js";
 import { createPayBackCheckout, logout, myDebts, SESSION_TTL_MS, sessionMember, startLogin, verifyLogin } from "../payments/payback.js";
@@ -177,8 +179,7 @@ webRoutes.get("/signup/api/invite/:code", (req, res) => {
     res.status(404).json({ error: "This invite link has expired or was reset. Ask for a new one." });
     return;
   }
-  const owner = household.members.find((m) => m.id === household.ownerId);
-  res.json({ householdName: `${owner?.name ?? "A"}'s household`, members: household.members.length });
+  res.json({ householdName: householdName(household), members: household.members.length });
 });
 
 webRoutes.post("/signup/api/start", async (req, res) => {
@@ -208,12 +209,52 @@ webRoutes.post("/signup/api/start", async (req, res) => {
   }
 });
 
-// The owner's invite link (dashboard "Invite roommates"). Owner-only.
+// The owner's invite link (dashboard "Invite roommates"). Owner-only. `memberId` picks which of the logged-in
+// person's households (their own member record there); none = the one they logged in with.
 const ownerHousehold = (req: Request) => {
   const member = sessionMember(payToken(req));
-  const found = member && findMember(member.id);
+  const mine = member && ownRecord(member, text(req.body?.memberId, 80) || member.id);
+  const found = mine && findMember(mine.id);
   return found && found.household.ownerId === found.member.id ? found : undefined;
 };
+
+// "New group" on the dashboard: start another household with the logged-in person as its budget owner.
+// Same rules as starting one by text (createHousehold); it gets an invite link right away.
+const GROUP_TYPES = new Set(["roommates", "family", "other"]);
+webRoutes.post("/app/api/households", (req, res) => {
+  const member = sessionMember(payToken(req));
+  if (!member) {
+    res.status(401).json({ error: "Please log in." });
+    return;
+  }
+  const name = cleanHouseholdName(text(req.body?.name, 40));
+  if (!name) {
+    res.status(400).json({ error: "Give the group a name of up to 30 letters or numbers, like Maple House." });
+    return;
+  }
+  const groupType = text(req.body?.groupType, 20);
+  if (!GROUP_TYPES.has(groupType)) {
+    res.status(400).json({ error: "Pick roommates, family, or other." });
+    return;
+  }
+  const rawBudget = req.body?.budgetCents;
+  const budgetCents = rawBudget === null || rawBudget === undefined ? null : Number(rawBudget);
+  if (budgetCents !== null && !(Number.isInteger(budgetCents) && budgetCents > 0 && budgetCents <= 10_000_00)) {
+    res.status(400).json({ error: "The budget should be a whole amount up to $10,000, or leave it empty for no budget." });
+    return;
+  }
+  try {
+    const household = createHousehold(member.name, member.phone, { name, groupType: groupType as NonNullable<Household["groupType"]>, budgetCents });
+    const owner = household.members[0]!;
+    res.json({ space: householdView(owner), inviteUrl: inviteUrl(inviteCodeFor(household, owner.id)), expiresInDays: INVITE_TTL_MS / 86_400_000 });
+  } catch (err) {
+    if (err instanceof MembershipError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+});
 const inviteUrl = (code: string) => `${config.publicBaseUrl}/join/${code}`;
 webRoutes.post("/app/api/invite", (req, res) => {
   const found = ownerHousehold(req);

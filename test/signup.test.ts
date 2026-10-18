@@ -62,7 +62,10 @@ describe("start a household on the web", () => {
     await expect(startSignup({ name: "Alex", phone: "555-0101" })).rejects.toThrow(/10-digit/);
     await startSignup({ name: "Alex", phone: ALEX });
     await dm(ALEX, "hi");
-    await expect(startSignup({ name: "Alex", phone: ALEX })).rejects.toThrow(/already uses Restock.*delete my data/);
+    // Already using Restock: starting another household on the web is fine, but not joining the same one twice.
+    await expect(startSignup({ name: "Alex", phone: ALEX })).resolves.toMatchObject({ householdName: null });
+    const [h] = householdsForPhone(ALEX);
+    await expect(startSignup({ name: "Alex", phone: ALEX, inviteCode: inviteCodeFor(h!, h!.ownerId) })).rejects.toThrow(/already in Alex's household/);
   });
 
   it("unactivated sign-ups expire after 24 hours", async () => {

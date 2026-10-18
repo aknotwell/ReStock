@@ -28,6 +28,9 @@ const UNIT_WORDS: Record<string, RegExp> = {
   egg: /^(?:eggs?|dozen)$/i, carton: /^cartons?$/i, load: /^loads?$/i,
 };
 
+/** Lowercase, "24-rolls"/"24rolls" -> "24 rolls", single spaces, no punctuation (decimal points stay: "19.4 oz"). */
+const normSize = (s: string) =>
+  s.toLowerCase().replace(/(\d)\s*-?\s*(?=[a-z])/g, "$1 ").replace(/[^a-z0-9.\s]+|\.(?!\d)/g, " ").replace(/\s+/g, " ").trim();
 const words = (s: string) => s.toLowerCase().split(/[^\p{L}\p{N}'&.-]+/u).filter(Boolean);
 
 /**
@@ -84,8 +87,9 @@ function validBrand(brand: string | null | undefined, allowed: string[], memberT
 export async function searchSpecFor(requested: string, product: Product, memberText: string): Promise<SearchSpec> {
   const { rest, size } = leftoverWords(requested, product);
   const spec: SearchSpec = {};
-  if (size) {
-    if (sizeFits(size.unit, product) && memberText.toLowerCase().includes(size.text.split(" ")[0]!)) spec.size = size.text;
+  // The whole size, unit included, must be in what they texted ("24 rolls", "24-rolls" or "24rolls" all count).
+  if (size && ` ${normSize(memberText)} `.includes(` ${normSize(size.text)} `)) {
+    if (sizeFits(size.unit, product)) spec.size = size.text;
     else spec.droppedSize = size.text;
   }
   if (!rest.length || rest.length > 6 || !anthropic) return spec;

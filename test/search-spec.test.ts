@@ -102,6 +102,18 @@ describe("searchSpecFor", () => {
     expect(ai.calls).toBe(0);
   });
 
+  it("needs the whole size, unit included, in the member's own text", async () => {
+    // Only the number was typed: the "rolls" came from the parsed item, not from them.
+    expect(await searchSpecFor("toilet paper 24 rolls", TP(), "add toilet paper, 24 of them")).toEqual({});
+    // A size they never typed isn't reported as one that "doesn't fit".
+    expect(await searchSpecFor("12 oz toilet paper", TP(), "add toilet paper")).toEqual({});
+    // Spacing and hyphens don't matter.
+    expect(await searchSpecFor("toilet paper 24 rolls", TP(), "add TP, 24-rolls!")).toEqual({ size: "24 rolls" });
+    expect(await searchSpecFor("dish soap 56oz", DISH(), "need 56 oz dish soap")).toEqual({ size: "56oz" });
+    expect(await searchSpecFor("toilet paper 24 rolls", TP(), "we need toilet paper, 24 rolls.")).toEqual({ size: "24 rolls" });
+    expect(await searchSpecFor("dish soap 19.4 fl oz", DISH(), "dish soap 19.4 fl. oz")).toEqual({ size: "19.4 fl oz" });
+  });
+
   it("searches without a brand if the AI check fails", async () => {
     ai.fail = true;
     expect(await searchSpecFor("Dawn dish soap 56 oz", DISH(), "add Dawn dish soap 56 oz")).toEqual({ size: "56 oz" });

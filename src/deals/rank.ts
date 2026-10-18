@@ -90,17 +90,26 @@ const UNIT_WORDS: Record<string, string> = {
   bottle: "bottles?",
 };
 const PACK_UNITS = new Set(["carton", "bottle"]);
+// Rolls sold as "double", "mega", "jumbo"... are bigger than a regular roll by an amount we can't know, so a
+// per-roll price would compare unlike things.
+const ROLL_SIZE = /\b(?:double|triple|quad(?:ruple)?|mega|jumbo|huge|giant|family|super|xl|big)\b/;
+// A bottle or carton that states its own volume ("40 fl oz") may be a different size from the catalog's.
+const VOLUME = /(?<![\w.])\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|oz|ounces?|ml|l|liters?|litres?|gal(?:lons?)?|qt|quarts?)\b/;
 const MEASURE = /\b(?:gal|gallons?|qt|quarts?|ply|inch|in|oz|ounces?|lbs?|pounds?|liters?|l|ml|mil|sheets?|ft|feet)\b/;
 
 /**
  * Pack size from a store title in the catalog product's unit ("Charmin, 24 Mega Rolls" -> 24 for "roll").
  * Undefined when the title doesn't say; we never guess. Such options are shown but can't be "best value".
  * A number glued to letters or a decimal point doesn't count: "38C405" is a model number, not 405 rolls.
+ * Rolls of a non-standard size ("8 Triple Rolls") and bottles or cartons with a stated volume are left undefined:
+ * their per-unit price wouldn't be comparable with the catalog's.
  */
 export function parseUnits(title: string, unit: string | undefined): number | undefined {
   if (!unit) return undefined;
   const t = title.toLowerCase().replace(/,/g, " ");
   const ok = (n: number) => (Number.isFinite(n) && n > 0 && n <= 1000 ? n : undefined);
+  if (unit === "roll" && ROLL_SIZE.test(t)) return undefined;
+  if (PACK_UNITS.has(unit) && VOLUME.test(t)) return undefined;
   if (unit === "oz") {
     const oz = /(?<![\w.])(\d+(?:\.\d+)?)\s*(?:fl\.?\s*)?(?:oz|ounces?)\b/.exec(t);
     if (oz) return ok(Number(oz[1]));

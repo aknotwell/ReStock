@@ -16,6 +16,7 @@ const BLANKED = [
   "DEMO_MEMBERS",
   "AGENT_API_TOKEN",
   "DEV_INBOUND",
+  "SERPAPI_KEY",
 ];
 
 const hermetic: Record<string, string> = {

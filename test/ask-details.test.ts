@@ -108,3 +108,48 @@ describe("asking for a brand or size", () => {
     expect(await dm("We're out of toilet paper")).toMatch(/Restock demo prices/);
   });
 });
+
+describe("a hint when the request was vague but there's plenty to pick from", () => {
+  const VARIED = {
+    shopping_results: [
+      row("Charmin Ultra Soft Toilet Paper, 12 Rolls", "Target", 11.99),
+      row("Quilted Northern Toilet Paper, 24 Rolls", "Walmart", 21.49),
+      row("Cottonelle Toilet Paper, 18 Rolls", "Costco", 16.99),
+    ],
+  };
+  const HINT = /Reply 1, 2 or 3, or "cancel"\.\nWant a brand \((?:Charmin|Quilted|Cottonelle)(?:, (?:Charmin|Quilted|Cottonelle))? or (?:Charmin|Quilted|Cottonelle)\) or a size \(12, 18 or 24 rolls\)\? Reply like "\w+, 24 rolls" and I'll search again\./;
+
+  it("shows the options now, with the brands and sizes these listings come in (code only, no Claude)", async () => {
+    results["Toilet paper 12 rolls"] = VARIED;
+    const reply = await dm("We're out of toilet paper");
+    expect(reply).toMatch(/Which one\?\n1\./);
+    expect(reply).toMatch(HINT);
+  });
+
+  it("a brand or size reply searches again instead of being misread", async () => {
+    results["Toilet paper 12 rolls"] = VARIED;
+    await dm("We're out of toilet paper");
+    const reply = await dm("Cottonelle, 24 rolls");
+    expect(searched()).toContain("Toilet paper 24 rolls");
+    expect(reply).toMatch(/Which one\?\n1\. .*24 Rolls/);
+    expect(reply).not.toMatch(/Want a brand/); // their answer isn't hinted again
+    // The old question is gone: "1" now picks from the new search.
+    expect(await dm("1")).toMatch(/Added .*24 Rolls/);
+  });
+
+  it("no hint when the listings don't differ, or they already said a size", async () => {
+    results["Toilet paper 12 rolls"] = {
+      shopping_results: [row("Charmin Toilet Paper, 12 Rolls", "Target", 11.99), row("Charmin Toilet Paper, 12 Rolls", "Walmart", 12.49)],
+    };
+    expect(await dm("We're out of toilet paper")).not.toMatch(/Want a/);
+    results["Toilet paper 24 rolls"] = PLENTY;
+    expect(await dm("We're out of toilet paper, 24 rolls")).not.toMatch(/Want a/);
+  });
+
+  it("'1' still picks normally from a hinted question", async () => {
+    results["Toilet paper 12 rolls"] = VARIED;
+    await dm("We're out of toilet paper");
+    expect(await dm("1")).toMatch(/Added /);
+  });
+});
+

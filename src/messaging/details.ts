@@ -66,3 +66,51 @@ export const NO_PREFERENCE = /^(?:any(?:thing| is fine| works)?|no(?:pe|ne)?|nah
 export function resetDetails(): void {
   pending.clear();
 }
+
+// ---------- Vague but plenty: a hint under the options ----------
+
+export type DetailKind = "brand" | "size";
+
+/** "Charmin, Cottonelle or Scott", "12 or 24 rolls". */
+const orList = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} or ${xs.at(-1)}`);
+
+/**
+ * How the shown store listings differ: their pack sizes (in the product's unit) and brands (a listing title's first
+ * word, unless it's one of the product's own words, like "Toilet"). Only real listing data, never the model's words.
+ */
+export function optionVariety(options: Product[], product: Product | undefined): { sizes: number[]; unit?: string; brands: string[] } {
+  const listings = options.filter((o) => o.store);
+  const unit = listings.find((o) => o.units && o.unit)?.unit;
+  const sizes = [...new Set(listings.filter((o) => o.units && o.unit === unit).map((o) => o.units!))].sort((a, b) => a - b);
+  const own = new Set(product ? [product.name, ...product.aliases].flatMap((n) => n.toLowerCase().split(/[^\p{L}\p{N}]+/u)) : []);
+  const brands: string[] = [];
+  for (const o of listings) {
+    const first = /^[\p{Lu}][\p{L}'&.-]{1,20}/u.exec(o.name)?.[0];
+    if (first && !own.has(first.toLowerCase()) && !brands.some((b) => b.toLowerCase() === first.toLowerCase())) brands.push(first);
+  }
+  return { sizes, ...(unit ? { unit } : {}), brands };
+}
+
+/**
+ * The line under the options when a request was vague: which sizes or brands they could name, taken from the
+ * listings shown. `askAbout` is Claude's suggestion; it only counts where the listings really differ. Without
+ * Claude (undefined), any real difference counts. Undefined when there's nothing worth suggesting.
+ */
+export function detailsHint(options: Product[], product: Product | undefined, askAbout?: DetailKind[]): string | undefined {
+  const { sizes, unit, brands } = optionVariety(options, product);
+  const wants = (k: DetailKind) => askAbout === undefined || askAbout.includes(k);
+  const sizeText = wants("size") && sizes.length >= 2 && unit ? `${orList(sizes.map(String))} ${unit}s` : undefined;
+  const brandText = wants("brand") && brands.length >= 2 ? orList(brands.slice(0, 3)) : undefined;
+  if (!sizeText && !brandText) return undefined;
+  const example = [brandText ? brands[0] : undefined, sizeText ? `${sizes.at(-1)} ${unit}s` : undefined].filter(Boolean).join(", ");
+  const what = [brandText && `a brand (${brandText})`, sizeText && `a size (${sizeText})`].filter(Boolean).join(" or ");
+  return `Want ${what}? Reply like "${example}" and I'll search again.`;
+}
+
+/**
+ * Is this text an answer naming a brand or size ("Charmin, 24 rolls")? Commands, greetings, "yes", questions and
+ * long messages aren't: they're handled as usual.
+ */
+export function looksLikeDetails(answer: string, isOtherwiseHandled: boolean): boolean {
+  return !isOtherwiseHandled && !/\?\s*$/.test(answer) && answer.trim().split(/\s+/).length <= 8;
+}

@@ -1,6 +1,6 @@
 // Owner: Person 1. Pipeline: identify household + sender -> guard -> AI parse -> act -> reply.
 import { answerQuestion, OFFLINE_REPLY } from "../ai/answerQuestion.js";
-import { findDeals } from "../ai/findDeals.js";
+import { findDealsDetailed, type DetailKind } from "../ai/findDeals.js";
 import { matchItem } from "../ai/matchItem.js";
 import { parseMessage } from "../ai/parseMessage.js";
 import { addItem, db, findHouseholdByGroupChat, findMemberByPhone, householdsForPhone, pendingItems, UNBOUND_GROUP } from "../core/store.js";
@@ -31,12 +31,12 @@ import { currentListing, listingProduct, liveDealsEnabled, offCatalogProduct } f
 import { describeFilters, hasFilters } from "../deals/rank.js";
 import { describeParts, parseSplitCommand, parseSplitInAdd, payersOf, setPayers, splitLabel, unclearReply, type SplitRequest } from "./splitWith.js";
 import {
-  buildChoice, buildDealChoice, hasPendingChoice, isCancel, lastBought, namedSpecifically, parsePick, queueChoices, resolvePick, stripUsual, wantsUsual,
+  buildChoice, buildDealChoice, currentChoice, dropCurrentChoice, hasPendingChoice, isCancel, lastBought, namedSpecifically, parsePick, queueChoices, resolvePick, stripUsual, wantsUsual,
   type Choice,
 } from "./options.js";
 import type { Product } from "../core/catalog.js";
 import { searchSpecFor } from "../ai/searchSpec.js";
-import { askForDetails, clearDetails, NO_PREFERENCE, namedDetails, pendingDetails, thinResults } from "./details.js";
+import { askForDetails, clearDetails, detailsHint, looksLikeDetails, NO_PREFERENCE, namedDetails, pendingDetails, thinResults } from "./details.js";
 import { sendLoginCode } from "../payments/payback.js";
 
 const LOGIN_CODE = /^(?:(?:send|text|give) me (?:a |my |the )?|get (?:a |my )?)?(?:log ?in |dashboard |verification )?code[.!?]*$|^log ?in[.!?]*$/i;
@@ -350,6 +350,16 @@ export async function handleInbound(msg: InboundMessage, opts: { refined?: boole
     return;
   }
 
+  // Text that's handled as usual, never taken as a brand or size: commands, greetings, "yes".
+  const handledElsewhere = (text: string) =>
+    parseCommand(text).some((i) => i.type !== "unknown") || !!membership || !!parseSplitCommand(text, household, member) ||
+    isGreetingOnly(text) || isYes(text);
+  const searchAgain = (answer: string, requested: string, shared: boolean | null) =>
+    handleInbound(
+      { ...msg, messageId: `${msg.messageId}:details`, text: `add ${answer} ${requested}${shared === false ? " for me" : ""}` },
+      { refined: true },
+    );
+
   // A reply to "Which one?" (1/2/3 or cancel) is handled in code, before any AI parsing.
   if (hasPendingChoice(household.id, member.id)) {
     const pick = parsePick(msg.text);
@@ -360,6 +370,13 @@ export async function handleInbound(msg: InboundMessage, opts: { refined?: boole
       else if (result?.kind === "picked") await addToCart(result.product, result.shared, "Added", result.overBudget, result.splitWith);
       else if (result?.kind === "cancelled") await respond("OK, I didn't add that one.");
       if (result && result.kind !== "invalid" && result.next) await respond(result.next);
+      return;
+    }
+    // "Charmin, 24 rolls" in answer to a "Which one?" that suggested a brand or size: search again with it.
+    const current = currentChoice(household.id, member.id);
+    if (current?.refine && looksLikeDetails(msg.text, handledElsewhere(msg.text.trim()))) {
+      dropCurrentChoice(household.id, member.id);
+      await searchAgain(msg.text.trim(), current.refine.requested, current.refine.shared);
       return;
     }
   }
@@ -379,12 +396,9 @@ export async function handleInbound(msg: InboundMessage, opts: { refined?: boole
       await respond(`OK, I didn't add ${details.requested.toLowerCase()}.`);
       return;
     }
-    const isCommand = parseCommand(answer).some((i) => i.type !== "unknown") || !!membership || !!parseSplitCommand(answer, household, member);
-    // Greetings, "yes" and questions aren't brand or size answers: they're handled as usual below.
-    const notAnAnswer = isCommand || isGreetingOnly(answer) || isYes(answer) || /\?\s*$/.test(answer);
-    if (!notAnAnswer && answer.split(/\s+/).length <= 8) {
-      const forMe = details.shared === false ? " for me" : "";
-      await handleInbound({ ...msg, messageId: `${msg.messageId}:details`, text: `add ${answer} ${details.requested}${forMe}` }, { refined: true });
+    // Commands, greetings, "yes" and questions aren't brand or size answers: they're handled as usual below.
+    if (looksLikeDetails(answer, handledElsewhere(answer))) {
+      await searchAgain(answer, details.requested, details.shared);
       return;
     }
   }
@@ -420,13 +434,23 @@ export async function handleInbound(msg: InboundMessage, opts: { refined?: boole
   // A thin store search for something they didn't describe: ask for a brand or size instead of showing it
   // (once per message, and never for an answer to that question).
   let askedDetails = false;
-  const offerChoice = async (choice: Choice, requested: string, product: Product | undefined, shared: boolean | null) => {
+  // `askAbout`: Claude's suggestion from the deal search (undefined when Claude didn't pick these listings).
+  const offerChoice = async (choice: Choice, requested: string, product: Product | undefined, shared: boolean | null, askAbout?: DetailKind[]) => {
     // Not when their own limits ("under $15", "from Costco") made the list short: that's what they asked for.
     if (!opts.refined && !askedDetails && !hasFilters(dealOptions) && choice.checkedAt && thinResults(choice) && !namedDetails(requested, product)) {
       askedDetails = true;
       const item = (product?.name.split(",")[0] ?? requested).toLowerCase();
       await respond(askForDetails(household.id, member.id, requested, item, shared, choice));
       return;
+    }
+    // Plenty to pick from but they said nothing specific: show the options now, with a line suggesting the brands or
+    // sizes these listings come in. A reply naming one searches again (see the "Which one?" handling above).
+    if (!opts.refined && !hasFilters(dealOptions) && choice.checkedAt && !namedDetails(requested, product)) {
+      const hint = detailsHint(choice.options, product, askAbout);
+      if (hint) {
+        choice.hint = hint;
+        choice.refine = { requested, shared };
+      }
     }
     choices.push(choice);
   };
@@ -464,14 +488,15 @@ export async function handleInbound(msg: InboundMessage, opts: { refined?: boole
       // With Claude and store prices on, Claude searches the stores and picks the best listings while the catalog
       // match runs alongside. "The usual" keeps its own path below, so it can re-add last time's pick.
       const askedFor = hasFilters(dealOptions) ? `${requested} (${describeFilters(dealOptions)})` : requested;
-      const [match, deals] = await Promise.all([matchItem(requested), usual ? undefined : findDeals(askedFor)]);
+      const [match, dealResult] = await Promise.all([matchItem(requested), usual ? undefined : findDealsDetailed(askedFor)]);
+      const deals = dealResult?.picks;
       const dealBase = match?.product ?? offCatalogProduct(requested);
       if (deals?.length && dealBase) {
         // Names, prices, stores and links come from the listings; code still ranks them and labels the budget.
         const options = deals.map((d) => listingProduct(d.offer, dealBase, d.at));
         const choice = buildChoice(household.id, dealBase, intent.shared, dealOptions, options, member.id);
         if (payers) choice.splitWith = payers;
-        await offerChoice(choice, requested, dealBase, intent.shared);
+        await offerChoice(choice, requested, dealBase, intent.shared, dealResult?.askAbout);
         continue;
       }
       if (deals && !match) {

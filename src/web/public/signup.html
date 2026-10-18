@@ -75,7 +75,9 @@
   .quick-join .btn.primary { width: 100%; }
   .quick-join .note { margin-top: 14px; }
   #quick-join { margin: 0; padding: 0; border: 0; }
-  #join-text { margin: 0 0 4px; padding: 10px 0; font-size: 18px; word-break: break-all; }
+  #join-text { margin: 0 0 14px; padding: 10px 0; font-size: 18px; word-break: break-all; }
+  #line-form label { margin-bottom: 4px; }
+  #line-found .btn.primary { margin-top: 0; }
   .meta { margin: 0 0 6px; color: var(--muted); font-family: var(--mono); font-size: 14px; }
 
   @media (max-width: 820px) {
@@ -118,9 +120,20 @@
       <p class="note"><a href="#" id="not-me">Not you? Sign up with a different number</a></p>
     </div>
     <div class="quick-join" id="text-join" hidden>
-      <p><b>Already use Restock?</b> Skip the form: text this to your Restock number and you're in.</p>
-      <div class="number" id="join-text"></div>
-      <a class="btn secondary" id="join-sms" href="#">Open Messages</a>
+      <form id="line-form">
+        <p><b>Already use Restock?</b> Skip the name: enter your number and we'll open Messages to your Restock number.</p>
+        <label>Your mobile number<input id="line-phone" type="tel" autocomplete="tel" placeholder="(425) 555-0123" required></label>
+        <button class="btn secondary" id="line-button" type="submit">Find my Restock number</button>
+        <p class="error" id="line-error" hidden></p>
+      </form>
+      <div id="line-found" hidden>
+        <p>Text this from your phone to join:</p>
+        <div class="number" id="join-text"></div>
+        <p class="meta">Your Restock number</p>
+        <div class="number" id="join-line"></div>
+        <a class="btn primary" id="join-sms" href="#">Open Messages</a>
+        <a class="btn secondary" id="join-contact" href="#" hidden>Save Restock to contacts</a>
+      </div>
     </div>
     <form id="form">
       <label>First name<input id="name" type="text" maxlength="30" autocomplete="given-name" required></label>
@@ -146,7 +159,12 @@
   <section id="joined-view" hidden>
     <h1 id="joined-title">You're in</h1>
     <p id="joined-text"></p>
-    <a class="btn primary" href="/dashboard">Open your dashboard</a>
+    <div id="joined-line" hidden>
+      <p class="meta">Your Restock number</p>
+      <div class="number" id="joined-number"></div>
+      <a class="btn primary" id="joined-sms" href="#">Open Messages</a>
+    </div>
+    <a class="btn secondary" href="/dashboard">Open your dashboard</a>
   </section>
 
   <section id="bad-invite" hidden>
@@ -176,12 +194,41 @@
         $("#quick-join").hidden = false;
         $("#form").hidden = true;
       } else {
-        $("#join-text").textContent = `join ${code}`;
-        $("#join-sms").href = `sms:?&body=${encodeURIComponent(`join ${code}`)}`;
         $("#text-join").hidden = false;
       }
     }).catch(() => {});
   }
+
+  // "Already use Restock?": their phone number -> their own Restock number, with Messages addressed to it.
+  $("#line-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    $("#line-error").hidden = true;
+    $("#line-button").disabled = true;
+    try {
+      const r = await fetch("/signup/api/my-line", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inviteCode: code, phone: $("#line-phone").value }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        $("#line-error").textContent = data.error || "Something went wrong. Please try again.";
+        $("#line-error").hidden = false;
+        return;
+      }
+      $("#join-text").textContent = data.joinText;
+      $("#join-line").textContent = pretty(data.line);
+      $("#join-sms").href = data.smsLink;
+      if (data.contactLink) { $("#join-contact").href = data.contactLink; $("#join-contact").hidden = false; }
+      $("#line-form").hidden = true;
+      $("#line-found").hidden = false;
+      $("#form").hidden = true; // they don't need the sign-up form any more
+    } catch {
+      $("#line-error").textContent = "Couldn't reach Restock. Check your connection and try again.";
+      $("#line-error").hidden = false;
+    } finally {
+      $("#line-button").disabled = false;
+    }
+  });
 
   function showJoined(householdName, message) {
     $("#joined-title").textContent = `You're in ${householdName}`;
@@ -208,7 +255,12 @@
         $("#join-error").hidden = false;
         return;
       }
-      showJoined(data.householdName, `Texts to your usual Restock number now go to ${data.householdName}. Text "households" there to switch between your households.`);
+      showJoined(data.householdName, `Texts to your Restock number now go to ${data.householdName}. Text "households" there to switch between your households.`);
+      if (data.line) {
+        $("#joined-number").textContent = pretty(data.line);
+        $("#joined-sms").href = data.smsLink;
+        $("#joined-line").hidden = false;
+      }
     } catch {
       $("#join-error").textContent = "Couldn't reach Restock. Check your connection and try again.";
       $("#join-error").hidden = false;

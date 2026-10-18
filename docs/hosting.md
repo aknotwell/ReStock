@@ -6,7 +6,9 @@
 
 ## Live links
 
-The deploy runs at **https://restock-production-daab.up.railway.app**.
+The deploy runs at **https://restock.select**. The original Railway address, https://restock-production-daab.up.railway.app, still works too, and VEYZL and the Stripe webhook still use it.
+
+**Custom domain:** `restock.select` is registered at Porkbun. Its DNS has an `ALIAS` record (blank host) pointing at the target Railway shows under the service's **Settings** → **Networking** → **Custom Domain**, plus the `_railway-verify` `TXT` record Railway asks for. Porkbun's parking records (anything pointing at `pixie.porkbun.com`) were deleted. Railway issues the HTTPS certificate. `PUBLIC_BASE_URL=https://restock.select` is set in Railway's Variables so the links Restock texts (invites, add-card and pay-back pages, Stripe return pages) use the custom domain.
 
 | Page | URL | Who uses it |
 |---|---|---|

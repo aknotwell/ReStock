@@ -2,7 +2,7 @@
   "version": 1,
   "description": "Demo product catalog for Restock. Prices in integer cents. Fake merchant data for the hackathon demo. Each product with a \"group\" is an alternative to the product with that id; the agent offers up to three per group. \"units\" and \"unit\" give the pack size so options can be compared by price per unit.",
   "products": [
-    {"id": "tp-12", "name": "Toilet paper, 12 rolls", "aliases": ["tp", "toilet paper", "loo roll"], "category": "paper", "cents": 1199, "units": 12, "unit": "roll", "defaultShared": true, "restockDays": 14},
+    {"id": "tp-12", "name": "Toilet paper, 12 rolls", "aliases": ["tp", "toilet paper", "loo roll", "bath tissue", "bathroom tissue", "toilet tissue"], "category": "paper", "cents": 1199, "units": 12, "unit": "roll", "defaultShared": true, "restockDays": 14},
     {"id": "pt-6", "name": "Paper towels, 6 rolls", "aliases": ["paper towels", "towels"], "category": "paper", "cents": 999, "units": 6, "unit": "roll", "defaultShared": true, "restockDays": 14},
     {"id": "dish-3", "name": "Dish soap, 3 pack", "aliases": ["dish soap", "dishwashing liquid", "soap"], "category": "cleaning", "cents": 849, "units": 3, "unit": "bottle", "defaultShared": true, "restockDays": 21},
     {"id": "dw-pods", "name": "Dishwasher pods, 40 ct", "aliases": ["dishwasher pods", "dishwasher tabs"], "category": "cleaning", "cents": 1299, "units": 40, "unit": "pod", "defaultShared": true, "restockDays": 30},

@@ -23,6 +23,8 @@ export type Choice = {
   /** Options that would take the household over its monthly budget: picking one needs the owner's OK. */
   overBudgetIds?: string[];
   ownerName?: string;
+  /** The owner asked, so over-budget options need nobody's OK: they're just labelled "over budget". */
+  askedByOwner?: boolean;
   /** When live prices were checked (ISO), if any option is a live listing. */
   checkedAt?: string;
   /** Shown above the options, e.g. when nothing matched the member's filters. */
@@ -102,6 +104,7 @@ export function buildChoice(
   shared: boolean | null,
   opts: DealOptions = {},
   live: Product[] = [],
+  askerId?: string,
 ): Choice {
   const count = optionCount(opts.count);
   // Real prices first: with store listings, the options are listings only. Without them, the demo catalog.
@@ -142,15 +145,22 @@ export function buildChoice(
       const h = getHousehold(householdId);
       choice.overBudgetIds = over;
       choice.ownerName = h.members.find((m) => m.id === h.ownerId)?.name ?? "the budget owner";
+      if (askerId === h.ownerId) choice.askedByOwner = true;
     }
   }
   return choice;
 }
 
 /** buildChoice with live store listings when SERPAPI_KEY is set. Falls back to the catalog on any problem. */
-export async function buildDealChoice(householdId: string, product: Product, shared: boolean | null, opts: DealOptions = {}): Promise<Choice> {
+export async function buildDealChoice(
+  householdId: string,
+  product: Product,
+  shared: boolean | null,
+  opts: DealOptions = {},
+  askerId?: string,
+): Promise<Choice> {
   const live = await liveOptionsFor(product, { maxAgeHours: opts.maxAgeHours });
-  return buildChoice(householdId, product, shared, opts, live?.products ?? []);
+  return buildChoice(householdId, product, shared, opts, live?.products ?? [], askerId);
 }
 
 /** "just now", "5 min ago", "3 hr ago". */
@@ -166,7 +176,7 @@ function optionLine(p: Product, i: number, choice: Choice): string {
     per !== undefined ? `${fmt(per)}/${p.unit}` : undefined,
     p.id === choice.bestValueId ? "best value" : undefined,
     p.id === choice.lastBoughtId ? "what you got last time" : undefined,
-    choice.overBudgetIds?.includes(p.id) ? `over budget, needs ${choice.ownerName}'s OK` : undefined,
+    choice.overBudgetIds?.includes(p.id) ? (choice.askedByOwner ? "over budget" : `over budget, needs ${choice.ownerName}'s OK`) : undefined,
   ].filter(Boolean);
   return `${i + 1}. ${p.name}: ${fmt(p.cents)}${notes.length ? ` (${notes.join(", ")})` : ""}`;
 }

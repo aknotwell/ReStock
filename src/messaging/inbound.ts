@@ -396,7 +396,7 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       // and the demo catalog price is the fallback when there are none.
       const liveChoice = async (note?: string) => {
         if (!liveDealsEnabled()) return false;
-        const choice = await buildDealChoice(household.id, match.product, intent.shared, dealOptions);
+        const choice = await buildDealChoice(household.id, match.product, intent.shared, dealOptions, member.id);
         if (!choice.checkedAt) return false; // no store listings: fall back
         if (note) choice.note = note;
         if (payers) choice.splitWith = payers;
@@ -419,7 +419,7 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
         if (!(await liveChoice())) await addToCart(match.product, intent.shared, "Added", undefined, payers);
       } else {
         if (usual) await respond(`I don't see an earlier order for ${requested}, so here are the options.`);
-        const choice = await buildDealChoice(household.id, match.product, intent.shared, dealOptions);
+        const choice = await buildDealChoice(household.id, match.product, intent.shared, dealOptions, member.id);
         if (payers) choice.splitWith = payers;
         choices.push(choice);
       }

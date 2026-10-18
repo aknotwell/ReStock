@@ -6,6 +6,7 @@ import { markDebtPaid } from "../core/ledger.js";
 import { db, findMember } from "../core/store.js";
 import { sendPrivate } from "../messaging/photon.js";
 import { cardAdded } from "../messaging/templates.js";
+import { payBackDebtsForSession } from "./links.js";
 import { requireStripe } from "./stripe.js";
 
 export async function stripeWebhook(req: Request, res: Response): Promise<void> {
@@ -53,21 +54,26 @@ export async function stripeWebhook(req: Request, res: Response): Promise<void> 
 export function markDebtPaidFromSession(
   session: Stripe.Checkout.Session,
 ): "paid" | "not_a_pay_back" | "unknown_debt" | "not_paid" | "amount_mismatch" {
-  // Payment sessions we didn't create for a debt (e.g. `stripe trigger`) have no debtId. Ignore them.
-  const debtId = session.metadata?.debtId;
-  if (!debtId) return "not_a_pay_back";
-  const debt = db.debts.get(debtId);
-  if (!debt) {
+  // Which debts this page paid: our own record first, then the metadata copy, then the older
+  // one-debt-per-page format. Sessions we didn't create (e.g. `stripe trigger`) have none: ignore them.
+  const debtIds =
+    payBackDebtsForSession(session.id) ??
+    session.metadata?.debtIds?.split(",") ??
+    (session.metadata?.debtId ? [session.metadata.debtId] : undefined);
+  if (!debtIds?.length) return "not_a_pay_back";
+  const debts = debtIds.map((id) => db.debts.get(id));
+  if (debts.some((d) => !d)) {
     console.warn("pay-back completed for a debt we don't know; ignoring");
     return "unknown_debt";
   }
   if (session.payment_status !== "paid") return "not_paid";
-  if (session.amount_total !== debt.cents) {
-    // We set the amount from the debt, so this shouldn't happen. Don't guess; leave it open and log.
-    console.error(`pay-back amount ${session.amount_total} doesn't match debt ${debt.id} (${debt.cents})`);
+  const total = debts.reduce((sum, d) => sum + d!.cents, 0);
+  if (session.amount_total !== total) {
+    // We set the amount from these debts, so this shouldn't happen. Don't guess; leave them open and log.
+    console.error(`pay-back amount ${session.amount_total} doesn't match its ${debts.length} debt(s) (${total})`);
     return "amount_mismatch";
   }
-  markDebtPaid(debt.id);
+  for (const id of debtIds) markDebtPaid(id);
   // TODO(P1): text the creditor "{debtor} paid you back {amount}".
   return "paid";
 }

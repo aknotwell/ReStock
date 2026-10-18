@@ -9,12 +9,18 @@ let n = 0;
 const fakeStripe = {
   checkout: {
     sessions: {
-      create: vi.fn(async () => {
+      create: vi.fn(async (_params: unknown) => {
         const s = { id: `cs_test_${++n}`, url: `https://checkout.stripe.com/c/pay/cs_test_${n}`, status: "open" as const };
         sessions.set(s.id, s);
         return s;
       }),
       retrieve: vi.fn(async (id: string) => sessions.get(id)),
+      expire: vi.fn(async (id: string) => {
+        const s = sessions.get(id)!;
+        if (s.status === "complete") throw new Error("You can't expire a completed session"); // like Stripe
+        s.status = "expired";
+        return s;
+      }),
     },
   },
 };
@@ -78,7 +84,7 @@ describe("openPayBackLink", () => {
             price_data: expect.objectContaining({ currency: "usd", unit_amount: 1015 }),
           }),
         ],
-        metadata: { debtId: "d1" },
+        metadata: { payBack: "1", debtorId: "priya", creditorId: "sam", debtIds: "d1" },
         success_url: expect.stringMatching(/\/pay\/success$/),
         cancel_url: expect.stringMatching(/\/cancel$/),
       }),
@@ -148,5 +154,91 @@ describe("markDebtPaidFromSession (checkout.session.completed, payment mode)", (
   ])("leaves the debt open when the session is %s", (_label, overrides, result) => {
     expect(markDebtPaidFromSession(session(overrides as Partial<Stripe.Checkout.Session>))).toBe(result);
     expect(debt.status).toBe("open");
+  });
+});
+
+describe("one pay-back page for everything owed (several orders)", () => {
+  let d2: Debt;
+  beforeEach(() => {
+    // Two orders, an hour apart (UTC). Priya owes Sam for both.
+    db.orders.set("o1", { id: "o1", householdId: "h1", itemIds: [], totalCents: 7275, rule: "smart", createdAt: "2026-10-18T00:07:00Z" });
+    db.orders.set("o2", { id: "o2", householdId: "h1", itemIds: [], totalCents: 849, rule: "smart", createdAt: "2026-10-18T01:07:00Z" });
+    d2 = { id: "d2", orderId: "o2", debtorId: "priya", creditorId: "sam", cents: 212, status: "open" };
+    db.debts.set(d2.id, d2);
+  });
+
+  it("any of her links opens one page for the total, itemized by order (Pacific time)", async () => {
+    const oldLink = await openPayBackLink(tokenOf(await createPayBackLink("d1")));
+    const newLink = await openPayBackLink(tokenOf(await createPayBackLink("d2")));
+    expect(newLink).toEqual(oldLink);
+    expect(fakeStripe.checkout.sessions.create).toHaveBeenCalledTimes(1);
+    const params = fakeStripe.checkout.sessions.create.mock.calls[0]![0] as unknown as {
+      line_items: { price_data: { unit_amount: number; product_data: { name: string } } }[];
+      metadata: Record<string, string>;
+    };
+    expect(params.line_items.map((l) => l.price_data.unit_amount)).toEqual([1015, 212]); // $12.27 total
+    expect(params.line_items[0]!.price_data.product_data.name).toBe("Pay Sam back: your share of the order on Oct 17, 5:07 PM");
+    expect(params.metadata.debtIds).toBe("d1,d2");
+  });
+
+  it("a new debt cancels the open page, so the old total can't be paid, and the next tap shows the new total", async () => {
+    db.debts.delete("d2");
+    const token = tokenOf(await createPayBackLink("d1"));
+    await openPayBackLink(token); // page for $10.15
+    db.debts.set("d2", d2); // a new order adds $2.12
+
+    expect(await openPayBackLink(token)).toEqual({ kind: "checkout", url: "https://checkout.stripe.com/c/pay/cs_test_2" });
+    expect(fakeStripe.checkout.sessions.expire).toHaveBeenCalledWith("cs_test_1");
+    const second = fakeStripe.checkout.sessions.create.mock.calls[1]![0] as unknown as { line_items: unknown[] };
+    expect(second.line_items).toHaveLength(2);
+  });
+
+  it("if the old page was paid just before a new debt, the new page covers only the new debt", async () => {
+    db.debts.delete("d2");
+    const token = tokenOf(await createPayBackLink("d1"));
+    await openPayBackLink(token);
+    sessions.get("cs_test_1")!.status = "complete"; // paid; webhook not here yet, so d1 still looks open
+    db.debts.set("d2", d2);
+
+    await openPayBackLink(token);
+    const second = fakeStripe.checkout.sessions.create.mock.calls[1]![0] as unknown as { metadata: { debtIds: string } };
+    expect(second.metadata.debtIds).toBe("d2");
+  });
+
+  it("small debts add up: two shares under $0.50 become payable together", async () => {
+    debt.cents = 30;
+    d2.cents = 30;
+    expect(await openPayBackLink(tokenOf(await createPayBackLink("d1")))).toMatchObject({ kind: "checkout" });
+  });
+
+  it("paying the page marks every debt on it paid, and only those", async () => {
+    const d3: Debt = { id: "d3", orderId: "o2", debtorId: "jake", creditorId: "sam", cents: 500, status: "open" };
+    db.debts.set(d3.id, d3);
+    await openPayBackLink(tokenOf(await createPayBackLink("d1")));
+    const paid = { id: "cs_test_1", mode: "payment", payment_status: "paid", amount_total: 1227, metadata: {} } as unknown as Stripe.Checkout.Session;
+
+    expect(markDebtPaidFromSession(paid)).toBe("paid");
+    expect([debt.status, d2.status, d3.status]).toEqual(["paid", "paid", "open"]); // Jake's debt isn't Priya's to pay
+  });
+
+  it("the webhook can also read the debt list from metadata (e.g. after a restart lost the page record)", () => {
+    const fromMetadata = { id: "cs_other", mode: "payment", payment_status: "paid", amount_total: 1227, metadata: { debtIds: "d1,d2" } } as unknown as Stripe.Checkout.Session;
+    expect(markDebtPaidFromSession(fromMetadata)).toBe("paid");
+    expect([debt.status, d2.status]).toEqual(["paid", "paid"]);
+  });
+
+  it("leaves every debt open if the paid amount doesn't match their total", () => {
+    const wrong = { id: "cs_other", mode: "payment", payment_status: "paid", amount_total: 1015, metadata: { debtIds: "d1,d2" } } as unknown as Stripe.Checkout.Session;
+    expect(markDebtPaidFromSession(wrong)).toBe("amount_mismatch");
+    expect([debt.status, d2.status]).toEqual(["open", "open"]);
+  });
+});
+
+describe("youOwe text", () => {
+  it("mentions the total only when there are earlier debts too", async () => {
+    const { youOwe } = await import("../src/messaging/templates.js");
+    const sam = db.households.get("h1")!.members[0]!;
+    expect(youOwe(sam, 212, "P", "C")).not.toMatch(/in total/);
+    expect(youOwe(sam, 212, "P", "C", 1227)).toMatch(/With earlier orders, you owe Sam \$12\.27 in total\. This link pays all of it\./);
   });
 });

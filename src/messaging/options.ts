@@ -159,8 +159,17 @@ export async function buildDealChoice(
   opts: DealOptions = {},
   askerId?: string,
 ): Promise<Choice> {
-  const live = await liveOptionsFor(product, { maxAgeHours: opts.maxAgeHours });
-  return buildChoice(householdId, product, shared, opts, live?.products ?? [], askerId);
+  const spec = { ...(opts.brand ? { brand: opts.brand } : {}), ...(opts.size ? { size: opts.size } : {}) };
+  let live = await liveOptionsFor(product, { maxAgeHours: opts.maxAgeHours, ...spec });
+  let note: string | undefined;
+  if (opts.brand && !live?.products.length) {
+    // Nothing from that brand right now: show the product's other listings rather than nothing, and say why.
+    live = await liveOptionsFor(product, { maxAgeHours: opts.maxAgeHours, ...(opts.size ? { size: opts.size } : {}) });
+    if (live?.products.length) note = `I couldn't find ${opts.brand} listings right now, so here are other options.`;
+  }
+  const choice = buildChoice(householdId, product, shared, opts, live?.products ?? [], askerId);
+  if (note) choice.note = choice.note ? `${note} ${choice.note}` : note;
+  return choice;
 }
 
 /** "just now", "5 min ago", "3 hr ago". */

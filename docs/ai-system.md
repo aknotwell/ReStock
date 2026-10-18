@@ -19,6 +19,7 @@ What the AI in Restock does, what data it uses, and what controls keep it safe. 
 |---|---|---|---|---|
 | Intent parsing | `src/ai/parseMessage.ts`, prompt in `src/ai/prompt.ts` | One guarded chat message; a generic member label | Intents: `add_item`, `remove_item`, `set_shared`, `what_do_i_owe`, `help`, `question`, `unknown`; checkout/approval are deterministic commands | Command parser (`src/messaging/commands.ts`) |
 | Product matching | `src/ai/matchItem.ts` | The requested item text | A `productId` from the catalog, plus a confidence level. Code then lists up to 3 options from that product's group, ranked by price per unit, for the member to choose (`src/messaging/options.ts`) | Keyword and alias match (`src/core/catalog.ts`) |
+| Brand check for store search | `src/ai/searchSpec.ts` | Only the words left over after the product's own name, filler and any size are removed (e.g. "dawn"), plus the catalog product's generic name | `brand`: those words if they name a real brand or variant of the product, else null. Code accepts it only if every word was in the member's own text and passes the guardrails. Sizes are checked by code alone, against how the product is sold | Store search without a brand (a code-checked size is still used) |
 | Restock suggestions | `src/ai/suggestRestock.ts` | Purchase history (product IDs and dates), the current cart, today's date | Up to 3 due catalog products, each with a calculated reason | Restock-interval rule (`dueByInterval`) |
 | General questions | `src/ai/answerQuestion.ts` | One guarded question | Reviewed fact with a fixed source citation, exact catalog price, or fixed uncertainty/refusal | Same deterministic behavior |
 
@@ -66,6 +67,7 @@ What the AI in Restock does, what data it uses, and what controls keep it safe. 
 | Unfair splits | Split rules are explicit and visible in the group summary, and covered by unit tests |
 | A store listing carries injected instructions or junk | Listings are schema-validated, run through the guardrails, shortened, and never sent to the model; only the title, seller, and price are shown |
 | Live prices are slow, wrong, or stale | 3-second timeout with catalog fallback; each prompt says when prices were checked; the member sees the exact price before picking, and that price is what's charged |
+| A member's brand or size words steer the store search somewhere odd | The AI can only return words the member typed (checked in code); guardrails run on them; listings must contain the brand; a size must fit how the product is sold ("12 oz" of toilet paper is dropped and the reply says so); with no listings from that brand, the reply says so and shows other listings. Searches with the member's words are logged by a hash only |
 | A loop spends the free search quota | Results are cached for 12 hours and searches are capped per day (`DEALS_DAILY_LIMIT`) |
 
 ## Evaluation

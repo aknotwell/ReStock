@@ -102,7 +102,7 @@ Natural phrasing like "we're out of dish soap" is understood by Claude. Without 
 - Setup, the full command list, and known limits are in [docs/photon.md](docs/photon.md).
 
 ### VEYZL: Best Use of VEYZL
-VEYZL audits every pull request against a live deploy of the app. **Its findings changed what we shipped:**
+VEYZL's API audit probes the deployed app on `main`, not the files changed in a pull request, so even a documentation-only PR can fail on live agent behavior. Our `veyzl-probes` CI job separately checks each PR's code. **VEYZL's findings changed what we shipped:**
 
 | ID | What VEYZL found | What we changed |
 |---|---|---|

@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1000" viewBox="0 0 1500 1000">
+  <defs>
+    <filter id="soft" x="-50%" y="-80%" width="200%" height="300%" filterUnits="objectBoundingBox">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#14213D" flood-opacity="0.14"/>
+    </filter>
+    <linearGradient id="green" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34C759"/>
+      <stop offset="1" stop-color="#1FA855"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1500" height="1000" fill="#FFF7EC"/>
+  <circle cx="1240" cy="170" r="260" fill="#FFE7C7"/>
+  <circle cx="1080" cy="900" r="210" fill="#DDF5E4"/>
+
+  <g font-family="-apple-system, 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+    <!-- logo + wordmark -->
+    <g transform="translate(110,110)">
+      <path d="M0 21 a21 21 0 0 1 21 -21 h57 a21 21 0 0 1 21 21 v37 a21 21 0 0 1 -21 21 h-39 l-22 20 v-20 h-5 a12 12 0 0 1 -12 -12 z" fill="#1FA855"/>
+      <path d="M21 24 h9 l9 30 h33 l7 -22 h-43" fill="none" stroke="#FFF7EC" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="44" cy="64" r="4.5" fill="#FFF7EC"/>
+      <circle cx="69" cy="64" r="4.5" fill="#FFF7EC"/>
+      <text x="122" y="64" font-size="52" font-weight="800" fill="#14213D" letter-spacing="-1">Restock</text>
+    </g>
+
+    <!-- headline -->
+    <text font-size="96" font-weight="800" fill="#14213D" letter-spacing="-3">
+      <tspan x="110" y="400">We're out</tspan>
+      <tspan x="110" dy="104">of <tspan fill="#1FA855">eggs.</tspan></tspan>
+    </text>
+    <text font-size="34" font-weight="500" fill="#3D4A63">
+      <tspan x="110" y="640">Text your group chat. Restock finds</tspan>
+      <tspan x="110" dy="46">the best store price, orders when you</tspan>
+      <tspan x="110" dy="46">say so, and splits the bill fairly.</tspan>
+    </text>
+    <text font-size="22" font-weight="700" fill="#1FA855" letter-spacing="2"><tspan x="110" y="840">NO APP TO INSTALL</tspan><tspan x="110" dy="36">NO CARD NUMBERS IN CHAT</tspan></text>
+
+    <!-- chat bubbles -->
+    <g filter="url(#soft)">
+      <rect x="1050" y="210" width="300" height="70" rx="35" fill="url(#green)"/>
+      <text x="1200" y="255" font-size="28" font-weight="600" fill="#FFFFFF" text-anchor="middle">we're out of eggs</text>
+    </g>
+
+    <g filter="url(#soft)">
+      <rect x="820" y="320" width="560" height="300" rx="32" fill="#FFFFFF"/>
+      <text font-size="25" fill="#14213D">
+        <tspan x="856" y="370" font-weight="800">Which one?</tspan>
+        <tspan x="856" dy="50">1. 365 Brown Eggs, 18 ct (Whole Foods)</tspan>
+        <tspan x="884" dy="36" fill="#1FA855" font-weight="700">$5.49 · $0.31/egg · best value</tspan>
+        <tspan x="856" dy="48">2. Marketside Eggs, 18 ct (Walmart)</tspan>
+        <tspan x="884" dy="36" fill="#3D4A63">$5.88 · $0.33/egg</tspan>
+      </text>
+      <text x="856" y="600" font-size="20" fill="#7A8399">Store prices checked just now</text>
+    </g>
+
+    <g filter="url(#soft)">
+      <rect x="1290" y="650" width="70" height="62" rx="31" fill="url(#green)"/>
+      <text x="1325" y="692" font-size="28" font-weight="700" fill="#FFFFFF" text-anchor="middle">1</text>
+    </g>
+
+    <g filter="url(#soft)">
+      <rect x="880" y="740" width="480" height="112" rx="32" fill="#14213D"/>
+      <text font-size="24" fill="#FFFFFF">
+        <tspan x="912" y="786" font-weight="700">Ordered! Split three ways.</tspan>
+        <tspan x="912" dy="38" fill="#B9C3DA">Each card charged its own share.</tspan>
+      </text>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1000" viewBox="0 0 1500 1000">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0E1A3A"/>
+      <stop offset="1" stop-color="#16295C"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.45" r="0.55">
+      <stop offset="0" stop-color="#2F6BFF" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#2F6BFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="me" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34C759"/>
+      <stop offset="1" stop-color="#22A84A"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <rect width="1500" height="1000" fill="url(#bg)"/>
+  <rect width="1500" height="1000" fill="url(#glow)"/>
+
+  <g font-family="-apple-system, 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+    <!-- Left: brand and promise -->
+    <g transform="translate(110,0)">
+      <!-- logo mark: a cart inside a chat bubble -->
+      <g transform="translate(0,170)">
+        <path d="M0 28 a28 28 0 0 1 28 -28 h76 a28 28 0 0 1 28 28 v50 a28 28 0 0 1 -28 28 h-52 l-30 26 v-26 h-6 a16 16 0 0 1 -16 -16 z" fill="#34C759"/>
+        <g fill="none" stroke="#0E1A3A" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M28 32 h12 l12 40 h44 l10 -30 h-58"/>
+        </g>
+        <circle cx="58" cy="86" r="6" fill="#0E1A3A"/>
+        <circle cx="92" cy="86" r="6" fill="#0E1A3A"/>
+        <text x="160" y="92" font-size="92" font-weight="800" fill="#FFFFFF" letter-spacing="-2">Restock</text>
+      </g>
+
+      <text y="420" font-size="58" font-weight="700" fill="#FFFFFF" letter-spacing="-1">
+        <tspan x="0">The group chat that</tspan>
+        <tspan x="0" dy="70">restocks the house</tspan>
+        <tspan x="0" dy="70" fill="#34C759">and splits the bill.</tspan>
+      </text>
+
+      <!-- feature chips -->
+      <g font-size="26" font-weight="600" fill="#DCE5FF">
+        <g transform="translate(0,680)">
+          <rect width="400" height="56" rx="28" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.18"/>
+          <text x="28" y="37">Live prices from real stores</text>
+        </g>
+        <g transform="translate(0,756)">
+          <rect width="426" height="56" rx="28" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.18"/>
+          <text x="28" y="37">Fair split, charged per person</text>
+        </g>
+        <g transform="translate(0,832)">
+          <rect width="470" height="56" rx="28" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.18"/>
+          <text x="28" y="37">AI never pays without a human OK</text>
+        </g>
+      </g>
+    </g>
+
+    <!-- Right: phone with the group chat -->
+    <g transform="translate(860,70)" filter="url(#shadow)">
+      <rect width="520" height="860" rx="64" fill="#05070D"/>
+      <rect x="14" y="14" width="492" height="832" rx="52" fill="#F4F5F8"/>
+      <!-- header -->
+      <rect x="14" y="14" width="492" height="118" rx="52" fill="#FFFFFF"/>
+      <rect x="14" y="80" width="492" height="52" fill="#FFFFFF"/>
+      <line x1="14" y1="132" x2="506" y2="132" stroke="#E3E5EA"/>
+      <rect x="205" y="30" width="110" height="28" rx="14" fill="#05070D"/>
+      <text x="260" y="104" font-size="24" font-weight="700" fill="#111" text-anchor="middle">Apt 4B 🏠</text>
+
+      <g font-size="21">
+        <!-- Priya (this is her phone, so her texts are on the right) -->
+        <rect x="270" y="156" width="216" height="50" rx="24" fill="url(#me)"/>
+        <text x="378" y="188" fill="#FFFFFF" text-anchor="middle" font-weight="600">we're out of eggs</text>
+
+        <!-- Restock: real store options -->
+        <text x="40" y="236" font-size="16" fill="#8A8F99">Restock · AI assistant</text>
+        <rect x="34" y="246" width="452" height="196" rx="24" fill="#E4E6EB"/>
+        <text fill="#111" font-size="20">
+          <tspan x="56" y="280" font-weight="700">Which one?</tspan>
+          <tspan x="56" dy="32">1. 365 Brown Eggs, 18 ct (Whole Foods)</tspan>
+          <tspan x="76" dy="26" fill="#1F8A3E" font-weight="600">$5.49 · $0.31/egg · best value</tspan>
+          <tspan x="56" dy="32">2. Marketside Eggs, 18 ct (Walmart)</tspan>
+          <tspan x="76" dy="26">$5.88 · $0.33/egg</tspan>
+          <tspan x="56" dy="30" fill="#5B6170" font-size="17">Store prices checked just now</tspan>
+        </text>
+
+        <!-- Priya picks -->
+        <rect x="430" y="458" width="56" height="46" rx="23" fill="url(#me)"/>
+        <text x="458" y="488" fill="#FFFFFF" text-anchor="middle" font-weight="600">1</text>
+
+        <!-- Jake -->
+        <text x="40" y="534" font-size="16" fill="#8A8F99">Jake</text>
+        <rect x="34" y="544" width="150" height="46" rx="23" fill="#E4E6EB"/>
+        <text x="109" y="574" fill="#111" text-anchor="middle">order now</text>
+
+        <!-- Restock summary -->
+        <text x="40" y="622" font-size="16" fill="#8A8F99">Restock · AI assistant</text>
+        <rect x="34" y="632" width="452" height="126" rx="24" fill="#E4E6EB"/>
+        <text fill="#111">
+          <tspan x="56" y="668" font-weight="700">Ordered! Split fairly:</tspan>
+          <tspan x="56" dy="30">Sam $15.65 · Jake $46.95 · Priya $10.15</tspan>
+          <tspan x="56" dy="30" fill="#5B6170" font-size="18">Each card charged its own share</tspan>
+        </text>
+      </g>
+    </g>
+  </g>
+</svg>

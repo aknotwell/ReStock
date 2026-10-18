@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Restock thumbnail</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* Same tokens as src/web/public/dashboard.html (light theme). */
+  :root {
+    --desk: #ecebe7; --paper: #ffffff; --ink: #161616; --muted: #5f5f5a;
+    --red: #b3261e; --yellow: #ffe866; --shadow: rgba(22, 22, 22, 0.16);
+    --sans: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    --mono: "DM Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { position: relative; width: 1500px; height: 1000px; overflow: hidden; background: var(--desk); color: var(--ink); font-family: var(--sans); }
+
+  .brand { position: absolute; left: 110px; top: 120px; display: flex; align-items: center; gap: 16px; font-size: 46px; font-weight: 900; font-stretch: 118%; letter-spacing: -0.02em; line-height: 1; }
+  .logo { width: 60px; height: 60px; }
+
+  h1 { position: absolute; left: 110px; top: 460px; margin: 0; font-size: 104px; font-weight: 900; font-stretch: 112%; line-height: 1.02; letter-spacing: -0.035em; }
+  h1 mark { background: var(--yellow); color: var(--ink); padding: 0 12px; margin-left: -6px; }
+
+  .bubble { position: absolute; right: 110px; top: 330px; padding: 22px 30px; border-radius: 28px; background: var(--ink); color: var(--paper); font-size: 34px; font-weight: 700; box-shadow: 0 16px 24px -16px rgba(22,22,22,.6); }
+
+  .torn { position: absolute; right: 110px; top: 480px; width: 400px; filter: drop-shadow(0 16px 18px var(--shadow)); transform: rotate(1.5deg); }
+  .torn::after { content: ""; display: block; height: 14px; background: var(--paper);
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='14'%3E%3Cpath d='M0 0H22L11 14Z'/%3E%3C/svg%3E") 0 0 / 22px 14px repeat-x;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='14'%3E%3Cpath d='M0 0H22L11 14Z'/%3E%3C/svg%3E") 0 0 / 22px 14px repeat-x; }
+  .slip { background: var(--paper); padding: 28px 34px 20px; }
+  .row { display: flex; justify-content: space-between; align-items: baseline; font-size: 30px; line-height: 1.9; }
+  .row > span:first-child { font-weight: 800; }
+  .row > span:last-child { font-family: var(--mono); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .stamp { display: inline-block; margin-left: 12px; padding: 1px 10px; border: 2.5px solid var(--red); border-radius: 4px; color: var(--red); font-family: var(--mono); font-size: 16px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; transform: rotate(-5deg); vertical-align: 6px; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="logo" viewBox="0 0 40 40">
+    <path d="M6 6a3 3 0 0 1 3-3H31a3 3 0 0 1 3 3V33L30.5 36.5L27 33L23.5 36.5L20 33L16.5 36.5L13 33L9.5 36.5L6 33Z" fill="#161616"/>
+    <g fill="none" stroke="#ffe866" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M15 13.5V28" stroke-width="4.5"/>
+      <path d="M15 20C15 15.5 18 13 22.5 13H24" stroke-width="4.5"/>
+      <path d="M21.8 8.8L26 13L21.8 17.2" stroke-width="4"/>
+    </g>
+  </symbol>
+</svg>
+
+<div class="brand"><svg class="logo"><use href="#logo"/></svg>restock</div>
+
+<h1>Shop together.<br><mark>Split by text.</mark></h1>
+
+<div class="bubble">we're out of TP</div>
+
+<div class="torn">
+  <div class="slip">
+    <div class="row"><span>Sam</span><span>$15.65</span></div>
+    <div class="row"><span>Jake</span><span>$46.95</span></div>
+    <div class="row"><span>Priya <span class="stamp">owes Sam</span></span><span>$10.15</span></div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1000" viewBox="0 0 1500 1000">
+  <defs>
+    <linearGradient id="right" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0E1A3A"/>
+      <stop offset="1" stop-color="#16295C"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34C759"/>
+      <stop offset="1" stop-color="#22A84A"/>
+    </linearGradient>
+    <filter id="shadow" x="-50%" y="-80%" width="200%" height="300%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#000" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- halves -->
+  <rect width="700" height="1000" fill="#ECEEF2"/>
+  <rect x="700" width="800" height="1000" fill="url(#right)"/>
+
+  <g font-family="-apple-system, 'SF Pro Display', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+    <!-- headline across the top -->
+    <text x="90" y="150" font-size="30" font-weight="800" fill="#8A93A6" letter-spacing="3">WITHOUT RESTOCK</text>
+    <text x="790" y="150" font-size="30" font-weight="800" fill="#5BE38B" letter-spacing="3">WITH RESTOCK</text>
+
+    <!-- BEFORE: the awkward thread -->
+    <g font-size="27">
+      <g filter="url(#shadow)">
+        <rect x="90" y="220" width="400" height="66" rx="33" fill="#FFFFFF"/>
+        <text x="122" y="263" fill="#2A3142">we're out of toilet paper</text>
+      </g>
+      <text x="100" y="318" font-size="19" fill="#9AA2B3">3 people liked this</text>
+
+      <g filter="url(#shadow)">
+        <rect x="90" y="370" width="330" height="66" rx="33" fill="#FFFFFF"/>
+        <text x="122" y="413" fill="#2A3142">I'll grab some later</text>
+      </g>
+      <text x="100" y="468" font-size="19" fill="#9AA2B3">4 days later…</text>
+
+      <g filter="url(#shadow)">
+        <rect x="90" y="510" width="520" height="110" rx="33" fill="#FFFFFF"/>
+        <text fill="#2A3142">
+          <tspan x="122" y="554">ok I bought it. venmo me $14.37</tspan>
+          <tspan x="122" dy="38">each pls 🙏</tspan>
+        </text>
+      </g>
+      <text x="100" y="652" font-size="19" fill="#9AA2B3">Read · no reply</text>
+
+      <g filter="url(#shadow)">
+        <rect x="90" y="700" width="300" height="66" rx="33" fill="#FFFFFF"/>
+        <text x="122" y="743" fill="#2A3142">hello?? anyone??</text>
+      </g>
+    </g>
+
+    <!-- AFTER -->
+    <g font-size="27">
+      <g filter="url(#shadow)">
+        <rect x="1060" y="220" width="350" height="66" rx="33" fill="url(#green)"/>
+        <text x="1235" y="263" fill="#FFFFFF" text-anchor="middle" font-weight="600">we're out of eggs</text>
+      </g>
+
+      <text x="800" y="336" font-size="19" fill="#93A0C4">Restock · AI assistant</text>
+      <g filter="url(#shadow)">
+        <rect x="790" y="348" width="620" height="160" rx="30" fill="#FFFFFF"/>
+        <text fill="#14213D" font-size="25">
+          <tspan x="822" y="394" font-weight="800">Which one?</tspan>
+          <tspan x="822" dy="44">1. 365 Brown Eggs, 18 ct (Whole Foods)</tspan>
+          <tspan x="850" dy="36" fill="#1FA855" font-weight="700">$5.49 · $0.31/egg · best value</tspan>
+        </text>
+      </g>
+
+      <g filter="url(#shadow)">
+        <rect x="1240" y="566" width="170" height="66" rx="33" fill="url(#green)"/>
+        <text x="1325" y="609" fill="#FFFFFF" text-anchor="middle" font-weight="600">order now</text>
+      </g>
+
+      <text x="800" y="680" font-size="19" fill="#93A0C4">Restock · AI assistant</text>
+      <g filter="url(#shadow)">
+        <rect x="790" y="692" width="620" height="140" rx="30" fill="#FFFFFF"/>
+        <text fill="#14213D" font-size="25">
+          <tspan x="822" y="740" font-weight="800">Ordered! Each card paid its own share.</tspan>
+          <tspan x="822" dy="44" fill="#5B6170">No one fronts the money. No chasing.</tspan>
+        </text>
+      </g>
+    </g>
+
+    <!-- brand footer on the right -->
+    <g transform="translate(790,890)">
+      <path d="M0 15 a15 15 0 0 1 15 -15 h40 a15 15 0 0 1 15 15 v26 a15 15 0 0 1 -15 15 h-27 l-16 14 v-14 h-3 a9 9 0 0 1 -9 -9 z" fill="#5BE38B"/>
+      <path d="M15 17 h6 l6 21 h23 l5 -15 h-30" fill="none" stroke="#0E1A3A" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="31" cy="45" r="3.2" fill="#0E1A3A"/>
+      <circle cx="49" cy="45" r="3.2" fill="#0E1A3A"/>
+      <text x="90" y="46" font-size="40" font-weight="800" fill="#FFFFFF" letter-spacing="-1">Restock</text>
+      <text x="262" y="44" font-size="22" font-weight="500" fill="#B9C3DA">restocks the house, splits the bill</text>
+    </g>
+  </g>
+</svg>

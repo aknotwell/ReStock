@@ -11,12 +11,14 @@ import { ChargeFailedError } from "../payments/charges.js";
 import { OwnerCardRequiredError, ownerCardRequest } from "../payments/ownerGate.js";
 import type { Debt, Household } from "../types.js";
 import { checkInput, INJECTION_REPLY } from "../safety/guardrails.js";
-import { reply, sendGroup, sendPrivate, type InboundMessage } from "./photon.js";
+import { isMuted, mute, reply, sendGroup, sendPrivate, unmute, type InboundMessage } from "./photon.js";
 import { parseCommand } from "./commands.js";
 import { balanceSummary, CARD_NUMBER_WARNING, fmt, groupSummary, helpMessage, inviteToAddCard } from "./templates.js";
 import { sendOrderTexts } from "./afterOrder.js";
 import { handleMembershipCommand, parseMembershipCommand } from "./membership.js";
 import { clearAction, isNo, isYes, peekAction, proposeAction } from "./confirm.js";
+import { activateFromFirstText, inviteCodeFor, isPendingSignup, type Activation } from "../core/signups.js";
+import { config } from "../config.js";
 import { cleanName, findPhone } from "../core/households.js";
 import { parseDealRequest, stripDealWords } from "../deals/request.js";
 import {
@@ -45,6 +47,21 @@ function resolveHousehold(msg: InboundMessage): Household | undefined {
 export async function handleInbound(msg: InboundMessage): Promise<void> {
   let part = 0;
   const respond = (text: string) => reply(msg, text, part++);
+
+  // STOP / START (texting consent). Checked before anything else; while stopped, we only answer START.
+  const word = msg.text.trim().toLowerCase().replace(/[.!]+$/, "");
+  if (/^(?:stop|stopall|unsubscribe|quit|end)$/.test(word)) {
+    mute(msg.fromPhone);
+    await respond('You won\'t get any more texts from Restock. Text START to turn them back on, or "delete my data" to leave.');
+    return;
+  }
+  if (isMuted(msg.fromPhone)) {
+    if (/^(?:start|unstop|resume)$/.test(word)) {
+      unmute(msg.fromPhone);
+      await respond("Welcome back! Texts from Restock are on again. Text \"help\" to see what I can do.");
+    }
+    return;
+  }
 
   // 1. Guardrails run before anything else sees the text — even for unknown senders.
   // "add member <name> <phone>" must contain a phone number, which the PII guardrail would refuse. For that
@@ -79,6 +96,15 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     return;
   }
 
+  // First text from someone who signed up on the web: it proves they own the phone and activates them.
+  if (msg.spaceKind === "direct" && isPendingSignup(msg.fromPhone)) {
+    const activation = activateFromFirstText(msg.fromPhone);
+    if (activation) {
+      await welcome(activation, respond);
+      return;
+    }
+  }
+
   const household = resolveHousehold(msg);
   const member = household && findMemberByPhone(household, msg.fromPhone);
 
@@ -99,6 +125,12 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   }
 
   // 2. Household membership commands (start / add member / remove member / members). Plain code, never the AI.
+  if (membership?.type === "delete_self" && household && member) {
+    // Deleting your data can't be undone: ask first, like any sensitive action.
+    proposeAction(msg.fromPhone, { kind: "membership", command: membership });
+    await respond('Leave Restock and delete your data? This removes you from the household and can\'t be undone. Reply "yes" to confirm or "no" to cancel.');
+    return;
+  }
   if (membership) {
     await handleMembershipCommand({ command: membership, fromPhone: msg.fromPhone, spaceKind: msg.spaceKind, household, member: member || undefined, respond });
     return;
@@ -130,7 +162,12 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   // Group-wide news goes to the household chat once it's bound; otherwise answer where we were asked.
   // If the group chat can't be reached (e.g. not seen since a restart), say it here instead of failing.
   const announce = async (text: string) => {
-    if (household.groupChatId === UNBOUND_GROUP) return respond(text);
+    if (household.groupChatId === UNBOUND_GROUP) {
+      // No shared group chat (everyone texts their own Restock number): tell the sender here, and relay to everyone else.
+      await respond(text);
+      await relayToOthers(household, member.id, text, `${msg.messageId}:${part++}`);
+      return;
+    }
     try {
       await sendGroup(household.id, text, `${msg.messageId}:${part++}`);
     } catch (err) {
@@ -173,6 +210,9 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     await respond(
       `${prefix} ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}). Reply "${item.shared ? "personal" : "shared"}" to change.${budgetNote}`,
     );
+    if (household.groupChatId === UNBOUND_GROUP) {
+      await relayToOthers(household, member.id, `${member.name} added ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}).`, `add:${item.id}`);
+    }
   };
 
   const runOrder = async () => {
@@ -350,6 +390,38 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   // Ask "Which one?" once, after the other replies. Later items wait their turn.
   const prompt = queueChoices(household.id, member.id, choices);
   if (prompt) await respond(prompt);
+}
+
+/**
+ * Household news for members who aren't in a shared group chat: each gets it in their own Restock thread.
+ * Failures for one person never stop the others.
+ */
+async function relayToOthers(household: Household, senderId: string, text: string, key: string): Promise<void> {
+  for (const other of household.members) {
+    if (other.id === senderId) continue;
+    await sendPrivate(other.id, text, `relay:${key}:${other.id}`).catch((err) =>
+      console.warn("household relay failed:", err instanceof Error ? err.message : err),
+    );
+  }
+}
+
+/** Welcome a newly activated sign-up. The owner gets their invite link; existing members hear who joined. */
+async function welcome({ household, member, joined }: Activation, respond: (text: string) => Promise<void>): Promise<void> {
+  const owner = household.members.find((m) => m.id === household.ownerId);
+  if (!joined) {
+    const link = `${config.publicBaseUrl}/join/${inviteCodeFor(household, member.id)}`;
+    await respond(
+      `Welcome to Restock, ${member.name}! Your household is set up and you're the budget owner.\n` +
+        `Invite roommates with this link: ${link}\n` +
+        `Text what you need anytime ("we're out of TP"), and text "add card" so orders can go through.`,
+    );
+    return;
+  }
+  await respond(
+    `Welcome, ${member.name}! You're in ${owner?.name ?? "your"}'s household.\n` +
+      `Text what you need ("we're out of TP"), "what do I owe?", or "help". No card needed to join; text "add card" anytime.`,
+  );
+  await relayToOthers(household, member.id, `${member.name} joined the household.`, `joined:${member.id}`);
 }
 
 /** "Abdul hasn't texted me…" / "Abdul and David haven't texted me…" */

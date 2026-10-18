@@ -79,3 +79,9 @@ export function findPhone(text: string): { raw: string; phone: string } | undefi
   }
   return undefined;
 }
+
+/** Delete a household and its pending cart (owner leaving with nobody else in it). Orders/charges stay as records. */
+export function deleteHousehold(household: Household): void {
+  for (const [id, item] of db.items) if (item.householdId === household.id && item.status === "pending") db.items.delete(id);
+  db.households.delete(household.id);
+}

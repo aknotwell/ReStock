@@ -14,12 +14,14 @@ Built at **DubHacks '26**.
 | **Pay back**: log in and settle what you owe | [restock-production-daab.up.railway.app/pay](https://restock-production-daab.up.railway.app/pay) |
 | Health check | [restock-production-daab.up.railway.app/health](https://restock-production-daab.up.railway.app/health) |
 
-**Signing up happens by text, not on a website:**
-1. **Get connected to Restock's iMessage line.** Photon's shared lines only accept texts from numbers that have been added, so the team adds your number in the Photon dashboard (iMessage → *Add someone to the line*) and tells you which Restock number to text. A dedicated Restock number would remove this step.
-2. **Text your Restock number** `start household as <your name>` (or just "make me a household, I'm Alex"). You become the budget owner.
-3. **Add roommates:** `add member Amber 425-555-0123`. They text their Restock number once to get started.
+**Sign up on the web:**
+1. **Start a household** at [restock-production-daab.up.railway.app/start](https://restock-production-daab.up.railway.app/start): your first name, mobile number, and consent. Restock gives you **your own Restock iMessage number**.
+2. **Text "hi" to that number** (the page has an *Open Messages* button). Your first text activates you, and you're the budget owner. Restock replies with your **invite link**.
+3. **Invite roommates** with that link (or text Restock `invite`). They sign up at `/join/<code>`, get their own Restock number, and text "hi" to join. Everyone hears "Amber joined the household."
 4. **Add your card:** text `add card` and use the secure Stripe link (test mode).
 5. **Log in to the [dashboard](https://restock-production-daab.up.railway.app/dashboard)** with the same phone number. Restock texts you a 6-digit code.
+
+Each person texts their own Restock number, and Restock relays household news (items added, orders, who joined) to everyone's thread. Text `STOP` to stop texts and `delete my data` to leave. Orders are a demo: nothing ships, and payments are Stripe test mode.
 
 ---
 
@@ -48,6 +50,7 @@ Sam:      order now
 Restock:  Ordered! 6 items, $72.75, shared items split evenly, personal items paid by whoever added them.
           Sam $15.65 · Jake $46.95 · Priya $10.15
           Arrives Thursday. Household budget left: $112.40
+          (Demo order: nothing ships, and payments are Stripe test mode.)
 ```
 
 Then everyone gets a **private** text:

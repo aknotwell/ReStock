@@ -50,6 +50,11 @@ export function inviteToAddCard(cardLink: string): string {
 export const CARD_NUMBER_WARNING =
   "I can't confirm, store, or repeat card numbers, so I've ignored that message. Please don't send card details in chat. To add a card safely, text \"add card\" and I'll send you a private, secure link.";
 
+/** To the owner when someone pays them back through a pay-back link. */
+export function paidBack(debtorName: string, cents: Cents, orders: number): string {
+  return `${debtorName} paid you back ${fmt(cents)}${orders > 1 ? ` for ${orders} orders` : ""}.`;
+}
+
 export function cardAdded(last4: string): string {
   return `Card added, ending ${last4}. From the next order on, your share is charged to it automatically.`;
 }

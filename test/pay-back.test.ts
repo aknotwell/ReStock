@@ -135,14 +135,14 @@ describe("markDebtPaidFromSession (checkout.session.completed, payment mode)", (
   const session = (overrides: Partial<Stripe.Checkout.Session> = {}) =>
     ({ mode: "payment", payment_status: "paid", amount_total: 1015, metadata: { debtId: "d1" }, ...overrides }) as Stripe.Checkout.Session;
 
-  it("marks the debt paid", () => {
-    expect(markDebtPaidFromSession(session())).toBe("paid");
+  it("marks the debt paid", async () => {
+    expect(await markDebtPaidFromSession(session())).toBe("paid");
     expect(debt.status).toBe("paid");
   });
 
-  it("is safe to run twice (Stripe retries webhooks)", () => {
-    markDebtPaidFromSession(session());
-    expect(markDebtPaidFromSession(session())).toBe("paid");
+  it("is safe to run twice (Stripe retries webhooks)", async () => {
+    await markDebtPaidFromSession(session());
+    expect(await markDebtPaidFromSession(session())).toBe("paid");
     expect(debt.status).toBe("paid");
   });
 
@@ -151,8 +151,8 @@ describe("markDebtPaidFromSession (checkout.session.completed, payment mode)", (
     ["for a debt we don't know", { metadata: { debtId: "nope" } }, "unknown_debt"],
     ["not actually paid", { payment_status: "unpaid" as const }, "not_paid"],
     ["for a different amount", { amount_total: 500 }, "amount_mismatch"],
-  ])("leaves the debt open when the session is %s", (_label, overrides, result) => {
-    expect(markDebtPaidFromSession(session(overrides as Partial<Stripe.Checkout.Session>))).toBe(result);
+  ])("leaves the debt open when the session is %s", async (_label, overrides, result) => {
+    expect(await markDebtPaidFromSession(session(overrides as Partial<Stripe.Checkout.Session>))).toBe(result);
     expect(debt.status).toBe("open");
   });
 });
@@ -217,19 +217,19 @@ describe("one pay-back page for everything owed (several orders)", () => {
     await openPayBackLink(tokenOf(await createPayBackLink("d1")));
     const paid = { id: "cs_test_1", mode: "payment", payment_status: "paid", amount_total: 1227, metadata: {} } as unknown as Stripe.Checkout.Session;
 
-    expect(markDebtPaidFromSession(paid)).toBe("paid");
+    expect(await markDebtPaidFromSession(paid)).toBe("paid");
     expect([debt.status, d2.status, d3.status]).toEqual(["paid", "paid", "open"]); // Jake's debt isn't Priya's to pay
   });
 
-  it("the webhook can also read the debt list from metadata (e.g. after a restart lost the page record)", () => {
+  it("the webhook can also read the debt list from metadata (e.g. after a restart lost the page record)", async () => {
     const fromMetadata = { id: "cs_other", mode: "payment", payment_status: "paid", amount_total: 1227, metadata: { debtIds: "d1,d2" } } as unknown as Stripe.Checkout.Session;
-    expect(markDebtPaidFromSession(fromMetadata)).toBe("paid");
+    expect(await markDebtPaidFromSession(fromMetadata)).toBe("paid");
     expect([debt.status, d2.status]).toEqual(["paid", "paid"]);
   });
 
-  it("leaves every debt open if the paid amount doesn't match their total", () => {
+  it("leaves every debt open if the paid amount doesn't match their total", async () => {
     const wrong = { id: "cs_other", mode: "payment", payment_status: "paid", amount_total: 1015, metadata: { debtIds: "d1,d2" } } as unknown as Stripe.Checkout.Session;
-    expect(markDebtPaidFromSession(wrong)).toBe("amount_mismatch");
+    expect(await markDebtPaidFromSession(wrong)).toBe("amount_mismatch");
     expect([debt.status, d2.status]).toEqual(["open", "open"]);
   });
 });
@@ -240,5 +240,34 @@ describe("youOwe text", () => {
     const sam = db.households.get("h1")!.members[0]!;
     expect(youOwe(sam, 212, "P", "C")).not.toMatch(/in total/);
     expect(youOwe(sam, 212, "P", "C", 1227)).toMatch(/With earlier orders, you owe Sam \$12\.27 in total\. This link pays all of it\./);
+  });
+});
+
+describe("text to the owner when someone pays them back", () => {
+  const paidPage = (id: string, cents: number, debtIds: string) =>
+    ({ id, mode: "payment", payment_status: "paid", amount_total: cents, metadata: { debtIds } }) as unknown as Stripe.Checkout.Session;
+  const textsToSam = (log: { mock: { calls: unknown[][] } }) =>
+    log.mock.calls.map((c) => c.join(" ")).filter((line: string) => line.includes("→ Sam (private)"));
+
+  it("Sam is told who paid and how much, once per payment", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await markDebtPaidFromSession(paidPage("cs_a", 1015, "d1"));
+    await markDebtPaidFromSession(paidPage("cs_a", 1015, "d1")); // Stripe retries the webhook
+    const texts = textsToSam(log);
+    expect(texts).toHaveLength(1);
+    expect(texts[0]).toMatch(/Priya paid you back \$10\.15\./);
+  });
+
+  it("says how many orders a combined payment covered", async () => {
+    db.debts.set("d2", { id: "d2", orderId: "o2", debtorId: "priya", creditorId: "sam", cents: 212, status: "open" });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await markDebtPaidFromSession(paidPage("cs_b", 1227, "d1,d2"));
+    expect(textsToSam(log)[0]).toMatch(/Priya paid you back \$12\.27 for 2 orders\./);
+  });
+
+  it("sends nothing when the payment doesn't go through our checks", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await markDebtPaidFromSession(paidPage("cs_c", 500, "d1")); // wrong amount
+    expect(textsToSam(log)).toHaveLength(0);
   });
 });

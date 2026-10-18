@@ -13,7 +13,8 @@ import { OwnerCardRequiredError, ownerCardRequest } from "../payments/ownerGate.
 import type { Debt, Household, Item } from "../types.js";
 import { checkInput, INJECTION_REPLY } from "../safety/guardrails.js";
 import { isMuted, mute, reply, sendGroup, sendPrivate, unmute, type InboundMessage } from "./photon.js";
-import { parseCommand } from "./commands.js";
+import { isGreetingOnly, parseCommand } from "./commands.js";
+import { cartSummary } from "./cart.js";
 import { stripIntensifiers } from "./casualAdd.js";
 import { balanceSummary, CARD_NUMBER_WARNING, fmt, groupSummary, helpMessage, inviteToAddCard } from "./templates.js";
 import { sendOrderTexts } from "./afterOrder.js";
@@ -375,6 +376,13 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     return;
   }
 
+  // "hi" / "Hello?" in a DM from someone already set up: a friendly pointer, not the factual-question reply.
+  // (Sign-up activation and onboarding answered greetings above; in the group, a greeting is just chat.)
+  if (msg.spaceKind === "direct" && isGreetingOnly(msg.text)) {
+    await respond(greetingReply(member.name));
+    return;
+  }
+
   // 2. Understand the message.
   const intents = await parseMessage(aiText, member.name);
   if (heldPhone && !intents.some((i) => i.type === "add_member")) {
@@ -531,6 +539,8 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       );
       if (msg.spaceKind === "direct") await respond(text);
       else await sendPrivate(member.id, text, `balance:${msg.messageId}`);
+    } else if (intent.type === "show_cart") {
+      await respond(cartSummary(pendingItems(household.id), household, member.id));
     } else if (intent.type === "approve") {
       const waiting = pendingItems(household.id).filter((i) => i.needsApproval);
       const mine = approvableBy(household, member, waiting);
@@ -653,6 +663,11 @@ export function contactReply(line: string | undefined): string {
 /** A first text that's only a greeting ("hi", "hey!"), so there's nothing else to act on after the welcome. */
 function isGreeting(text: string): boolean {
   return /^(?:hi+|hey+|hello|hiya|yo|sup|howdy|hi there|hello there|start|join|ok|okay)[\s!.?]*$/i.test(text.trim());
+}
+
+/** The reply to "hi" from a member who's already set up. */
+export function greetingReply(name: string): string {
+  return `Hi ${name}! Text what you need ("we're out of TP"), "cart" to see the shopping list, or "order now" to check out. Text "help" for more.`;
 }
 
 /** "Alex", "Alex and Sam", "Alex, Sam and Jo". */

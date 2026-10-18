@@ -12,7 +12,7 @@ const ruleText: Record<SplitRule, string> = {
 export function groupSummary(h: Household, r: OrderResult): string {
   const lines = h.members.map((m) => `${m.name} ${fmt(r.shares[m.id] ?? 0)}`).join(" · ");
   const budget = h.budgetCents === undefined ? "" : ` Household budget left: ${fmt(h.budgetCents - h.spentCents)}`;
-  return `Ordered! ${r.items.length} items, ${fmt(r.order.totalCents)}, ${ruleText[r.order.rule]}.\n${lines}\nArrives ${r.order.eta ?? "soon"}.${budget}`;
+  return `Ordered! ${r.items.length} items, ${fmt(r.order.totalCents)}, ${ruleText[r.order.rule]}.\n${lines}\nArrives ${r.order.eta ?? "soon"}.${budget}\n(Demo order: nothing ships, and payments are Stripe test mode.)`;
 }
 
 export function ownerReceipt(owner: Member, share: Cents, coveredForOthers: Cents): string {
@@ -38,6 +38,7 @@ export function helpMessage(): string {
     "I'm Restock, an AI assistant for this household. I'm not a person.",
     "Text what you need (\"we're out of TP\") and I'll add it to the cart. Say \"personal\" if it's just for you.",
     "Nothing is charged until someone texts \"order now\". I never ask for card numbers in chat.",
+    "Reply STOP to stop texts, or \"delete my data\" to leave. Demo: orders are simulated and payments are Stripe test mode.",
   ].join("\n");
 }
 

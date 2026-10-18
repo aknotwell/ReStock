@@ -8,7 +8,10 @@ import { handleInbound } from "./messaging/inbound.js";
 import { rememberInbound, startPolling, type InboundMessage } from "./messaging/photon.js";
 import { stripeWebhook } from "./payments/webhook.js";
 import { agentApi, agentApiInfo } from "./web/agentApi.js";
-import { devChat } from "./web/devChat.js";
+import { rateLimiter } from "./web/rateLimit.js";
+import { sweepExpiredSignups } from "./core/signups.js";
+
+const agentLimit = rateLimiter(60, 60 * 1000);
 import { webRoutes } from "./web/routes.js";
 
 // Load saved data before anything else touches the store.
@@ -29,6 +32,7 @@ saveNow();
 startAutosave();
 
 const app = express();
+app.set("trust proxy", 1); // Railway sits behind one proxy: use the real client IP for rate limits
 
 // Stripe needs the raw body for signature verification — mount before express.json().
 app.post("/webhooks/stripe", express.raw({ type: "application/json" }), stripeWebhook);
@@ -55,13 +59,13 @@ if (config.devInbound) {
     await handleInbound(msg);
     res.sendStatus(200);
   });
-  app.use(devChat); // dashboard "Test chat" tab: /dev/state, /dev/chat, /dev/reset
   console.warn("DEV_INBOUND=1: POST /dev/inbound is enabled. Never enable this on a public deploy.");
 }
 
 // The same audit pipeline at every path an audit tool might use (VEYZL only takes a base URL).
 for (const path of ["/api/agent", "/v1/chat/completions", "/chat/completions", "/v1/messages", "/"]) {
-  app.post(path, agentApi);
+  // Public and it spends Claude credits: limit each IP (a full VEYZL audit is ~15 requests).
+  app.post(path, (req, res, next) => (agentLimit(req.ip ?? "unknown") ? next() : res.status(429).json({ error: "Too many requests. Try again in a minute." })), agentApi);
 }
 app.get(["/api/agent", "/v1/chat/completions"], agentApiInfo);
 
@@ -71,4 +75,6 @@ app.use(webRoutes);
 app.listen(config.port, () => {
   console.log(`Restock listening on ${config.publicBaseUrl}`);
   startPolling(handleInbound);
+  // Sign-ups that never texted "hi" give their Photon seat back.
+  setInterval(() => void sweepExpiredSignups().catch((err) => console.warn("sign-up sweep failed:", err)), 10 * 60 * 1000).unref();
 });

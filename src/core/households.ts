@@ -24,17 +24,20 @@ export function cleanName(raw: string): string | undefined {
   return /^[\p{L}][\p{L}'. -]{0,29}$/u.test(name) ? name : undefined;
 }
 
-function memberId(name: string, taken: Set<string>): string {
+export function memberId(name: string, taken: Set<string>): string {
   const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "member";
   let id = base;
   for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
   return id;
 }
 
-const allMemberIds = () => new Set([...db.households.values()].flatMap((h) => h.members.map((m) => m.id)));
+/** A personal space doesn't count: someone can have their own space and be in a group. */
+export const inAGroup = (phone: string) => householdsForPhone(phone).some((h) => h.kind !== "personal");
+
+export const allMemberIds = () => new Set([...db.households.values()].flatMap((h) => h.members.map((m) => m.id)));
 
 export function createHousehold(ownerName: string, ownerPhone: string): Household {
-  if (householdsForPhone(ownerPhone).length) throw new MembershipError("You're already in a household.");
+  if (inAGroup(ownerPhone)) throw new MembershipError("You're already in a household.");
   const owner: Member = { id: memberId(ownerName, allMemberIds()), name: ownerName, phone: ownerPhone, role: "owner" };
   const household: Household = {
     id: newId(),
@@ -50,7 +53,7 @@ export function createHousehold(ownerName: string, ownerPhone: string): Househol
 
 export function addMember(household: Household, name: string, phone: string): Member {
   if (household.members.length >= 9) throw new MembershipError("A household can have up to 9 people.");
-  if (householdsForPhone(phone).length) throw new MembershipError("That number is already in a household.");
+  if (inAGroup(phone)) throw new MembershipError("That number is already in a household.");
   if (household.members.some((m) => m.name.toLowerCase() === name.toLowerCase())) {
     throw new MembershipError(`There's already a ${name} in your household. Use a different name, like "${name} B".`);
   }
@@ -78,4 +81,10 @@ export function findPhone(text: string): { raw: string; phone: string } | undefi
     if (phone && raw.replace(/\D/g, "").length >= 10) return { raw, phone };
   }
   return undefined;
+}
+
+/** Delete a household and its pending cart (owner leaving with nobody else in it). Orders/charges stay as records. */
+export function deleteHousehold(household: Household): void {
+  for (const [id, item] of db.items) if (item.householdId === household.id && item.status === "pending") db.items.delete(id);
+  db.households.delete(household.id);
 }

@@ -2,12 +2,18 @@
 // Deterministic and authorized in code (owner-only changes); the AI never decides membership.
 import { addMember, cleanName, createHousehold, MembershipError, normalizePhone, removeMember } from "../core/households.js";
 import type { Household, Member } from "../types.js";
+import { inviteCodeFor, releaseLineFor, resetInvite } from "../core/signups.js";
+import { deleteHousehold } from "../core/households.js";
+import { openDebtsFor, owedTo } from "../core/ledger.js";
+import { config } from "../config.js";
 
 export type MembershipCommand =
   | { type: "start"; name: string | null }
   | { type: "add_member"; name: string; phone: string }
   | { type: "remove_member"; name: string }
-  | { type: "members" };
+  | { type: "members" }
+  | { type: "invite"; reset: boolean }
+  | { type: "delete_self" };
 
 export function parseMembershipCommand(text: string): MembershipCommand | undefined {
   const t = text.trim().replace(/[.!]+$/, "");
@@ -19,6 +25,9 @@ export function parseMembershipCommand(text: string): MembershipCommand | undefi
   if (add?.[1] && add[2] && normalizePhone(add[2])) return { type: "add_member", name: add[1], phone: add[2] };
   const remove = /^remove\s+(?:member|roommate)\s+(.+)$/i.exec(t);
   if (remove?.[1]) return { type: "remove_member", name: remove[1] };
+  if (/^(?:delete my (?:data|account|info)|leave (?:the |my |this )?(?:household|house|group))$/i.test(t)) return { type: "delete_self" };
+  const invite = /^(reset\s+)?invite(?:\s+link)?$|^(?:get|send)\s+(?:me\s+)?(?:an?\s+|the\s+)?invite(?:\s+link)?$/i.exec(t);
+  if (invite) return { type: "invite", reset: !!invite[1] };
   if (/^(?:members|roommates|who(?:'s| is) in (?:the |my |our )?(?:house(?:hold)?|home|group)\??)$/i.test(t)) return { type: "members" };
   return undefined;
 }
@@ -71,6 +80,37 @@ export async function handleMembershipCommand({ command, fromPhone, spaceKind, h
         (m) => `• ${m.name}${m.id === household.ownerId ? " (budget owner)" : ""}${m.paymentMethodId ? ", card on file" : ", no card yet"}`,
       );
       await respond(`Your household:\n${lines.join("\n")}`);
+      return true;
+    }
+
+    if (command.type === "delete_self") {
+      // Runs only after the person's explicit "yes" (inbound asks first). Plain code; frees their Photon line.
+      const others = household.members.filter((m) => m.id !== member.id);
+      if (member.id === household.ownerId && others.length) {
+        await respond(`You're the budget owner, so remove the others first ("remove member ${others[0]!.name}"), then text "delete my data" again.`);
+        return true;
+      }
+      if (openDebtsFor(member.id).length || owedTo(member.id).length) {
+        await respond("You still have an open balance. Settle up first (text \"what do I owe?\"), then text \"delete my data\" again.");
+        return true;
+      }
+      if (member.id === household.ownerId) deleteHousehold(household);
+      else removeMember(household, member.name);
+      await releaseLineFor(fromPhone);
+      await respond("Done. You've left Restock and your data is deleted. Thanks for trying it!");
+      return true;
+    }
+
+    if (command.type === "invite") {
+      if (member.id !== household.ownerId) {
+        await respond("Only the budget owner can invite people. Ask them for the invite link.");
+        return true;
+      }
+      const code = command.reset ? resetInvite(household, member.id) : inviteCodeFor(household, member.id);
+      await respond(
+        `${command.reset ? "New invite link (the old one no longer works)" : "Your invite link"}: ${config.publicBaseUrl}/join/${code}\n` +
+          `Share it with your roommates. It works for 7 days; text "reset invite" to turn it off.`,
+      );
       return true;
     }
 

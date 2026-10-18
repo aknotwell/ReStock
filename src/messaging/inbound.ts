@@ -28,7 +28,8 @@ import {
 import { isRestockLine } from "./photonLines.js";
 import { CONTACT_NAME, contactLink } from "../web/contactCard.js";
 import { config } from "../config.js";
-import { activeHousehold, adoptCards, cleanName, findPhone, householdName } from "../core/households.js";
+import { activeHousehold, adoptCards, cleanName, findPhone, householdName, setActiveHousehold } from "../core/households.js";
+import { answerDestination, askWhichHousehold, askWhoFor, namedHousehold, splitStated, withoutHousehold } from "./destination.js";
 import { handleOnboarding, setupInProgress } from "./onboarding.js";
 import { parseDealRequest, stripDealWords } from "../deals/request.js";
 import { currentListing, listingProduct, liveDealsEnabled, offCatalogProduct } from "../deals/live.js";
@@ -78,7 +79,14 @@ function resolveHousehold(msg: InboundMessage): Household | undefined {
 }
 
 /** `refined`: this message is a member's answer to "Any brand or size?", so it won't be asked again. */
-export async function handleInbound(msg: InboundMessage, opts: { refined?: boolean } = {}): Promise<void> {
+/**
+ * `refined`: an answer to "Any brand or size?", so it isn't asked again. `destinationChosen`: the household was
+ * picked or named for this add, so "Which household?" isn't asked. `askSplit`: ask "Who's it for?" if they didn't say.
+ */
+export async function handleInbound(
+  msg: InboundMessage,
+  opts: { refined?: boolean; destinationChosen?: boolean; askSplit?: boolean } = {},
+): Promise<void> {
   let part = 0;
   const respond = (text: string) => reply(msg, text, part++);
 
@@ -155,6 +163,34 @@ export async function handleInbound(msg: InboundMessage, opts: { refined?: boole
     return;
   }
 
+  // One-on-one from someone in several households: an answer to "Which household is this for?" or "Who's it
+  // for?", or a household named in the text ("… for we da fam"). Each continues the add in that household, which
+  // becomes their active one so their "Which one?" pick lands there too.
+  if (msg.spaceKind === "direct") {
+    const toHousehold = (h: Household, text: string, more: { askSplit?: boolean } = {}) => {
+      setActiveHousehold(msg.fromPhone, h.id);
+      return handleInbound({ ...msg, messageId: `${msg.messageId}:to`, text }, { destinationChosen: true, ...more });
+    };
+    const dest = answerDestination(msg.fromPhone, msg.text, (h) => findMemberByPhone(h, msg.fromPhone));
+    if (dest) {
+      if (dest.kind === "cancelled") await respond("OK, I didn't add it.");
+      else if (dest.kind === "ask") await respond(dest.prompt);
+      else if (dest.kind === "household") await toHousehold(dest.household, dest.text, { askSplit: true });
+      else {
+        const target = householdsForPhone(msg.fromPhone).find((h) => h.id === dest.householdId);
+        if (target) await toHousehold(target, dest.text);
+      }
+      return;
+    }
+    if (!opts.destinationChosen && !membership && householdsForPhone(msg.fromPhone).length > 1) {
+      const named = namedHousehold(msg.fromPhone, msg.text);
+      if (named) {
+        await toHousehold(named.household, withoutHousehold(msg.text, named.phrase), { askSplit: true });
+        return;
+      }
+    }
+  }
+
   // "shopping list" one-on-one from someone in several groups: ask which group's list, then show it.
   // In a group chat, or with only one group, the list is shown below as usual.
   if (msg.spaceKind === "direct") {
@@ -170,7 +206,8 @@ export async function handleInbound(msg: InboundMessage, opts: { refined?: boole
     }
     // "order now" one-on-one from someone in several groups: ask which cart first.
     const ordering = parseCommand(msg.text).some((i) => i.type === "order_now");
-    const groups = isShowCart(msg.text) || ordering ? groupsToPick(msg.fromPhone) : undefined;
+    // A household they named ("order now for we da fam") was already chosen above, so don't ask again.
+    const groups = (isShowCart(msg.text) || ordering) && !opts.destinationChosen ? groupsToPick(msg.fromPhone) : undefined;
     if (groups) {
       await respond(askWhichList(msg.fromPhone, groups, ordering ? "order" : "list"));
       return;
@@ -499,6 +536,18 @@ export async function handleInbound(msg: InboundMessage, opts: { refined?: boole
   if (heldPhone && !intents.some((i) => i.type === "add_member")) {
     await respond(INJECTION_REPLY); // a phone number outside adding a member: refused, as before
     return;
+  }
+  // Adding one-on-one while in several households: first which household, then who it's for.
+  const adds = intents.filter((i) => i.type === "add_item" && i.itemName);
+  if (msg.spaceKind === "direct" && adds.length && !opts.refined) {
+    if (!opts.destinationChosen && householdsForPhone(msg.fromPhone).length > 1) {
+      await respond(askWhichHousehold(msg.fromPhone, msg.text));
+      return;
+    }
+    if (opts.askSplit && adds.length === 1 && household.members.length > 1 && !splitStated(msg.text, household, member)) {
+      await respond(askWhoFor(msg.fromPhone, msg.text, household, member));
+      return;
+    }
   }
   const choices: Choice[] = [];
   // A thin store search for something they didn't describe: ask for a brand or size instead of showing it

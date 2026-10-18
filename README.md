@@ -84,6 +84,7 @@ Natural phrasing like "we're out of dish soap" is understood by Claude. Without 
 | `add member Amber 425-555-0123` | Owner only: adds a roommate (no card needed) |
 | "we're out of TP" / `add dish soap` | AI matches it to the catalog. Three options, ranked by price per unit, with the best value labeled. |
 | `personal` / `shared` | Flips your last item between split-with-everyone and just-you |
+| `add toilet paper for everyone for we da fam` | In several households, says which one and who it's for in one text. Without them, a one-on-one add asks "Which household is this for?" and then "Who's it for?" ("everyone", "just me", or names) |
 | `order now` | Shows the cart grouped by who pays (shared, personal, split) and asks "yes"; the "yes" places the order and charges everyone's share. In several groups, it first asks which cart |
 | `what do I owe?` | Your balance, privately |
 | `add card` | A private, secure Stripe link. Card numbers never go through chat. |

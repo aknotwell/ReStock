@@ -65,6 +65,8 @@
   .hero h1 { max-width: 12ch; margin: 0 0 20px; font-size: clamp(44px, 7vw, 88px); font-weight: 900; font-stretch: 115%; letter-spacing: -0.03em; line-height: .95; }
   .hero p { max-width: 42ch; margin: 0 0 28px; color: var(--muted); font-size: 19px; }
   .ctas { display: flex; flex-wrap: wrap; gap: 12px; }
+  .hero p.hint { margin: 16px 0 0; font-size: 15px; }
+  .nav { display: flex; gap: 10px; }
 
   /* The sample receipt: a group chat turning into an order */
   .chat { display: flex; flex-direction: column; gap: 10px; margin: 14px 0 0; }
@@ -97,6 +99,7 @@
     .hero { grid-template-columns: minmax(0, 1fr); gap: 36px; padding-block: 40px 48px; }
     section.block { padding-block: 40px; }
     .brand { font-size: 24px; }
+    .nav .btn { min-height: 44px; padding: 0 14px; }
   }
 </style>
 </head>
@@ -116,7 +119,10 @@
 <header>
   <div class="shell topbar">
     <a class="brand" href="/"><svg class="logo" aria-hidden="true"><use href="#logo"/></svg>restock</a>
-    <a class="btn" href="/dashboard">Log in</a>
+    <nav class="nav">
+      <a class="btn" href="/dashboard">Log in</a>
+      <a class="btn primary" href="/start">Sign up</a>
+    </nav>
   </div>
 </header>
 
@@ -126,9 +132,10 @@
       <h1>Groceries and supplies, restocked by text.</h1>
       <p>Restock is an AI assistant in your group chat. Text what you're out of. It finds the best match, keeps a shared cart, and splits the bill when someone says &ldquo;order now&rdquo;.</p>
       <div class="ctas">
-        <a class="btn primary" href="/dashboard">Log in</a>
-        <a class="btn" href="/start">Start a group</a>
+        <a class="btn primary" href="/start">Get your Restock number</a>
+        <a class="btn" href="/dashboard">Log in</a>
       </div>
+      <p class="hint">No app to install. Got an invite link from a roommate? Open it to join their group.</p>
     </div>
     <div class="torn" aria-label="Example: a group chat ordering supplies">
       <div class="slip">
@@ -229,8 +236,11 @@
 
   <section class="block">
     <div class="shell final">
-      <h2>Already texting Restock?</h2>
-      <a class="btn primary" href="/dashboard">Log in with your phone</a>
+      <h2>Ready to restock?</h2>
+      <div class="ctas">
+        <a class="btn primary" href="/start">Sign up</a>
+        <a class="btn" href="/dashboard">Log in with your phone</a>
+      </div>
     </div>
   </section>
 </main>
@@ -238,7 +248,7 @@
 <footer>
   <div class="shell">
     <span class="meta">Demo. Orders are simulated and payments use Stripe test mode.</span>
-    <a class="meta" href="/privacy">Privacy</a>
+    <span class="meta"><a href="/start">Sign up</a> &middot; <a href="/dashboard">Log in</a> &middot; <a href="/privacy">Privacy</a></span>
   </div>
 </footer>
 </body>

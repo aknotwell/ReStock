@@ -30,10 +30,10 @@ jobs:
   veyzl-probes:
     # Replays VEYZL's API-audit probes against THIS PR's code through POST /api/agent.
     # VEYZL itself only audits the deployed Backend URL; this catches guardrail regressions before merge.
-    # Add the ANTHROPIC_API_KEY repo secret to also run the model-backed probe (otherwise it is skipped).
+    # Add the GEMINI_API_KEY repo secret to also run the model-backed probe (otherwise it is skipped).
     runs-on: ubuntu-latest
     env:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       RUN_MODEL_TESTS: "1"
     steps:
       - uses: actions/checkout@v4
@@ -43,6 +43,6 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Note when the model-backed probe is skipped
-        if: env.ANTHROPIC_API_KEY == ''
-        run: echo "::notice::ANTHROPIC_API_KEY secret not set; skipping the model-backed probe (gen-fact-paris-001)."
+        if: env.GEMINI_API_KEY == ''
+        run: echo "::notice::GEMINI_API_KEY secret not set; skipping the model-backed probe (gen-fact-paris-001)."
       - run: npm run test:probes

@@ -40,7 +40,7 @@ People sign up on the web (`/start`, or an owner's `/join/<code>` link) and acti
 
    | Variable | Value | Needed for |
    |---|---|---|
-   | `ANTHROPIC_API_KEY` | Your Claude key. Ideally a **separate** key with its own spend limit, so you can revoke it after the event. | AI parsing and answers (the VEYZL "Paris" probe) |
+   | `GEMINI_API_KEY` | A Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey) (free tier). Use a **separate** key you can revoke after the event. Optional: `GEMINI_MODEL` (default `gemini-3.5-flash-lite`). | AI parsing and answers (the VEYZL "Paris" probe) |
    | `DEMO_SEED` | `1` | Seeds Sam, Jake and Priya on the first start. Once the database has a household, later starts keep the saved data instead. |
    | `DEMO_RESET` | *(only when you want a clean slate)* `1` | Re-seeds the demo household even though saved data exists. Remove it again afterwards, or every deploy wipes the demo. |
    | `DEMO_MEMBERS` | *(optional)* the real demo household as JSON, replacing Sam/Jake/Priya. See [photon.md](photon.md#demo-household). | Live demo with your own phones |
@@ -62,4 +62,4 @@ People sign up on the web (`/start`, or an owner's `/join/<code>` link) and acti
 - **Only one environment should poll Photon.** If both Railway and a laptop have `PHOTON_API_KEY`, both will answer every text. Put the Photon keys on Railway for the demo, and leave them out of local `.env` files, or use a separate Photon project for local development.
 - **VEYZL audits what's deployed, which is `main`.** A PR's own code is checked by our CI job `veyzl-probes`, which replays the same probes against `POST /api/agent` on every push.
 - **Data is saved to SQLite** (`src/core/persist.ts`) once a volume is attached: households, carts, orders, charges, debts, texted add-card and pay-back links, open "Which one?" questions, and where Photon polling left off. It's saved within a second of every change and again on shutdown, so a redeploy or crash loses at most the last second. Without a volume (or `DATABASE_PATH`) the log warns that data lives in memory only, and every deploy resets it. To start the demo over, deploy once with `DEMO_RESET=1`, then remove it. Message text is never stored.
-- **GitHub secret for CI:** add `ANTHROPIC_API_KEY` under repo **Settings → Secrets and variables → Actions → New repository secret**, so the `veyzl-probes` job also runs the model-backed probe. Without it, that probe is skipped and the other 9 still run.
+- **GitHub secret for CI:** add `GEMINI_API_KEY` under repo **Settings → Secrets and variables → Actions → New repository secret**, so the `veyzl-probes` job also runs the model-backed probe. Without it, that probe is skipped and the other 9 still run.

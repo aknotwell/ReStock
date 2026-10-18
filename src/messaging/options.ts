@@ -1,15 +1,30 @@
-// Owner: Person 1. "Add TP" -> three catalog options to pick from, or the household's usual if asked.
-// Prices and names always come from the catalog. The member picks; the AI never chooses for them.
-// Options are ranked by price per unit in code, and the cheapest is labelled "best value".
-import { alternativesFor, byUnitPrice, getProductByName, groupOf, unitCents, type Product } from "../core/catalog.js";
+// Owner: Person 1. "Add TP" -> up to three options to pick from, or the household's usual if asked.
+// Options are live store listings when SERPAPI_KEY is set (src/deals/live.ts), topped up from the catalog.
+// Names and prices come from those listings or the catalog, never the model. The member picks; the AI never
+// chooses for them. Options are ranked by price per unit in code, and the cheapest is labelled "best value".
+import { alternativesFor, getProductByName, groupOf, unitCents, type Product } from "../core/catalog.js";
 import { registerState } from "../core/persist.js";
-import { db } from "../core/store.js";
+import { db, getHousehold, pendingItems } from "../core/store.js";
+import { liveOptionsFor } from "../deals/live.js";
+import { applyFilters, bestValueId, describeFilters, hasFilters, optionCount, rankOptions, type DealOptions } from "../deals/rank.js";
 import { fmt } from "./templates.js";
 
 const PICK_TTL_MS = 10 * 60 * 1000;
 
 /** One item someone asked for, waiting for them to choose an option. */
-export type Choice = { options: Product[]; shared: boolean | null; lastBoughtId?: string; bestValueId?: string };
+export type Choice = {
+  options: Product[];
+  shared: boolean | null;
+  lastBoughtId?: string;
+  bestValueId?: string;
+  /** Options that would take the household over its monthly budget: picking one needs the owner's OK. */
+  overBudgetIds?: string[];
+  ownerName?: string;
+  /** When live prices were checked (ISO), if any option is a live listing. */
+  checkedAt?: string;
+  /** Shown above the options, e.g. when nothing matched the member's filters. */
+  note?: string;
+};
 type Pending = { queue: Choice[]; expires: number };
 
 const pending = new Map<string, Pending>();
@@ -62,23 +77,74 @@ export function namedSpecifically(requested: string, product: Product): boolean 
   return q === product.name.toLowerCase() || product.aliases.some((a) => q.includes(a.toLowerCase()));
 }
 
+/** Money left this month after the current cart. */
+function budgetLeft(householdId: string): number {
+  const h = getHousehold(householdId);
+  return h.budgetCents - h.spentCents - pendingItems(householdId).reduce((sum, i) => sum + i.cents, 0);
+}
+
 /**
- * Up to three options, best value (lowest price per unit) first, then the rest by price per unit.
- * The household's last purchase (if any) still goes to the top, so "what we usually get" is easy to repeat.
+ * Up to `opts.count` (default 3) options for an item. Live listings come first when we have them, and catalog
+ * alternatives fill any open slots. Within each, best value (lowest price per unit) first, or lowest price for
+ * `sort: "cheapest"`. Filters (price cap, pack size, store) apply to both; if nothing passes, we say so and show
+ * the unfiltered options. The household's last purchase still goes to the top, so "the usual" is easy to repeat.
  */
-export function buildChoice(householdId: string, product: Product, shared: boolean | null): Choice {
-  const alternatives = alternativesFor(product);
-  const ranked = byUnitPrice(alternatives);
-  // "Best value" only when the options were comparable and the cheapest strictly beats the runner-up.
-  const [best, next] = ranked;
-  let bestValueId: string | undefined;
-  if (ranked !== alternatives && best && next && best.cents * next.units! < next.cents * best.units!) bestValueId = best.id;
-  const last = lastBought(householdId, product);
-  if (last) {
-    const rest = ranked.filter((p) => p.id !== last.id);
-    return { options: [last, ...rest].slice(0, 3), shared, lastBoughtId: last.id, bestValueId };
+export function buildChoice(
+  householdId: string,
+  product: Product,
+  shared: boolean | null,
+  opts: DealOptions = {},
+  live: Product[] = [],
+): Choice {
+  const count = optionCount(opts.count);
+  const catalogOptions = alternativesFor(product);
+  // Store titles often leave out the pack size. With fewer than two sized listings there's nothing to compare
+  // per unit, so live listings go by price instead of letting one sized listing jump the queue.
+  const liveSort = live.filter((p) => p.units).length >= 2 ? opts.sort : "cheapest";
+  const pick = (list: Product[], sort = opts.sort, restByPrice = false) =>
+    rankOptions(hasFilters(opts) ? applyFilters(list, opts) : list, sort, { restByPrice });
+  let ranked = [...pick(live, liveSort, true), ...pick(catalogOptions)];
+  let note: string | undefined;
+  if (!ranked.length) {
+    note = `Nothing matched ${describeFilters(opts)}, so here are the usual options.`;
+    ranked = [...rankOptions(live, liveSort, { restByPrice: true }), ...rankOptions(catalogOptions, opts.sort)];
   }
-  return { options: ranked, shared, bestValueId };
+
+  // Pin last time's pick unless it fails a filter the member asked for.
+  const found = lastBought(householdId, product);
+  const last = found && (note || !hasFilters(opts) || applyFilters([found], opts).length > 0) ? found : undefined;
+  const options = (last ? [last, ...ranked.filter((p) => p.id !== last.id)] : ranked).slice(0, count);
+
+  const choice: Choice = { options, shared };
+  if (last) choice.lastBoughtId = last.id;
+  const best = bestValueId(options);
+  if (best) choice.bestValueId = best;
+  if (note) choice.note = note;
+  const checked = options.find((p) => p.checkedAt)?.checkedAt;
+  if (checked) choice.checkedAt = checked;
+  if (opts.respectBudget !== false) {
+    const left = budgetLeft(householdId);
+    const over = options.filter((p) => p.cents > left).map((p) => p.id);
+    if (over.length) {
+      const h = getHousehold(householdId);
+      choice.overBudgetIds = over;
+      choice.ownerName = h.members.find((m) => m.id === h.ownerId)?.name ?? "the budget owner";
+    }
+  }
+  return choice;
+}
+
+/** buildChoice with live store listings when SERPAPI_KEY is set. Falls back to the catalog on any problem. */
+export async function buildDealChoice(householdId: string, product: Product, shared: boolean | null, opts: DealOptions = {}): Promise<Choice> {
+  const live = await liveOptionsFor(product, { maxAgeHours: opts.maxAgeHours });
+  return buildChoice(householdId, product, shared, opts, live?.products ?? []);
+}
+
+/** "just now", "5 min ago", "3 hr ago". */
+export function checkedAgo(iso: string, now = Date.now()): string {
+  const mins = Math.max(0, Math.round((now - Date.parse(iso)) / 60_000));
+  if (mins < 2) return "just now";
+  return mins < 60 ? `${mins} min ago` : `${Math.round(mins / 60)} hr ago`;
 }
 
 function optionLine(p: Product, i: number, choice: Choice): string {
@@ -87,6 +153,7 @@ function optionLine(p: Product, i: number, choice: Choice): string {
     per !== undefined ? `${fmt(per)}/${p.unit}` : undefined,
     p.id === choice.bestValueId ? "best value" : undefined,
     p.id === choice.lastBoughtId ? "what you got last time" : undefined,
+    choice.overBudgetIds?.includes(p.id) ? `over budget, needs ${choice.ownerName}'s OK` : undefined,
   ].filter(Boolean);
   return `${i + 1}. ${p.name}: ${fmt(p.cents)}${notes.length ? ` (${notes.join(", ")})` : ""}`;
 }
@@ -95,7 +162,9 @@ export function choicePrompt(choice: Choice): string {
   const lines = choice.options.map((p, i) => optionLine(p, i, choice));
   const n = choice.options.length;
   const replies = n === 1 ? "1" : `${Array.from({ length: n - 1 }, (_, i) => i + 1).join(", ")} or ${n}`;
-  return `Which one?\n${lines.join("\n")}\nReply ${replies}, or "cancel".`;
+  const head = choice.note ? `${choice.note}\n` : "";
+  const checked = choice.checkedAt ? `\nStore prices checked ${checkedAgo(choice.checkedAt)}.` : "";
+  return `${head}Which one?\n${lines.join("\n")}${checked}\nReply ${replies}, or "cancel".`;
 }
 
 /** Queue choices for a member. Returns the prompt for the first one if nothing was already waiting. */
@@ -134,7 +203,7 @@ export function isCancel(text: string): boolean {
 }
 
 export type PickResult =
-  | { kind: "picked"; product: Product; shared: boolean | null; next?: string }
+  | { kind: "picked"; product: Product; shared: boolean | null; next?: string; overBudget?: { ownerName: string } }
   | { kind: "invalid"; prompt: string }
   | { kind: "cancelled"; next?: string };
 
@@ -150,7 +219,10 @@ export function resolvePick(householdId: string, memberId: string, reply: number
   const next = p.queue[0] ? choicePrompt(p.queue[0]) : undefined;
   if (!p.queue.length) pending.delete(k);
   if (reply === "cancel") return { kind: "cancelled", next };
-  return { kind: "picked", product: choice.options[reply - 1]!, shared: choice.shared, next };
+  const product = choice.options[reply - 1]!;
+  const result: Extract<PickResult, { kind: "picked" }> = { kind: "picked", product, shared: choice.shared, next };
+  if (choice.overBudgetIds?.includes(product.id)) result.overBudget = { ownerName: choice.ownerName ?? "the budget owner" };
+  return result;
 }
 
 /** Tests only. */

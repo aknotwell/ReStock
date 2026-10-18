@@ -40,6 +40,15 @@ function jsonSchema(schema: z.ZodType): Record<string, unknown> {
   return rest;
 }
 
+/**
+ * These are small classification tasks, so keep thinking low. Only 2.5 Flash can turn it off with a budget;
+ * Gemini 3 models use thinking levels whose options vary by model (3.5 Flash-Lite defaults to minimal),
+ * and 2.5 Pro can't turn thinking off, so every other model keeps its default.
+ */
+export function thinkingConfig(model: string): { thinkingConfig?: { thinkingBudget: number } } {
+  return /^gemini-2\.5-flash/.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {};
+}
+
 function createClient(apiKey: string, model: string): GeminiClient {
   return {
     async generate({ system, user, schema, maxOutputTokens }) {
@@ -56,10 +65,11 @@ function createClient(apiKey: string, model: string): GeminiClient {
               responseMimeType: "application/json",
               responseJsonSchema: jsonSchema(schema),
               maxOutputTokens,
-              // These are small classification tasks; skip thinking so replies stay fast and in the free quota.
-              thinkingConfig: { thinkingBudget: 0 },
+              ...thinkingConfig(model),
             },
           }),
+          // Never follow a redirect: it would carry the API key and the member's text somewhere else.
+          redirect: "error",
         });
       } catch (err) {
         throw new GeminiConnectionError(err instanceof Error && err.name === "TimeoutError");

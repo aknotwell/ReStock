@@ -38,7 +38,7 @@ People sign up on the web (`/start`, or an owner's `/join/<code>` link) and acti
 
    | Variable | Value | Needed for |
    |---|---|---|
-   | `GEMINI_API_KEY` | A Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey) (free tier). Use a **separate** key you can revoke after the event. Optional: `GEMINI_MODEL` (default `gemini-2.5-flash`). | AI parsing and answers (the VEYZL "Paris" probe) |
+   | `GEMINI_API_KEY` | A Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey) (free tier). Use a **separate** key you can revoke after the event. Optional: `GEMINI_MODEL` (default `gemini-3.5-flash-lite`). | AI parsing and answers (the VEYZL "Paris" probe) |
    | `DEMO_SEED` | `1` | Seeds Sam, Jake and Priya on the first start. Once the database has a household, later starts keep the saved data instead. |
    | `DEMO_RESET` | *(only when you want a clean slate)* `1` | Re-seeds the demo household even though saved data exists. Remove it again afterwards, or every deploy wipes the demo. |
    | `DEMO_MEMBERS` | *(optional)* the real demo household as JSON, replacing Sam/Jake/Priya. See [photon.md](photon.md#demo-household). | Live demo with your own phones |

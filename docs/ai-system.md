@@ -7,7 +7,7 @@ What the AI in Restock does, what data it uses, and what controls keep it safe. 
 | | |
 |---|---|
 | **System type** | Hybrid AI: a hosted LLM API (Google Gemini) plus a curated product dataset and deterministic business logic |
-| **Model** | Google Gemini, `gemini-2.5-flash` by default (`GEMINI_MODEL` overrides it), called through the Gemini REST API (`generateContent`) with JSON-Schema structured output and thinking off. Every output is re-validated by Zod. No SDK: the client is `src/ai/client.ts`. |
+| **Model** | Google Gemini, `gemini-3.5-flash-lite` by default (`GEMINI_MODEL` overrides it), called through the Gemini REST API (`generateContent`) with JSON-Schema structured output. Thinking stays at the model's default (minimal for 3.5 Flash-Lite) and is turned off for 2.5 Flash. Redirects are refused, so the API key and prompt only ever go to Google's endpoint. Every output is re-validated by Zod. No SDK: the client is `src/ai/client.ts`. |
 | **Data sharing** | Messages the model sees (phone numbers already replaced with `[phone]`, card numbers and other sensitive inputs never sent) go to Google's Gemini API. On the **free tier, Google may use prompts and responses to improve its products**, so use a paid-tier key for anything beyond the demo's test data. |
 | **Where it runs** | Server side, in `src/ai/`. The client and model are configured in `src/ai/client.ts`. |
 | **Users** | Members of a household group chat (roommates, families) texting through Photon (iMessage/SMS) |

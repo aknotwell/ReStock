@@ -4,6 +4,7 @@
 // hands out a fixed fake number so the rest of the flow still runs.
 import { ApiError, Photon } from "@photon-ai/api";
 import { config } from "../config.js";
+import { registerState } from "../core/persist.js";
 
 export type LineAssignment = { assignmentId: string; line: string }; // line: the Restock number to text, E.164
 
@@ -16,6 +17,27 @@ const photon =
 
 export const CONSOLE_LINE = "+16285550100"; // used only when Photon isn't configured
 
+// Restock's own numbers seen so far: lines handed out at sign-up, and every line a text arrived on.
+// Used so a "save restock as a contact" card is only ever made for a real Restock number.
+const knownLines = new Set<string>();
+registerState("restock-lines", {
+  dump: () => [...knownLines],
+  load: (data) => {
+    knownLines.clear();
+    for (const line of data as string[]) knownLines.add(line);
+  },
+});
+
+/** Note a number as one of Restock's lines (an assigned line, or the line a text arrived on). */
+export function rememberRestockLine(line: string | undefined): void {
+  if (line && /^\+\d{10,15}$/.test(line)) knownLines.add(line);
+}
+
+/** Whether this number is one of Restock's own lines. Without Photon, the fake console line counts. */
+export function isRestockLine(line: string): boolean {
+  return knownLines.has(line) || (!photon && line === CONSOLE_LINE);
+}
+
 export async function assignLine(phone: string, firstName: string, idempotencyKey: string): Promise<LineAssignment> {
   if (!photon || !config.photonProjectId) return { assignmentId: `console-${phone}`, line: CONSOLE_LINE };
   try {
@@ -24,6 +46,7 @@ export async function assignLine(phone: string, firstName: string, idempotencyKe
       headers: { idempotencyKey },
       body: { handle: phone, firstName },
     });
+    rememberRestockLine(a.assignedPhoneNumber);
     return { assignmentId: a.assignmentId, line: a.assignedPhoneNumber };
   } catch (err) {
     if (err instanceof ApiError) {

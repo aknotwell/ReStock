@@ -17,7 +17,9 @@ import { balanceSummary, CARD_NUMBER_WARNING, fmt, groupSummary, helpMessage, in
 import { sendOrderTexts } from "./afterOrder.js";
 import { handleMembershipCommand, parseMembershipCommand } from "./membership.js";
 import { clearAction, isNo, isYes, peekAction, proposeAction } from "./confirm.js";
-import { activateFromFirstText, inviteCodeFor, isPendingSignup, type Activation } from "../core/signups.js";
+import { activateFromFirstText, inviteCodeFor, isPendingSignup, lineFor, type Activation } from "../core/signups.js";
+import { isRestockLine } from "./photonLines.js";
+import { CONTACT_NAME, contactLink } from "../web/contactCard.js";
 import { config } from "../config.js";
 import { cleanName, findPhone } from "../core/households.js";
 import { handleOnboarding, setupInProgress } from "./onboarding.js";
@@ -343,6 +345,12 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     }
   }
 
+  // "contact" / "save contact": a link to save this Restock number as "restock", with the logo.
+  if (isContactRequest(msg.text)) {
+    await respond(contactReply(msg.agentLine ?? lineFor(msg.fromPhone)));
+    return;
+  }
+
   // Changing who pays for an item already in the cart ("just me and Alex", "everyone", "not me"):
   // handled in code against the household's members, before any AI parsing.
   const splitCommand = parseSplitCommand(msg.text, household, member);
@@ -544,20 +552,34 @@ async function relayToOthers(household: Household, senderId: string, text: strin
 /** Welcome a newly activated sign-up. The owner gets their invite link; existing members hear who joined. */
 async function welcome({ household, member, joined }: Activation, respond: (text: string) => Promise<void>): Promise<void> {
   const owner = household.members.find((m) => m.id === household.ownerId);
+  const line = lineFor(member.phone);
+  const saveMe = line && isRestockLine(line) ? `\nSave me as "${CONTACT_NAME}" in your contacts: ${contactLink(line)}` : "";
   if (!joined) {
     const link = `${config.publicBaseUrl}/join/${inviteCodeFor(household, member.id)}`;
     await respond(
       `Welcome to Restock, ${member.name}! Your household is set up and you're the budget owner.\n` +
         `Invite roommates with this link: ${link}\n` +
-        `Text what you need anytime ("we're out of TP"), and text "add card" so orders can go through.`,
+        `Text what you need anytime ("we're out of TP"), and text "add card" so orders can go through.${saveMe}`,
     );
     return;
   }
   await respond(
     `Welcome, ${member.name}! You're in ${owner?.name ?? "your"}'s household.\n` +
-      `Text what you need ("we're out of TP"), "what do I owe?", or "help". No card needed to join; text "add card" anytime.`,
+      `Text what you need ("we're out of TP"), "what do I owe?", or "help". No card needed to join; text "add card" anytime.${saveMe}`,
   );
   await relayToOthers(household, member.id, `${member.name} joined the household.`, `joined:${member.id}`);
+}
+
+/** "contact", "save contact", "add contact", "contact card", "vcard". */
+export function isContactRequest(text: string): boolean {
+  return /^(?:(?:save|add|get|send)\s+(?:me\s+)?)?(?:your\s+|the\s+|a\s+|restock'?s?\s+)?(?:contact(?:\s+(?:card|info))?|vcard)[.!?]*$/i.test(text.trim());
+}
+
+/** The reply with the contact link, or a plain fallback when we don't know which Restock number this is. */
+export function contactReply(line: string | undefined): string {
+  return line && isRestockLine(line)
+    ? `Tap to save me as "${CONTACT_NAME}" in your contacts: ${contactLink(line)}`
+    : `Save this number in your contacts as "${CONTACT_NAME}" so you can find me easily.`;
 }
 
 /** "Alex", "Alex and Sam", "Alex, Sam and Jo". */

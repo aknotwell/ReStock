@@ -5,6 +5,7 @@ import { ApiError, Photon } from "@photon-ai/api";
 import { config } from "../config.js";
 import { registerState } from "../core/persist.js";
 import { findMember, getHousehold } from "../core/store.js";
+import { rememberRestockLine } from "./photonLines.js";
 import { redact } from "../safety/redact.js";
 
 /** Normalized inbound message, independent of Photon's wire format. */
@@ -15,6 +16,7 @@ export type InboundMessage = {
   fromPhone: string; // sender handle (E.164 phone or iMessage email)
   text: string;
   agentUserId?: string; // Photon user ID of our agent in this space (receivedBy.id)
+  agentLine?: string; // the Restock number the text was sent to (receivedBy.handle), when Photon says
 };
 
 const photon =
@@ -94,6 +96,7 @@ export async function captureOutboundDetailed(fn: () => Promise<void>): Promise<
 export function rememberInbound(msg: InboundMessage): void {
   if (msg.agentUserId) agentBySpace.set(msg.spaceId, msg.agentUserId);
   if (msg.spaceKind === "direct") dmByHandle.set(msg.fromPhone, msg.spaceId);
+  rememberRestockLine(msg.agentLine);
 }
 
 async function send(spaceId: string, rawText: string, idempotencyKey: string): Promise<void> {
@@ -211,6 +214,7 @@ function toInbound(m: KnownMessage): InboundMessage | undefined {
     fromPhone: sentBy.handle,
     text: c.text,
     agentUserId: receivedBy && receivedBy.platform !== "UNKNOWN" ? receivedBy.id : undefined,
+    agentLine: receivedBy && receivedBy.platform !== "UNKNOWN" ? receivedBy.handle : undefined,
   };
 }
 

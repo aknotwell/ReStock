@@ -47,7 +47,7 @@ Households can be created over chat (`start household as …`, then `invite …`
 
 ## What people can text
 
-**Casual phrasing works.** With `ANTHROPIC_API_KEY` set, Claude understands everyday wording ("yo we're out of tp", "how much do i owe rn", "who lives here again"). For anything that **spends money or changes who's in the household**, Restock asks back and acts only on your **"yes"** (within 10 minutes, and only from the person asked):
+**Casual phrasing works.** With `GEMINI_API_KEY` set, Gemini understands everyday wording ("yo we're out of tp", "how much do i owe rn", "who lives here again"). For anything that **spends money or changes who's in the household**, Restock asks back and acts only on your **"yes"** (within 10 minutes, and only from the person asked):
 
 | Casual text | Restock asks | "yes" does |
 |---|---|---|
@@ -56,7 +56,7 @@ Households can be created over chat (`start household as …`, then `invite …`
 | "add my roommate amber, her number is 425 555 0123" | *Add Amber (phone ending 0123) to the household?* | Adds her (owner only) |
 | "take jake off the house" | *Remove Jake from the household?* | Removes him (owner only) |
 
-"no" cancels. Phone numbers are pulled out in code before Claude sees the message. The exact commands below still work instantly.
+"no" cancels. Phone numbers are pulled out in code before the model sees the message. The exact commands below still work instantly.
 
 The AI understands natural phrasing. The fallback parser, used when there's no API key, understands these exact forms:
 

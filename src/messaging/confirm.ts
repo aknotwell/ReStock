@@ -6,8 +6,11 @@ import type { MembershipCommand } from "./membership.js";
 
 export const CONFIRM_TTL_MS = 10 * 60 * 1000;
 
-/** `householdId`: the cart they were shown and said yes to (they may be in several). */
-export type ConfirmAction = { kind: "order"; householdId?: string } | { kind: "membership"; command: MembershipCommand };
+/**
+ * `householdId`: the cart they were shown and said yes to (they may be in several). `cart`: that cart's
+ * fingerprint (cartFingerprint in src/core/orders.ts), so a "yes" can't buy anything that changed since.
+ */
+export type ConfirmAction = { kind: "order"; householdId?: string; cart?: string } | { kind: "membership"; command: MembershipCommand };
 type Pending = { action: ConfirmAction; expires: number };
 
 const pending = new Map<string, Pending>(); // key: sender phone

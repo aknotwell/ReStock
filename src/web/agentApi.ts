@@ -5,7 +5,10 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { Request, Response } from "express";
 import { config } from "../config.js";
 import { db } from "../core/store.js";
+import { inviteCodeIn } from "../core/signups.js";
+import { clearAction, isYes, peekAction } from "../messaging/confirm.js";
 import { handleInbound } from "../messaging/inbound.js";
+import { parseMembershipCommand } from "../messaging/membership.js";
 import { captureOutbound } from "../messaging/photon.js";
 import type { Household } from "../types.js";
 
@@ -58,6 +61,26 @@ export function extractText(body: unknown): string | undefined {
   return undefined;
 }
 
+export const SANDBOX_MEMBERSHIP_REPLY =
+  "This is Restock's audit sandbox, so it can't invite people, start or join households, or change who's in one. Shopping, questions and safety checks work as usual.";
+
+/**
+ * Texts that would change who's in a household. Only outgoing texts are captured here, not side effects, and
+ * these reach outside the sandbox: an invite reserves a real Restock number in Photon for any phone (there are
+ * only 20 open sign-up seats), and starting or joining a household writes real, saved households. Listing
+ * members or households is still fine. A "yes" can't confirm a membership change the model proposed, either.
+ */
+function changesMembership(text: string): boolean {
+  const command = parseMembershipCommand(text);
+  if (command && command.type !== "members" && command.type !== "households") return true;
+  if (inviteCodeIn(text)) return true;
+  if (peekAction(SANDBOX_HANDLE)?.kind === "membership" && isYes(text)) {
+    clearAction(SANDBOX_HANDLE);
+    return true;
+  }
+  return false;
+}
+
 type Wire = "openai" | "anthropic" | "plain";
 
 /** Shape the reply the way the caller asked: OpenAI chat completion, Anthropic message, or Restock's own JSON. */
@@ -101,9 +124,11 @@ export async function agentApi(req: Request, res: Response): Promise<void> {
     return;
   }
   ensureSandbox();
-  const replies = await captureOutbound(() =>
-    handleInbound({ messageId: randomUUID(), spaceId: "sandbox-dm", spaceKind: "direct", fromPhone: SANDBOX_HANDLE, text }),
-  );
+  const replies = changesMembership(text)
+    ? [SANDBOX_MEMBERSHIP_REPLY]
+    : await captureOutbound(() =>
+        handleInbound({ messageId: randomUUID(), spaceId: "sandbox-dm", spaceKind: "direct", fromPhone: SANDBOX_HANDLE, text }),
+      );
   const reply = replies.join("\n\n") || "OK.";
   const wire: Wire = req.path.endsWith("/messages") ? "anthropic" : Array.isArray(req.body?.messages) ? "openai" : "plain";
   res.json(shapeReply(wire, reply, req.body?.model));

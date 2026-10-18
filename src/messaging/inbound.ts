@@ -6,7 +6,7 @@ import { parseMessage } from "../ai/parseMessage.js";
 import { addItem, db, findHouseholdByGroupChat, findMemberByPhone, householdsForPhone, pendingItems, UNBOUND_GROUP } from "../core/store.js";
 import { approvableBy, approverNames, approvers, needsApproval } from "../core/approvals.js";
 import { openDebtsFor, owedTo } from "../core/ledger.js";
-import { OrderError, placeOrder } from "../core/orders.js";
+import { CartChangedError, cartFingerprint, OrderError, placeOrder } from "../core/orders.js";
 import { createCardSetupLink } from "../payments/links.js";
 import { ChargeFailedError } from "../payments/charges.js";
 import { findOwner, OwnerCardRequiredError, ownerCardRequest, ownerHasCard } from "../payments/ownerGate.js";
@@ -252,6 +252,7 @@ export async function handleInbound(
 
   // A "yes"/"no" to a question Restock asked (confirm-to-act). Only the person who was asked can answer.
   let confirmedOrder = false;
+  let confirmedCart: string | undefined; // the cart they were shown, so the "yes" buys exactly that
   const pendingAction = peekAction(msg.fromPhone);
   if (pendingAction && (isYes(msg.text) || isNo(msg.text))) {
     clearAction(msg.fromPhone);
@@ -264,6 +265,7 @@ export async function handleInbound(
       return;
     }
     confirmedOrder = true; // runs below, once the household context is set up
+    confirmedCart = pendingAction.cart;
   } else if (pendingAction?.kind === "order") {
     // They texted something else. A later "yes" must not buy the cart they moved on from.
     clearAction(msg.fromPhone);
@@ -454,7 +456,7 @@ export async function handleInbound(
 
   const runOrder = async () => {
     try {
-      const result = await placeOrder(household.id, "smart", `checkout:${msg.messageId}`);
+      const result = await placeOrder(household.id, "smart", `checkout:${msg.messageId}`, confirmedCart);
       await announce(groupSummary(household, result));
       const { waiting } = await sendOrderTexts(household, result);
       if (waiting.length) {
@@ -469,6 +471,10 @@ export async function handleInbound(
           await respond(gate.groupText);
           if (gate.ownerId && gate.ownerText) await sendPrivate(gate.ownerId, gate.ownerText, `owner-gate:${msg.messageId}`);
         }
+      } else if (err instanceof CartChangedError) {
+        // Someone added, removed or re-split something after the preview: show the cart as it is now and ask again.
+        await respond("The cart changed since I showed it, so I didn't order yet.");
+        await startCheckout(household, member, msg, respond);
       } else if (err instanceof OrderError || err instanceof ChargeFailedError) await respond(err.message);
       else throw err;
     }
@@ -779,9 +785,16 @@ export async function handleInbound(
     } else if (intent.type === "checkout") {
       // Casual "let's order": show what would be bought and who pays, then only their "yes" places it.
       await startCheckout(household, member, msg, respond);
-    } else if (intent.type === "start_household" || intent.type === "list_members") {
-      const command = intent.type === "list_members" ? ({ type: "members" } as const) : ({ type: "start", name: null } as const);
-      await handleMembershipCommand({ command, fromPhone: msg.fromPhone, spaceKind: msg.spaceKind, household, member, respond });
+    } else if (intent.type === "list_members") {
+      await handleMembershipCommand({ command: { type: "members" }, fromPhone: msg.fromPhone, spaceKind: msg.spaceKind, household, member, respond });
+    } else if (intent.type === "start_household") {
+      // Starting another household changes where their texts go: Claude may only propose it, their "yes" does it.
+      if (msg.spaceKind !== "direct") {
+        await respond("Text me directly to start a household.");
+      } else {
+        proposeAction(msg.fromPhone, { kind: "membership", command: { type: "start", name: null } });
+        await respond(`Start a new household with you (${member.name}) as the budget owner? Reply "yes" to confirm or "no" to cancel.`);
+      }
     } else if (intent.type === "add_member" || intent.type === "remove_member") {
       // Owner-only, checked in code before asking and again when it runs.
       const name = intent.itemName ? cleanName(intent.itemName) : undefined;
@@ -895,7 +908,7 @@ async function startCheckout(household: Household, member: Member, msg: InboundM
     if (gate.ownerId && gate.ownerText) await sendPrivate(gate.ownerId, gate.ownerText, `owner-gate:${msg.messageId}`);
     return;
   }
-  proposeAction(msg.fromPhone, { kind: "order", householdId: household.id });
+  proposeAction(msg.fromPhone, { kind: "order", householdId: household.id, cart: cartFingerprint(readyItems(household), household) });
   await respond(orderPreview(household, member.id, msg.fromPhone));
 }
 

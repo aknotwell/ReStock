@@ -28,7 +28,7 @@ webRoutes.get("/c/:token", async (req, res) => {
   try {
     const checkoutUrl = await openCardSetupLink(req.params.token);
     if (!checkoutUrl) {
-      res.status(404).send("This add-card link has expired. Ask Restock in your group chat for a new one.");
+      res.status(404).send('This add-card link has expired. Text Restock "add card" for a new one.');
       return;
     }
     res.redirect(303, checkoutUrl);
@@ -55,7 +55,7 @@ webRoutes.get("/p/:token", async (req, res) => {
     else if (page.kind === "paid") res.redirect(303, "/pay/success");
     else if (page.kind === "too_small") {
       res.send(`This is ${fmt(page.cents)}, which is under the $0.50 card minimum. Please settle it with ${page.creditorName} directly.`);
-    } else res.status(404).send("This pay-back link has expired. Ask Restock in your group chat for a new one.");
+    } else res.status(404).send(`This pay-back link has expired. Log in at ${config.publicBaseUrl}/pay to see what you owe and pay it back.`);
   } catch (err) {
     console.error("pay-back link failed:", err instanceof Error ? err.message : err);
     res.status(502).send("We couldn't reach our payment provider. Please try the link again in a minute.");
@@ -71,16 +71,38 @@ const cookie = (value: string, maxAgeSeconds: number) =>
 const text = (v: unknown, max: number) => (typeof v === "string" && v.length <= max ? v : "");
 
 webRoutes.get("/pay", (_req, res) => res.sendFile(path.join(publicDir, "pay.html")));
+
+// Login codes are texted, so without limits anyone could text a member over and over, or keep asking for fresh
+// codes to guess one (each code allows 5 tries). Limits are per phone (whether or not anyone has it, so they
+// don't reveal who uses Restock) and per address. Generous for real use: a household logs in a few times.
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const codesPerPhone = rateLimiter(5, LOGIN_WINDOW_MS);
+const codesPerIp = rateLimiter(30, LOGIN_WINDOW_MS);
+const checksPerPhone = rateLimiter(10, LOGIN_WINDOW_MS);
+const checksPerIp = rateLimiter(30, LOGIN_WINDOW_MS);
+/** The same key for "425-555-0142", "(425) 555 0142" and "+14255550142"; iMessage emails as typed. */
+const loginKey = (handle: string) => (handle.includes("@") ? handle.trim().toLowerCase() : handle.replace(/\D/g, "").slice(-10) || "none");
+
 webRoutes.post("/pay/api/start", async (req, res) => {
+  const handle = text(req.body?.handle, 80);
+  if (!codesPerIp(req.ip ?? "unknown") || !codesPerPhone(loginKey(handle))) {
+    res.status(429).json({ error: "Too many codes requested. Wait a few minutes, then try again." });
+    return;
+  }
   try {
-    await startLogin(text(req.body?.handle, 80));
+    await startLogin(handle);
   } catch (err) {
     console.error("pay-back login text failed:", err instanceof Error ? err.message : err);
   }
   res.json({ ok: true }); // the same answer whether or not the number belongs to anyone
 });
 webRoutes.post("/pay/api/verify", (req, res) => {
-  const token = verifyLogin(text(req.body?.handle, 80), text(req.body?.code, 12));
+  const handle = text(req.body?.handle, 80);
+  if (!checksPerIp(req.ip ?? "unknown") || !checksPerPhone(loginKey(handle))) {
+    res.status(429).json({ error: "Too many tries. Wait a few minutes, then send a new code." });
+    return;
+  }
+  const token = verifyLogin(handle, text(req.body?.code, 12));
   if (!token) {
     res.status(401).json({ error: "That code didn't work. Check the text from Restock, or send a new code." });
     return;
@@ -165,7 +187,13 @@ webRoutes.get("/privacy", (_req, res) => res.sendFile(path.join(publicDir, "priv
 // "Save restock to your contacts": a vCard for one of Restock's own numbers, named "restock" with the logo.
 // Only real Restock lines get a card, so this can't be used to make a "restock" contact for any number.
 webRoutes.get("/contact/:file", (req, res) => {
-  const line = /^(\+\d{10,15})\.vcf$/.exec(decodeURIComponent(req.params.file))?.[1];
+  let file = req.params.file;
+  try {
+    file = decodeURIComponent(file); // a "+" sent as %2B
+  } catch {
+    // A stray "%": not a Restock number either way.
+  }
+  const line = /^(\+\d{10,15})\.vcf$/.exec(file)?.[1];
   if (!line || !isRestockLine(line)) {
     res.status(404).send("That isn't a Restock number.");
     return;

@@ -1,7 +1,11 @@
 import { beforeEach, expect, it, vi } from "vitest";
 const { parse, order } = vi.hoisted(() => ({ parse: vi.fn(), order: vi.fn() }));
 vi.mock("../src/ai/parseMessage.js", () => ({ parseMessage: parse }));
-vi.mock("../src/core/orders.js", () => ({ placeOrder: order, OrderError: class extends Error {} }));
+vi.mock("../src/core/orders.js", async (orig) => ({
+  ...(await orig<typeof import("../src/core/orders.js")>()), // cartFingerprint, CartChangedError
+  placeOrder: order,
+  OrderError: class extends Error {},
+}));
 import { handleInbound } from "../src/messaging/inbound.js";
 import { captureOutbound } from "../src/messaging/photon.js";
 import { seedDemo } from "../scripts/seed.js";
@@ -26,6 +30,7 @@ it("hands off a member's explicit command exactly once, after their yes", async 
   await send("order now");
   expect(order).not.toHaveBeenCalled(); // "order now" shows what would be bought first
   const replies = await send("yes");
-  expect(order).toHaveBeenCalledExactlyOnceWith("demo-house", "smart", "checkout:authorization");
+  // The last argument is the cart they were shown, so the "yes" can only buy that cart.
+  expect(order).toHaveBeenCalledExactlyOnceWith("demo-house", "smart", "checkout:authorization", expect.stringMatching(/^sam,jake,priya\|/));
   expect(replies.join()).toContain("Checkout handoff verified.");
 });

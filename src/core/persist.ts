@@ -58,9 +58,13 @@ function rows<T>(d: DatabaseSync, sql: string): T[] {
   return (d.prepare(sql).all() as { data: string }[]).map((r) => JSON.parse(r.data) as T);
 }
 
+/**
+ * Load everything that was saved. Returns whether there were households (the caller seeds the demo if not).
+ * Debts, the STOP list, texted links and the rest are restored even with no households: skipping them would
+ * let the next autosave write the empty store back and delete them for good.
+ */
 function load(d: DatabaseSync): boolean {
   const households = rows<Household>(d, "SELECT data FROM households");
-  if (!households.length) return false;
   db.households.clear();
   db.items.clear();
   db.orders.clear();
@@ -79,7 +83,7 @@ function load(d: DatabaseSync): boolean {
       console.error(`Couldn't restore saved ${r.name}:`, err instanceof Error ? err.message : err);
     }
   }
-  return true;
+  return households.length > 0;
 }
 
 function snapshot(): string {

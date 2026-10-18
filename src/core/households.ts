@@ -114,7 +114,22 @@ export function findMyHousehold(phone: string, query: string): Household | undef
 /** The person's own name, from any household they're in (so starting or joining another doesn't ask again). */
 export const knownName = (phone: string) => householdsForPhone(phone).flatMap((h) => h.members).find((m) => m.phone === phone)?.name;
 
-export const allMemberIds = () => new Set([...db.households.values()].flatMap((h) => h.members.map((m) => m.id)));
+/**
+ * Every member id in use, so a new member never gets an old one: current members, people kept for an unpaid
+ * debt (formerMembers), and anyone on a debt, charge or cart item. Reusing an id would hand a new person with
+ * the same first name someone else's debts and history.
+ */
+export function allMemberIds(): Set<string> {
+  const ids = new Set<string>(formerMembers.keys());
+  for (const h of db.households.values()) for (const m of h.members) ids.add(m.id);
+  for (const d of db.debts.values()) ids.add(d.debtorId).add(d.creditorId);
+  for (const c of db.charges) ids.add(c.memberId).add(c.paidBy);
+  for (const i of db.items.values()) {
+    ids.add(i.addedBy);
+    for (const id of i.splitWith ?? []) ids.add(id);
+  }
+  return ids;
+}
 
 export type NewHousehold = { name?: string; groupType?: Household["groupType"]; budgetCents?: Cents | null };
 
@@ -237,8 +252,26 @@ export function removeMember(household: Household, name: string, { keepBalances 
     throw new MembershipError(`${member.name} still has an open balance. Settle up first, then remove them.`);
   }
   rememberIfOwed(household, member);
+  dropFromCart(household, member);
   household.members = household.members.filter((m) => m.id !== member.id);
   return member;
+}
+
+/**
+ * Someone is leaving: take out of the pending cart what only they would pay for (their personal items, and items
+ * split with just them), and take them off items they split with others. Otherwise the split engine would spread
+ * their personal items across everyone who stays. Shared items stay: they're the household's.
+ */
+function dropFromCart(household: Household, member: Member): void {
+  for (const item of [...db.items.values()]) {
+    if (item.householdId !== household.id || item.status !== "pending") continue;
+    // Who pays now, by the split engine's rules (src/core/split.ts, smart).
+    const group = item.splitWith?.length ? household.members.filter((m) => item.splitWith!.includes(m.id)) : [];
+    const adder = household.members.find((m) => m.id === item.addedBy);
+    const payers = group.length ? group : !item.shared && adder ? [adder] : household.members;
+    if (payers.length === 1 && payers[0]!.id === member.id) db.items.delete(item.id);
+    else if (item.splitWith?.includes(member.id)) item.splitWith = item.splitWith.filter((id) => id !== member.id);
+  }
 }
 
 /** Everyone except the budget owner, removed at once. Their open debts stay on the ledger. */

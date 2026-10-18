@@ -254,6 +254,17 @@ export function searchQuery(product: Product): string {
   return product.name.replace(/\(.*?\)/g, " ").replace(/,/g, " ").replace(/\s+/g, " ").trim();
 }
 
+/**
+ * The search with the member's brand and size: "Dawn" + "Dish soap" + "56 oz" (their size replaces the catalog's
+ * pack size). Without either, the catalog search.
+ */
+export function specQuery(product: Product, brand?: string, size?: string): string {
+  if (!brand && !size) return searchQuery(product);
+  const tidy = (t: string) => t.replace(/\(.*?\)/g, " ").replace(/\s+/g, " ").trim();
+  const [base = product.name, ...catalogSize] = product.name.split(",");
+  return [brand, tidy(base), size ?? tidy(catalogSize.join(" "))].filter(Boolean).join(" ");
+}
+
 const ACCESSORY = /\b(?:holders?|dispensers?|stands?|organizers?|storage|covers?|mounts?|caddy|rack)\b/i;
 // Janitorial and commercial packs ("Jumbo Tissue, 12 Rolls Per Case", "JRT"), and facial tissue next to bath tissue.
 // A bare "jumbo" stays allowed: consumer packs say "6 Jumbo Rolls".
@@ -298,8 +309,10 @@ export function offCatalogProduct(requested: string): Product | undefined {
  * quarter and three times the catalog price, which drops single rolls and commercial cases. Items that aren't
  * in the catalog have no price to compare, so only the words count.
  */
-function relevant(offer: Offer, product: Product): boolean {
+function relevant(offer: Offer, product: Product, brand?: string): boolean {
   const title = offer.title.toLowerCase();
+  // A brand the member asked for ("Dawn") must be in the listing's title.
+  if (brand && !brand.toLowerCase().split(/\s+/).every((w) => title.includes(w))) return false;
   const all = [product.name.split(",")[0]!, ...product.aliases].flatMap((n) => n.toLowerCase().split(/[^\p{L}\p{N}]+/u));
   const long = all.filter((w) => w.length >= 4);
   // Short requests ("ice", "AA batteries") still need a word to match.
@@ -350,15 +363,20 @@ export function listingProduct(o: Offer, base: Product, checkedAt: number): Prod
 /** Live store listings for a catalog product, as options the member can pick. Undefined when unavailable. */
 export async function liveOptionsFor(
   product: Product,
-  opts: { now?: number; maxAgeHours?: number } = {},
+  opts: { now?: number; maxAgeHours?: number; brand?: string; size?: string } = {},
 ): Promise<{ products: Product[]; checkedAt: number } | undefined> {
-  const query = searchQuery(product);
-  // Off-catalog searches carry the member's words, so logs name them by id only.
-  const logAs = product.id.startsWith(OFF_CATALOG) ? product.id : undefined;
-  const result = await searchOffers(query, { ...opts, ...(logAs ? { logAs } : {}) });
+  const { brand, size, ...searchOpts } = opts;
+  const query = specQuery(product, brand, size);
+  // Off-catalog searches and ones with a brand or size carry the member's words, so logs name them by a hash only.
+  const logAs = product.id.startsWith(OFF_CATALOG)
+    ? product.id
+    : brand || size
+      ? `${product.id}+${createHash("sha256").update(query.toLowerCase()).digest("hex").slice(0, 12)}`
+      : undefined;
+  const result = await searchOffers(query, { ...searchOpts, ...(logAs ? { logAs } : {}) });
   if (!result) return undefined;
   // By default only major retailers we recognize, under their usual names. DEALS_ANY_STORE=1 keeps every seller.
-  const relevantOffers = result.offers.filter((o) => relevant(o, product));
+  const relevantOffers = result.offers.filter((o) => relevant(o, product, brand));
   const products = storeOffers(relevantOffers).map((o) => listingProduct(o, product, result.at));
   // Why listings drop out: off-topic or mispriced (relevant), then sellers we don't recognize (stores).
   logSearch(logAs ?? query, "listings", {

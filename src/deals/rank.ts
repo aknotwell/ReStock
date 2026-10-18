@@ -20,6 +20,10 @@ export type DealOptions = {
   respectBudget?: boolean;
   /** How old a cached live price may be before we search again (default 12 hours). */
   maxAgeHours?: number;
+  /** A brand or variant the member named ("Dawn"), checked by searchSpecFor. Store listings must include it. */
+  brand?: string;
+  /** A size the member named ("56 oz"), checked against how the product is sold. Searched instead of the catalog's. */
+  size?: string;
 };
 
 export const MAX_OPTIONS = 3;

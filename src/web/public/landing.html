@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>Restock</title>
+<meta name="description" content="Restock is an AI assistant you text. It keeps a shared cart for your group chat and splits the bill.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cpath d='M6 6a3 3 0 0 1 3-3H31a3 3 0 0 1 3 3V33L30.5 36.5L27 33L23.5 36.5L20 33L16.5 36.5L13 33L9.5 36.5L6 33Z' fill='%23161616'/%3E%3Cg fill='none' stroke='%23ffe866' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 13.5V28' stroke-width='4.5'/%3E%3Cpath d='M15 20C15 15.5 18 13 22.5 13H24' stroke-width='4.5'/%3E%3Cpath d='M21.8 8.8L26 13L21.8 17.2' stroke-width='4'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=DM+Mono:wght@400;500&display=swap">
+<style>
+  /* Same receipt look as the dashboard: white slips with torn edges, black ink, typewriter numbers.
+     Red only for money owed. */
+  :root {
+    --desk: #ecebe7; --paper: #ffffff; --header: #ffffff; --ink: #161616; --muted: #5f5f5a; --rule: #c9c8c2;
+    --selected: #f1f0ec; --red: #b3261e; --yellow: #ffe866;
+    --btn-bg: #161616; --btn-hover: #3a3a37; --btn-fg: #ffffff;
+    --logo-stub: #161616; --logo-mark: #ffe866; --shadow: rgba(22, 22, 22, 0.16);
+    --sans: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    --mono: "DM Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --desk: #111110; --paper: #22221f; --header: #1d1d1b; --ink: #f1f0ea; --muted: #a5a49d; --rule: #3d3d39;
+      --selected: #2c2c29; --red: #ff7a6b; --btn-bg: #f1f0ea; --btn-hover: #d6d5ce; --btn-fg: #121211;
+      --logo-stub: #ffe866; --logo-mark: #161616; --shadow: rgba(0, 0, 0, 0.5);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --desk: #111110; --paper: #22221f; --header: #1d1d1b; --ink: #f1f0ea; --muted: #a5a49d; --rule: #3d3d39;
+    --selected: #2c2c29; --red: #ff7a6b; --btn-bg: #f1f0ea; --btn-hover: #d6d5ce; --btn-fg: #121211;
+    --logo-stub: #ffe866; --logo-mark: #161616; --shadow: rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body { min-width: 320px; margin: 0; background: var(--desk); color: var(--ink); font-family: var(--sans); font-size: 16px; line-height: 1.5; }
+  ::selection { background: var(--yellow); color: #161616; }
+  a:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+  h1, h2, h3 { text-wrap: balance; }
+  .shell { width: 100%; max-width: 1220px; margin: 0 auto; padding-left: max(24px, env(safe-area-inset-left, 0px)); padding-right: max(24px, env(safe-area-inset-right, 0px)); }
+
+  header { background: var(--header); border-bottom: 2px solid var(--ink); }
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 76px; padding-block: 10px; }
+  .brand { display: flex; align-items: center; gap: 12px; color: inherit; font-size: 28px; font-weight: 900; font-stretch: 118%; letter-spacing: -0.02em; line-height: 1; text-decoration: none; }
+  .logo { width: 40px; height: 40px; flex: none; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 20px; border: 1.5px solid var(--ink); border-radius: 6px; background: transparent; color: var(--ink); font-weight: 700; text-decoration: none; white-space: nowrap; }
+  .btn:hover { background: var(--selected); }
+  .btn.primary { border-color: var(--btn-bg); background: var(--btn-bg); color: var(--btn-fg); }
+  .btn.primary:hover { border-color: var(--btn-hover); background: var(--btn-hover); }
+
+  .torn { filter: drop-shadow(0 10px 12px var(--shadow)); }
+  .torn::after { content: ""; display: block; height: 9px; background: var(--paper);
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='9'%3E%3Cpath d='M0 0H16L8 9Z'/%3E%3C/svg%3E") 0 0 / 16px 9px repeat-x;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='9'%3E%3Cpath d='M0 0H16L8 9Z'/%3E%3C/svg%3E") 0 0 / 16px 9px repeat-x; }
+  .slip { padding: 24px; background: var(--paper); }
+  .meta { margin: 0; color: var(--muted); font-family: var(--mono); font-size: 14px; }
+
+  /* Hero */
+  .hero { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 420px); align-items: center; gap: 56px; padding-block: 72px 64px; }
+  .hero h1 { max-width: 12ch; margin: 0 0 20px; font-size: clamp(44px, 7vw, 88px); font-weight: 900; font-stretch: 115%; letter-spacing: -0.03em; line-height: .95; }
+  .hero p { max-width: 42ch; margin: 0 0 28px; color: var(--muted); font-size: 19px; }
+  .ctas { display: flex; flex-wrap: wrap; gap: 12px; }
+
+  /* The sample receipt: a group chat turning into an order */
+  .chat { display: flex; flex-direction: column; gap: 10px; margin: 14px 0 0; }
+  .msg { max-width: 88%; }
+  .msg b { display: block; margin-bottom: 2px; color: var(--muted); font-family: var(--mono); font-size: 12px; font-weight: 500; }
+  .msg span { display: inline-block; padding: 8px 12px; border-radius: 14px 14px 14px 4px; background: var(--desk); font-size: 15px; }
+  .msg.bot { align-self: flex-end; text-align: right; }
+  .msg.bot span { border-radius: 14px 14px 4px 14px; background: var(--btn-bg); color: var(--btn-fg); text-align: left; }
+  .rline { display: flex; justify-content: space-between; gap: 12px; font-family: var(--mono); font-size: 15px; font-variant-numeric: tabular-nums; }
+  .split { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--rule); }
+  .split .owe { color: var(--red); }
+
+  /* Sections */
+  section.block { padding-block: 56px; border-top: 2px solid var(--ink); }
+  .block h2 { margin: 0 0 28px; font-size: clamp(32px, 4.5vw, 48px); font-weight: 900; font-stretch: 112%; letter-spacing: -0.02em; line-height: 1; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
+  .step .num { display: block; margin-bottom: 10px; font-family: var(--mono); font-size: 14px; }
+  .grid h3 { margin: 0 0 6px; font-size: 21px; font-weight: 800; font-stretch: 110%; line-height: 1.2; }
+  .grid p { margin: 0; color: var(--muted); }
+  .grid code { font-family: var(--mono); font-size: 14px; color: var(--ink); }
+
+  .final { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px; }
+  .final h2 { margin: 0; }
+  footer { padding-block: 28px 48px; border-top: 2px solid var(--ink); }
+  footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; }
+  footer a { color: var(--ink); }
+
+  @media (max-width: 820px) {
+    .shell { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+    .hero { grid-template-columns: minmax(0, 1fr); gap: 36px; padding-block: 40px 48px; }
+    section.block { padding-block: 40px; }
+    .brand { font-size: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="logo" viewBox="0 0 40 40">
+    <path d="M6 6a3 3 0 0 1 3-3H31a3 3 0 0 1 3 3V33L30.5 36.5L27 33L23.5 36.5L20 33L16.5 36.5L13 33L9.5 36.5L6 33Z" style="fill: var(--logo-stub)"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round" style="stroke: var(--logo-mark)">
+      <path d="M15 13.5V28" stroke-width="4.5"/>
+      <path d="M15 20C15 15.5 18 13 22.5 13H24" stroke-width="4.5"/>
+      <path d="M21.8 8.8L26 13L21.8 17.2" stroke-width="4"/>
+    </g>
+  </symbol>
+</svg>
+
+<header>
+  <div class="shell topbar">
+    <a class="brand" href="/"><svg class="logo" aria-hidden="true"><use href="#logo"/></svg>restock</a>
+    <a class="btn" href="/dashboard">Log in</a>
+  </div>
+</header>
+
+<main>
+  <div class="shell hero">
+    <div>
+      <h1>Groceries and supplies, restocked by text.</h1>
+      <p>Restock is an AI assistant in your group chat. Text what you're out of. It finds the best match, keeps a shared cart, and splits the bill when someone says &ldquo;order now&rdquo;.</p>
+      <div class="ctas">
+        <a class="btn primary" href="/dashboard">Log in</a>
+        <a class="btn" href="/start">Start a group</a>
+      </div>
+    </div>
+    <div class="torn" aria-label="Example: a group chat ordering supplies">
+      <div class="slip">
+        <p class="meta">Maple House &middot; group chat</p>
+        <div class="chat">
+          <div class="msg"><b>Priya</b><span>we're out of TP</span></div>
+          <div class="msg bot"><b>Restock</b><span>Added Toilet paper, 12 rolls (shared, $11.99).</span></div>
+          <div class="msg"><b>Sam</b><span>order now</span></div>
+          <div class="msg bot"><b>Restock</b><span>Ordered! 6 items, $72.75.</span></div>
+        </div>
+        <div class="split">
+          <div class="rline"><span>Sam &middot; card</span><span>$15.65</span></div>
+          <div class="rline"><span>Jake &middot; card</span><span>$46.95</span></div>
+          <div class="rline owe"><span>Priya owes Sam</span><span>$10.15</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section class="block">
+    <div class="shell">
+      <h2>How it works</h2>
+      <div class="grid">
+        <div class="torn step"><div class="slip">
+          <span class="num">01</span>
+          <h3>Text what you need</h3>
+          <p>&ldquo;We're out of dish soap.&rdquo; Restock picks the best match and adds it to the cart.</p>
+        </div></div>
+        <div class="torn step"><div class="slip">
+          <span class="num">02</span>
+          <h3>Order when you're ready</h3>
+          <p>Nothing is bought until someone texts <code>order now</code>.</p>
+        </div></div>
+        <div class="torn step"><div class="slip">
+          <span class="num">03</span>
+          <h3>Everyone pays their share</h3>
+          <p>Shared items split evenly. Personal items go to whoever added them.</p>
+        </div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="shell">
+      <h2>Who pays</h2>
+      <div class="grid">
+        <div class="torn"><div class="slip">
+          <h3>One main card</h3>
+          <p>The group owner's card pays for each order, so nothing waits on a missing card.</p>
+        </div></div>
+        <div class="torn"><div class="slip">
+          <h3>Card on file: automatic</h3>
+          <p>Add a card and your share is charged to it every order.</p>
+        </div></div>
+        <div class="torn"><div class="slip">
+          <h3>No card: pay back later</h3>
+          <p>Restock texts you what you owe and a link to pay it back.</p>
+        </div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="shell">
+      <h2>Groups and Personal</h2>
+      <div class="grid">
+        <div class="torn"><div class="slip">
+          <h3>Groups</h3>
+          <p>Roommates, family, a team. Add Restock to the group chat and say hi. It sets up the group by text.</p>
+        </div></div>
+        <div class="torn"><div class="slip">
+          <h3>Personal</h3>
+          <p>Text Restock one on one for things that are just yours.</p>
+        </div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="shell">
+      <h2>Built to be trusted</h2>
+      <div class="grid">
+        <div class="torn"><div class="slip">
+          <h3>No card numbers in chat</h3>
+          <p>Cards go on Stripe's secure page. Restock only keeps the last 4 digits.</p>
+        </div></div>
+        <div class="torn"><div class="slip">
+          <h3>You say when to buy</h3>
+          <p>The AI never orders on its own. Big items need a yes first.</p>
+        </div></div>
+        <div class="torn"><div class="slip">
+          <h3>An AI, and it says so</h3>
+          <p>Ask &ldquo;are you a person?&rdquo; and it tells you.</p>
+        </div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="shell final">
+      <h2>Already texting Restock?</h2>
+      <a class="btn primary" href="/dashboard">Log in with your phone</a>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="shell">
+    <span class="meta">Demo. Orders are simulated and payments use Stripe test mode.</span>
+    <a class="meta" href="/privacy">Privacy</a>
+  </div>
+</footer>
+</body>
+</html>

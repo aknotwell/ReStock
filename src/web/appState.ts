@@ -2,9 +2,11 @@
 // Never phone numbers, and other members' cards only as "has a card" (last 4 digits are yours alone).
 import { computeShares } from "../core/split.js";
 import { db, findMember, householdsForPhone, pendingItems } from "../core/store.js";
+import { householdName } from "../core/households.js";
 import type { Household, Member } from "../types.js";
 
 export type HouseholdView = {
+  id: string; // the household's id, so the dashboard can tell your households apart
   me: { id: string; name: string; role: Member["role"]; cardLast4: string | null };
   household: {
     name: string;
@@ -32,9 +34,10 @@ export function householdView(me: Member): HouseholdView | undefined {
   const inHousehold = new Set(household.members.map((m) => m.id));
 
   return {
+    id: household.id,
     me: { id: me.id, name: me.name, role: me.role, cardLast4: me.paymentMethodId ? (me.cardLast4 ?? null) : null },
     household: {
-      name: `${owner?.name ?? "Your"}'s household`,
+      name: householdName(household),
       kind: household.kind ?? "group",
       groupType: household.groupType ?? null,
       budgetCents: household.budgetCents ?? null,

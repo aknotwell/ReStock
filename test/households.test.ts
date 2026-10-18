@@ -108,10 +108,10 @@ describe("household lifecycle over chat", () => {
     expect(out()).toMatch(/already invited a Amber/);
     await dm(AMBER, "hi"); // Amber joins
     await dm(ALEX, "invite Ambs 425-555-0102");
-    expect(out()).toMatch(/already in another household/);
-    await dm(AMBER, "start household as Amber");
     expect(out()).toMatch(/already in Alex's household/);
-    expect(db.households.size).toBe(1);
+    await dm(AMBER, "start household as Amber"); // a second household of her own is fine
+    expect(out()).toMatch(/You started Amber's household[\s\S]*switch to <name>/);
+    expect(db.households.size).toBe(2);
   });
 
   it("removes members (never the owner), cancels invites, and rejects unreadable input", async () => {

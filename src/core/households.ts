@@ -1,7 +1,8 @@
 // Owner: Person 2 (store) / Person 1 (chat). Creating households and managing members.
 // Membership is security-sensitive (it decides who shares a bill), so it's plain code: never the LLM.
 // The persistence layer saves these changes automatically (src/core/persist.ts).
-import type { Household, Member } from "../types.js";
+import type { Cents, Household, Member } from "../types.js";
+import { registerState } from "./persist.js";
 import { db, householdsForPhone, newId, UNBOUND_GROUP } from "./store.js";
 import { openDebtsFor, owedTo } from "./ledger.js";
 
@@ -31,57 +32,106 @@ export function memberId(name: string, taken: Set<string>): string {
   return id;
 }
 
-/** A personal space doesn't count: someone can have their own space and be in a group. */
-export const inAGroup = (phone: string) => householdsForPhone(phone).some((h) => h.kind !== "personal");
-const hasPersonalSpace = (phone: string) => householdsForPhone(phone).some((h) => h.kind === "personal");
+/** A phone can be in a few households at once (roommates, family, a team) plus a personal space. */
+export const MAX_SPACES_PER_PHONE = 5;
 
-/**
- * One place per number when texting Restock one-on-one: each person's direct texts go to their personal space
- * if they have one, so they couldn't also use a household that works through one-on-one texts.
- */
-export const ALREADY_USES_RESTOCK =
-  'That number already uses Restock, in a household or a personal space. Each number can be in one place for now. ' +
-  'To move, text "delete my data" from that phone first, then sign up again.';
+export const TOO_MANY_SPACES =
+  `That number is already in ${MAX_SPACES_PER_PHONE} Restock households, the most one number can be in. ` +
+  'Leave one first: text "switch to <household>", then "leave household".';
+
+export const atSpaceLimit = (phone: string) => householdsForPhone(phone).length >= MAX_SPACES_PER_PHONE;
+
+/** What members call a household: its own name, or "<owner>'s household". */
+export function householdName(household: Household): string {
+  if (household.name) return household.name;
+  if (household.kind === "personal") return "Personal";
+  return `${household.members.find((m) => m.id === household.ownerId)?.name ?? "Your"}'s household`;
+}
+
+/** "Maple House", "Apt 4B", "Garcia Family"; undefined if it isn't a plain short name. */
+export function cleanHouseholdName(raw: string): string | undefined {
+  const name = raw.trim().replace(/\s+/g, " ");
+  if (!/^[\p{L}\p{N}][\p{L}\p{N}'&. -]{0,29}$/u.test(name)) return undefined;
+  return /^personal$/i.test(name) ? undefined : name; // "Personal" is the personal space's name
+}
+
+// ---------- Which household one-on-one texts go to ----------
+// A group chat always knows its household. One-on-one texts go to the person's active household: the one
+// they last started, joined or switched to ("switch to Maple House"). Saved with the store.
+const active = new Map<string, string>(); // phone -> householdId
+registerState("activeHouseholds", {
+  dump: () => [...active],
+  load: (data) => {
+    active.clear();
+    for (const [phone, id] of data as [string, string][]) active.set(phone, id);
+  },
+});
+
+export function setActiveHousehold(phone: string, householdId: string): void {
+  active.set(phone, householdId);
+}
+
+/** The household this phone's one-on-one texts go to. With none chosen: their personal space, else their first. */
+export function activeHousehold(phone: string): Household | undefined {
+  const mine = householdsForPhone(phone);
+  const chosen = mine.find((h) => h.id === active.get(phone));
+  return chosen ?? mine.find((h) => h.kind === "personal") ?? mine[0];
+}
+
+/** "Maple House", "maple", or "2" (its number in the "households" list): one of this phone's households. */
+export function findMyHousehold(phone: string, query: string): Household | undefined {
+  const mine = householdsForPhone(phone);
+  const q = query.trim().toLowerCase().replace(/^(?:the|my|our)\s+/, "").replace(/\s+(?:household|group)$/, "");
+  if (/^\d$/.test(q)) return mine[Number(q) - 1];
+  const named = (h: Household) => householdName(h).toLowerCase();
+  return mine.find((h) => named(h) === q || named(h) === `${q}'s household`) ?? (q.length >= 3 ? mine.find((h) => named(h).includes(q)) : undefined);
+}
 
 export const allMemberIds = () => new Set([...db.households.values()].flatMap((h) => h.members.map((m) => m.id)));
 
-export function createHousehold(ownerName: string, ownerPhone: string): Household {
-  if (inAGroup(ownerPhone)) throw new MembershipError("You're already in a household. Each number can be in one household for now.");
-  if (hasPersonalSpace(ownerPhone)) {
-    throw new MembershipError('You already have a personal space with me, and one-on-one texts go there. To start a household instead, text "delete my data" first.');
+export type NewHousehold = { name?: string; groupType?: Household["groupType"]; budgetCents?: Cents | null };
+
+/** Start a group household with this person as its budget owner. It becomes their active household. */
+export function createHousehold(ownerName: string, ownerPhone: string, options: NewHousehold = {}): Household {
+  if (atSpaceLimit(ownerPhone)) throw new MembershipError(TOO_MANY_SPACES);
+  const mine = householdsForPhone(ownerPhone);
+  if (options.name && mine.some((h) => householdName(h).toLowerCase() === options.name!.toLowerCase())) {
+    throw new MembershipError(`You already have a household called ${options.name}. Pick another name.`);
   }
   const owner: Member = { id: memberId(ownerName, allMemberIds()), name: ownerName, phone: ownerPhone, role: "owner" };
+  const budget = options.budgetCents === undefined ? DEFAULT_BUDGET_CENTS : options.budgetCents;
   const household: Household = {
     id: newId(),
+    kind: "group",
+    ...(options.name ? { name: options.name } : {}),
+    ...(options.groupType ? { groupType: options.groupType } : {}),
     groupChatId: UNBOUND_GROUP,
     ownerId: owner.id,
-    budgetCents: DEFAULT_BUDGET_CENTS,
+    ...(budget === null ? {} : { budgetCents: budget }),
     spentCents: 0,
     members: [owner],
   };
   db.households.set(household.id, household);
+  setActiveHousehold(ownerPhone, household.id);
   return household;
 }
 
+/** Add someone to a household. It becomes their active household. */
 export function addMember(household: Household, name: string, phone: string): Member {
   checkCanJoin(household, name, phone);
   // Same rule as joining in a group chat: everyone can approve requests, except in a family (only the owner).
   const member: Member = { id: memberId(name, allMemberIds()), name, phone, role: "member", ...(household.groupType === "family" ? {} : { canApprove: true }) };
   household.members.push(member);
+  setActiveHousehold(phone, household.id);
   return member;
 }
 
 /** Throws MembershipError if this person can't join this household (used when inviting and when they join). */
 export function checkCanJoin(household: Household, name: string, phone: string): void {
   if (household.members.length >= 9) throw new MembershipError("A household can have up to 9 people.");
-  if (inAGroup(phone)) {
-    throw new MembershipError('That number is already in another household. Each number can be in one household for now; they can text "delete my data" there to leave it first.');
-  }
-  if (hasPersonalSpace(phone) && household.groupChatId === UNBOUND_GROUP) {
-    // Their one-on-one texts go to their personal space, so a household without a group chat would be unreachable.
-    throw new MembershipError(
-      'That person has a personal Restock space, and their one-on-one texts go there, so they couldn\'t use this household. They can text "delete my data" to close it first.',
-    );
+  if (household.members.some((m) => m.phone === phone)) throw new MembershipError(`That number is already in ${householdName(household)}.`);
+  if (atSpaceLimit(phone)) {
+    throw new MembershipError(`That number is already in ${MAX_SPACES_PER_PHONE} Restock households, the most one number can be in.`);
   }
   if (household.members.some((m) => m.name.toLowerCase() === name.toLowerCase())) {
     throw new MembershipError(`There's already a ${name} in your household. Use a different name, like "${name} B".`);

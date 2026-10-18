@@ -18,6 +18,7 @@ export type Member = {
 export type Household = {
   id: string;
   kind?: "personal" | "group"; // personal = one person in a one-on-one chat; unset = group (older households)
+  name?: string; // what members call it ("Maple House"); unset = "<owner>'s household"
   groupType?: "roommates" | "family" | "other"; // decides who can approve by default (roommates: everyone)
   groupChatId: string;
   ownerId: MemberId;

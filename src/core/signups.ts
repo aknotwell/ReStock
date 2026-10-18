@@ -5,9 +5,9 @@
 // proves they own the phone and activates them. Unactivated sign-ups expire and free their line.
 // Saved with the rest of the store (persist.ts). We keep names, phones and line IDs; never message text.
 import { randomBytes } from "node:crypto";
-import { addMember, ALREADY_USES_RESTOCK, checkCanJoin, cleanName, createHousehold, MembershipError, normalizePhone } from "./households.js";
+import { addMember, atSpaceLimit, checkCanJoin, cleanName, createHousehold, householdName, MembershipError, normalizePhone, TOO_MANY_SPACES } from "./households.js";
 import { registerState } from "./persist.js";
-import { db, householdsForPhone } from "./store.js";
+import { db } from "./store.js";
 import { assignLine, releaseLine, releaseLinesForHandle } from "../messaging/photonLines.js";
 import type { Household, Member } from "../types.js";
 
@@ -82,12 +82,13 @@ export async function startSignup(input: { name: string; phone: string; inviteCo
   const phone = normalizePhone(input.phone);
   if (!name) throw new SignupError("Please enter your first name (letters only).");
   if (!phone) throw new SignupError("Please enter a 10-digit US mobile number.");
-  if (householdsForPhone(phone).length) throw new SignupError(ALREADY_USES_RESTOCK);
+  if (atSpaceLimit(phone)) throw new SignupError(TOO_MANY_SPACES);
 
   let household: Household | undefined;
   if (input.inviteCode) {
     household = householdForInvite(input.inviteCode, now);
     if (!household) throw new SignupError("This invite link has expired or was reset. Ask for a new one.");
+    if (household.members.some((m) => m.phone === phone)) throw new SignupError(`You're already in ${householdName(household)}. Just text your Restock number.`);
     if (household.members.length >= MAX_MEMBERS) throw new SignupError("This household is full (9 people).");
     if (household.members.some((m) => m.name.toLowerCase() === name.toLowerCase())) {
       throw new SignupError(`There's already a ${name} in this household. Add your last initial, like "${name} B".`);
@@ -110,7 +111,7 @@ export async function startSignup(input: { name: string; phone: string; inviteCo
     line: assignment.line,
     expiresAt: now + SIGNUP_TTL_MS,
   });
-  return { line: assignment.line, householdName: household ? ownerName(household) : null };
+  return { line: assignment.line, householdName: household ? householdName(household) : null };
 }
 
 /**
@@ -220,8 +221,6 @@ function sweepExpiredSync(now: number): Pending[] {
 // Dedupes a double-tapped "Get my number" but not a later sign-up: after "delete my data" releases the
 // line, reusing a key Photon has already seen would hand back the released assignment.
 const signupKey = (phone: string, now: number) => `restock-signup:${phone}:${Math.floor(now / 60_000)}`;
-
-const ownerName = (h: Household) => `${h.members.find((m) => m.id === h.ownerId)?.name ?? "Your"}'s household`;
 
 export function resetSignups(): void {
   invites.clear();

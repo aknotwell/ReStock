@@ -25,7 +25,7 @@ import { activateFromFirstText, invitedTo, inviteCodeFor, isPendingSignup, lineF
 import { isRestockLine } from "./photonLines.js";
 import { CONTACT_NAME, contactLink } from "../web/contactCard.js";
 import { config } from "../config.js";
-import { cleanName, findPhone } from "../core/households.js";
+import { activeHousehold, cleanName, findPhone, householdName } from "../core/households.js";
 import { handleOnboarding, setupInProgress } from "./onboarding.js";
 import { parseDealRequest, stripDealWords } from "../deals/request.js";
 import { currentListing, listingProduct, liveDealsEnabled, offCatalogProduct } from "../deals/live.js";
@@ -47,19 +47,31 @@ function resolveHousehold(msg: InboundMessage): Household | undefined {
   if (msg.spaceKind === "group") {
     const known = findHouseholdByGroupChat(msg.spaceId);
     if (known) return known;
+    // A new group chat from someone whose household has no chat yet: their active one, or their only one.
     const unbound = householdsForPhone(msg.fromPhone).filter((h) => h.groupChatId === UNBOUND_GROUP);
-    if (unbound.length === 1 && unbound[0]) {
-      unbound[0].groupChatId = msg.spaceId;
-      console.log(`Bound household ${unbound[0].id} to group ${msg.spaceId}`);
-      return unbound[0];
+    const current = activeHousehold(msg.fromPhone);
+    const bind = unbound.find((h) => h.id === current?.id) ?? (unbound.length === 1 ? unbound[0] : undefined);
+    if (bind) {
+      bind.groupChatId = msg.spaceId;
+      console.log(`Bound household ${bind.id} to group ${msg.spaceId}`);
+      return bind;
     }
     return undefined;
   }
-  // One-on-one texts go to the sender's personal space when they have one.
-  const mine = householdsForPhone(msg.fromPhone);
-  const personal = mine.find((h) => h.kind === "personal");
-  if (personal) return personal;
-  return mine.length === 1 ? mine[0] : undefined; // TODO(P1): pick a household when someone is in several
+  // One-on-one texts go to the sender's active household ("switch to Maple House" changes it).
+  const current = activeHousehold(msg.fromPhone);
+  // A "yes" to an approval request another of their households sent them goes to that household.
+  if (current && msg.spaceKind === "direct" && isYes(msg.text) && !peekAction(msg.fromPhone)) {
+    const waitingIn = (h: Household) => {
+      const me = findMemberByPhone(h, msg.fromPhone);
+      return !!me && approvableBy(h, me, pendingItems(h.id).filter((i) => i.needsApproval)).length > 0;
+    };
+    if (!waitingIn(current)) {
+      const others = householdsForPhone(msg.fromPhone).filter((h) => h.id !== current.id && waitingIn(h));
+      if (others.length === 1) return others[0];
+    }
+  }
+  return current;
 }
 
 /** `refined`: this message is a member's answer to "Any brand or size?", so it won't be asked again. */
@@ -171,13 +183,23 @@ export async function handleInbound(msg: InboundMessage, opts: { refined?: boole
   if (membership?.type === "delete_self" && household && member) {
     // Deleting your data can't be undone: ask first, like any sensitive action.
     proposeAction(msg.fromPhone, { kind: "membership", command: membership });
-    await respond('Leave Restock and delete your data? This removes you from the household and can\'t be undone. Reply "yes" to confirm or "no" to cancel.');
+    const several = householdsForPhone(msg.fromPhone).length > 1;
+    await respond(
+      `Leave Restock and delete your data? This removes you from ${several ? "all your households" : "the household"} and can't be undone. ` +
+        (several ? 'To leave just one, text "leave household" instead. ' : "") +
+        'Reply "yes" to confirm or "no" to cancel.',
+    );
+    return;
+  }
+  if (membership?.type === "leave" && household && member) {
+    // Asked about this household, so a later "switch to …" can't change which one the "yes" leaves.
+    proposeAction(msg.fromPhone, { kind: "membership", command: { type: "leave", householdId: household.id } });
+    await respond(`Leave ${householdName(household)}? You'll stop getting its texts and its saved card is removed. Reply "yes" to confirm or "no" to cancel.`);
     return;
   }
   // While Restock is asking setup questions here, the answers go to setup ("roommates" is an answer, not a command).
   if (membership && !(membership.type === "members" && !member && setupInProgress(msg))) {
-    await handleMembershipCommand({ command: membership, fromPhone: msg.fromPhone, spaceKind: msg.spaceKind, household, member: member || undefined, respond });
-    return;
+    if (await handleMembershipCommand({ command: membership, fromPhone: msg.fromPhone, spaceKind: msg.spaceKind, household, member: member || undefined, respond })) return;
   }
 
   // 3. Not set up yet (or new to this group): Restock says hi and sets things up by asking questions.
@@ -712,7 +734,6 @@ async function relayToOthers(household: Household, senderId: string, text: strin
 
 /** Welcome a newly activated sign-up. The owner gets their invite link; existing members hear who joined. */
 async function welcome({ household, member, joined }: Activation, respond: (text: string) => Promise<void>): Promise<void> {
-  const owner = household.members.find((m) => m.id === household.ownerId);
   const line = lineFor(member.phone);
   const saveMe = line && isRestockLine(line) ? `\nSave me as "${CONTACT_NAME}" in your contacts: ${contactLink(line)}` : "";
   if (!joined) {
@@ -725,7 +746,7 @@ async function welcome({ household, member, joined }: Activation, respond: (text
     return;
   }
   await respond(
-    `Welcome, ${member.name}! You're in ${owner?.name ?? "your"}'s household.\n` +
+    `Welcome, ${member.name}! You're in ${householdName(household)}.${householdsForPhone(member.phone).length > 1 ? ' Texts to me now go there; text "households" to switch.' : ""}\n` +
       `Text what you need ("we're out of TP"), "what do I owe?", or "help". No card needed to join; text "add card" anytime.${saveMe}`,
   );
   await relayToOthers(household, member.id, `${member.name} joined the household.`, `joined:${member.id}`);

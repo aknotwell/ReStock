@@ -9,7 +9,7 @@ import { OrderError, placeOrder } from "../core/orders.js";
 import { createCardSetupLink } from "../payments/links.js";
 import { ChargeFailedError } from "../payments/charges.js";
 import { OwnerCardRequiredError, ownerCardRequest } from "../payments/ownerGate.js";
-import type { Debt, Household } from "../types.js";
+import type { Debt, Household, Item } from "../types.js";
 import { checkInput, INJECTION_REPLY } from "../safety/guardrails.js";
 import { isMuted, mute, reply, sendGroup, sendPrivate, unmute, type InboundMessage } from "./photon.js";
 import { parseCommand } from "./commands.js";
@@ -22,6 +22,7 @@ import { config } from "../config.js";
 import { cleanName, findPhone } from "../core/households.js";
 import { handleOnboarding, setupInProgress } from "./onboarding.js";
 import { parseDealRequest, stripDealWords } from "../deals/request.js";
+import { describeParts, parseSplitCommand, parseSplitInAdd, payersOf, setPayers, splitLabel, unclearReply, type SplitRequest } from "./splitWith.js";
 import {
   buildDealChoice, hasPendingChoice, isCancel, lastBought, namedSpecifically, parsePick, queueChoices, resolvePick, stripUsual, wantsUsual,
   type Choice,
@@ -188,7 +189,8 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
 
   // `overBudget`: the member picked an option past this month's budget. It waits for the owner's "yes",
   // using the same approval flow as expensive personal items (placeOrder skips it until then).
-  const addToCart = async (product: Product, shared: boolean | null, prefix = "Added", overBudget?: { ownerName: string }) => {
+  // `payers`: who it's split between, when they said ("for me and Jake"); otherwise shared/personal as usual.
+  const addToCart = async (product: Product, shared: boolean | null, prefix = "Added", overBudget?: { ownerName: string }, payers?: string[]) => {
     const budget = household.budgetCents;
     const committed = household.spentCents + pendingItems(household.id).reduce((sum, item) => sum + item.cents, 0);
     const exceedsBudget = overBudget ?? (budget !== undefined && committed + product.cents > budget
@@ -203,9 +205,10 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       shared: shared ?? product.defaultShared,
       ...(waits ? { needsApproval: true } : {}),
     });
+    if (payers?.length) setPayers(item, payers, household);
     if (waits) {
       const budgetNote = exceedsBudget ? " It would exceed this month's budget." : "";
-      const ask = `${member.name} asked for ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}).${budgetNote} ${approverNames(household, member.id)}: reply "yes" to add it to the cart.`;
+      const ask = `${member.name} asked for ${item.name} (${splitLabel(item, household)}, ${fmt(item.cents)}).${budgetNote} ${approverNames(household, member.id)}: reply "yes" to add it to the cart.`;
       await respond(
         msg.spaceKind === "direct"
           ? `Best match: ${item.name} (${fmt(item.cents)}).${budgetNote} I've asked ${approverNames(household, member.id)} to approve it.`
@@ -218,10 +221,56 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     }
     const budgetNote = exceedsBudget ? " Heads-up: this puts the household over this month's budget." : "";
     await respond(
-      `${prefix} ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}). Reply "${item.shared ? "personal" : "shared"}" to change.${budgetNote}`,
+      `${prefix} ${item.name} (${splitLabel(item, household, member.id)}, ${fmt(item.cents)}). ${changeHint(item, household, member.id)}${budgetNote}`,
     );
     if (household.groupChatId === UNBOUND_GROUP) {
-      await relayToOthers(household, member.id, `${member.name} added ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}).`, `add:${item.id}`);
+      await relayToOthers(household, member.id, `${member.name} added ${item.name} (${splitLabel(item, household)}, ${fmt(item.cents)}).`, `add:${item.id}`);
+    }
+  };
+
+  // "just me and Alex" / "split with Priya" / "everyone" change the sender's most recent item.
+  // "not me" (or "not me for the chips") takes the sender off an item someone else put them on.
+  const changePayers = async (request: SplitRequest) => {
+    const pending = pendingItems(household.id);
+    if (request.kind === "unclear") {
+      await respond(unclearReply(request.words, household));
+      return;
+    }
+    if (request.kind === "not_me") {
+      const named = request.itemName?.toLowerCase();
+      const item = named
+        ? pending.find((i) => i.name.toLowerCase().includes(named))
+        : pending.filter((i) => payersOf(i, household).some((m) => m.id === member.id)).at(-1);
+      if (!item) {
+        await respond(named ? `I couldn't find "${request.itemName}" in the cart.` : "You're not paying for anything in the cart.");
+        return;
+      }
+      const payers = payersOf(item, household);
+      if (!payers.some((m) => m.id === member.id)) {
+        await respond(`You're not paying for ${item.name}.`);
+        return;
+      }
+      if (payers.length === 1 && item.addedBy === member.id) {
+        await respond(`${item.name} is yours. Text "remove ${item.name.toLowerCase()}" to take it out of the cart.`);
+        return;
+      }
+      const rest = payers.filter((m) => m.id !== member.id).map((m) => m.id);
+      setPayers(item, rest.length ? rest : [item.addedBy], household); // nobody left: back to whoever added it
+      await respond(`Took you off ${item.name}. It's now ${describeParts(item, household)}.`);
+      if (household.groupChatId === UNBOUND_GROUP) {
+        await relayToOthers(household, member.id, `${member.name} took themselves off ${item.name}. It's now ${describeParts(item, household)}.`, `split:${msg.messageId}`);
+      }
+      return;
+    }
+    const item = pending.filter((i) => i.addedBy === member.id).at(-1);
+    if (!item) {
+      await respond("There's nothing of yours in the cart to change.");
+      return;
+    }
+    setPayers(item, request.kind === "everyone" ? household.members.map((m) => m.id) : request.memberIds, household);
+    await respond(`${item.name} is now ${describeParts(item, household, member.id)}.`);
+    if (household.groupChatId === UNBOUND_GROUP) {
+      await relayToOthers(household, member.id, `${member.name} changed ${item.name}: it's now ${describeParts(item, household)}.`, `split:${msg.messageId}`);
     }
   };
 
@@ -260,11 +309,19 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     if (pick !== undefined || cancel) {
       const result = resolvePick(household.id, member.id, cancel ? "cancel" : pick!);
       if (result?.kind === "invalid") await respond(result.prompt);
-      else if (result?.kind === "picked") await addToCart(result.product, result.shared, "Added", result.overBudget);
+      else if (result?.kind === "picked") await addToCart(result.product, result.shared, "Added", result.overBudget, result.splitWith);
       else if (result?.kind === "cancelled") await respond("OK, I didn't add that one.");
       if (result && result.kind !== "invalid" && result.next) await respond(result.next);
       return;
     }
+  }
+
+  // Changing who pays for an item already in the cart ("just me and Alex", "everyone", "not me"):
+  // handled in code against the household's members, before any AI parsing.
+  const splitCommand = parseSplitCommand(msg.text, household, member);
+  if (splitCommand) {
+    await changePayers(splitCommand);
+    return;
   }
 
   // 2. Understand the message.
@@ -276,6 +333,12 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   const choices: Choice[] = [];
   // "cheapest TP under $15 from Costco": deal preferences come from the member's own words, read by code.
   const dealOptions = parseDealRequest(msg.text);
+  // "add oat milk for me and Jake": who it's for also comes from their own words, read by code.
+  const splitAsk = parseSplitInAdd(msg.text, household, member);
+  const payers =
+    splitAsk?.request.kind === "group" ? splitAsk.request.memberIds
+    : splitAsk?.request.kind === "everyone" ? household.members.map((m) => m.id)
+    : undefined;
 
   // In a DM, never leave someone without an answer; in the group, casual chat is ignored.
   if (msg.spaceKind === "direct" && intents.every((i) => i.type === "unknown")) {
@@ -291,7 +354,12 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     }
     if (intent.type === "add_item" && intent.itemName) {
       const usual = wantsUsual(intent.itemName) || wantsUsual(msg.text);
-      const requested = stripDealWords(stripUsual(intent.itemName) || intent.itemName);
+      let requested = stripDealWords(stripUsual(intent.itemName) || intent.itemName);
+      if (splitAsk) requested = requested.replace(new RegExp(`\\s*${escapeRegExp(splitAsk.phrase)}$`, "i"), "").trim() || requested;
+      if (splitAsk?.request.kind === "unclear") {
+        await respond(unclearReply(splitAsk.request.words, household, requested));
+        continue;
+      }
       const match = await matchItem(requested);
       if (!match) {
         await respond("I couldn’t find that in the demo catalog. Try another household item name?");
@@ -299,12 +367,14 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       }
       const usualProduct = usual ? lastBought(household.id, match.product) : undefined;
       if (usualProduct) {
-        await addToCart(usualProduct, intent.shared, "Added your usual:");
+        await addToCart(usualProduct, intent.shared, "Added your usual:", undefined, payers);
       } else if (namedSpecifically(requested, match.product)) {
-        await addToCart(match.product, intent.shared);
+        await addToCart(match.product, intent.shared, "Added", undefined, payers);
       } else {
         if (usual) await respond(`I don't see an earlier order for ${requested}, so here are the options.`);
-        choices.push(await buildDealChoice(household.id, match.product, intent.shared, dealOptions));
+        const choice = await buildDealChoice(household.id, match.product, intent.shared, dealOptions);
+        if (payers) choice.splitWith = payers;
+        choices.push(choice);
       }
     } else if (intent.type === "question") {
       await respond(await answerQuestion(msg.text, member.name));
@@ -321,6 +391,7 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
         await respond(`Removed ${item.name} from the cart.`);
       } else {
         item.shared = intent.shared ?? !item.shared;
+        delete item.splitWith; // "shared"/"personal" replace any earlier "just me and Jake"
         await respond(`${item.name} is now ${item.shared ? "shared (split with everyone)" : `personal (just ${member.name})`}.`);
       }
     } else if (intent.type === "what_do_i_owe") {
@@ -440,3 +511,15 @@ export function waitingForDm(names: string[]): string {
   const verb = names.length === 1 ? "hasn't" : "haven't";
   return `${who} ${verb} texted me directly yet. I'll send their private messages as soon as they do.`;
 }
+
+/** The "how to change it" hint after adding an item. Shared items also show how to name people. */
+function changeHint(item: Item, household: Household, senderId: string): string {
+  if (item.splitWith?.length) return `Reply "everyone" or "just me" to change.`;
+  if (!item.shared) return `Reply "shared" to change.`;
+  const other = household.members.find((m) => m.id !== senderId);
+  return other
+    ? `Reply "personal", or "just me and ${other.name.split(/\s+/)[0]}" to split it with some people.`
+    : `Reply "personal" to change.`;
+}
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

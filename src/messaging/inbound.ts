@@ -412,8 +412,19 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
         // Not in the demo catalog. With store prices on, search the stores for what they asked for: the member
         // still picks from real listings, and nothing is added until they do.
         const offCatalog = liveDealsEnabled() ? offCatalogProduct(requested) : undefined;
+        // "The usual": re-add last time's listing at today's price, like catalog items.
+        const usualListing = usual && offCatalog ? lastBought(household.id, offCatalog) : undefined;
+        if (offCatalog && usualListing?.store) {
+          const fresh = await currentListing(usualListing, offCatalog);
+          if (fresh) {
+            await addToCart(fresh, intent.shared, "Added your usual:", undefined, payers);
+            continue;
+          }
+        }
         const choice = offCatalog ? await buildDealChoice(household.id, offCatalog, intent.shared, dealOptions, member.id) : undefined;
         if (choice?.checkedAt && choice.options.length) {
+          if (usualListing) choice.note = `Your usual, ${usualListing.name}, isn't listed right now. Here are today's store prices.`;
+          else if (usual) choice.note = `I don't see an earlier order for ${requested}, so here are the options.`;
           if (payers) choice.splitWith = payers;
           choices.push(choice);
         } else {

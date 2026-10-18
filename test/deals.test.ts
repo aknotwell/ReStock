@@ -521,7 +521,7 @@ describe("items that aren't in the demo catalog", () => {
   it("says so when the search finds nothing, and never offers demo prices for it", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("oops", { status: 500 })));
     await say(SAM, "add AA batteries");
-    expect(out()).toMatch(/couldn’t find store listings for that right now/);
+    expect(out()).toMatch(/couldn't find store listings for that right now/);
     expect(out()).not.toMatch(/Which one\?/);
   });
 
@@ -529,8 +529,36 @@ describe("items that aren't in the demo catalog", () => {
     config.serpapiKey = undefined;
     const fetch = stubSerpApi(BATTERY_RESULTS);
     await say(SAM, "add AA batteries");
-    expect(out()).toMatch(/couldn’t find that in the demo catalog/);
+    expect(out()).toMatch(/couldn't find that in the demo catalog/);
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("caches by the hash label, so the member's words aren't saved with the cache", async () => {
+    const fetch = stubSerpApi(BATTERY_RESULTS);
+    await searchOffers("AA batteries", { logAs: "search-abc" });
+    // A different search under the same label is a cache hit: the key is the label, not the words.
+    await searchOffers("something else", { logAs: "search-abc" });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("needs a whole shared word, so 'rice' doesn't match a 'price' listing", async () => {
+    stubSerpApi({ shopping_results: [row("Price Tag Labels, 500 Count", "Target", 6.99), row("Jasmine Rice, 5 lb", "Walmart", 8.47)] });
+    const live = await liveOptionsFor(offCatalogProduct("rice")!);
+    expect(live?.products.map((p) => p.store)).toEqual(["Walmart"]);
+  });
+
+  it("'the usual' re-adds last time's listing at today's price", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-17T08:00:00Z"));
+    stubSerpApi(BATTERY_RESULTS);
+    await say(SAM, "add AA batteries");
+    await say(SAM, "1"); // Amazon, $15.99
+    orderItems([pendingItems(H).at(-1)!.id], "2026-10-17T08:05:00Z");
+    vi.setSystemTime(new Date("2026-10-17T21:00:00Z")); // cache is stale: search again
+    stubSerpApi({ shopping_results: [row("Amazon Basics AA Batteries 48 Pack", "Amazon.com", 14.49)] });
+    await say(SAM, "add the usual AA batteries");
+    expect(pendingItems(H).at(-1)).toMatchObject({ name: "Amazon Basics AA Batteries 48 Pack (Amazon)", cents: 1449 });
+    expect(out()).toMatch(/Added your usual: Amazon Basics/);
   });
 
   it("catalog items still search by the catalog name, not the member's words", async () => {

@@ -109,7 +109,8 @@ export async function searchOffers(
   search: string,
   { now = Date.now(), maxAgeHours = DEFAULT_MAX_AGE_HOURS, logAs }: { now?: number; maxAgeHours?: number; logAs?: string } = {},
 ): Promise<Cached | undefined> {
-  // What the log calls this search (see logSearch). `search` is what SerpApi gets.
+  // What the log and the cache call this search. `search` is what SerpApi gets. Off-catalog searches pass a
+  // hash label, so the member's words are never logged or saved with the cache.
   const query = logAs ?? search;
   const key = config.serpapiKey;
   if (!key) {
@@ -118,7 +119,7 @@ export async function searchOffers(
     loggedOff = true;
     return undefined;
   }
-  const cacheKey = `${search.toLowerCase()}|${config.dealsLocation ?? ""}`;
+  const cacheKey = `${query.toLowerCase()}|${config.dealsLocation ?? ""}`;
   const hit = cache.get(cacheKey);
   const fallback = hit ? `cached (${minutesOld(hit.at, now)} old)` : "catalog";
   if (hit && now - hit.at <= maxAgeHours * 3_600_000) {
@@ -219,8 +220,12 @@ function relevant(offer: Offer, product: Product): boolean {
   const words = long.length ? long : all.filter((w) => w.length >= 2);
   const accessoryOk = !ACCESSORY.test(title) || ACCESSORY.test(product.name);
   const base = getProduct(groupOf(product))?.cents ?? product.cents;
-  const priced = base <= 0 || (offer.cents >= base / 4 && offer.cents <= base * 3);
-  return words.some((w) => title.includes(w)) && accessoryOk && priced;
+  const offCatalog = base <= 0;
+  const priced = offCatalog || (offer.cents >= base / 4 && offer.cents <= base * 3);
+  // Without a price band to catch mismatches, off-catalog listings must share a whole word ("rice" isn't "price").
+  const titleWords = new Set(title.split(/[^\p{L}\p{N}]+/u));
+  const shares = offCatalog ? words.some((w) => titleWords.has(w)) : words.some((w) => title.includes(w));
+  return shares && accessoryOk && priced;
 }
 
 /** Live store listings for a catalog product, as options the member can pick. Undefined when unavailable. */

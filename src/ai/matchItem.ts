@@ -3,6 +3,8 @@
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { catalog, getProduct, keywordMatch, type Product } from "../core/catalog.js";
+import { checkInput } from "../safety/guardrails.js";
+import { wrapUntrusted } from "./prompt.js";
 import { anthropic, MODEL } from "./client.js";
 
 const MatchSchema = z.object({
@@ -22,6 +24,7 @@ Catalog:
 ${CATALOG_LINES}`;
 
 export async function matchItem(requested: string): Promise<ItemMatch> {
+  if (checkInput(requested)) return undefined;
   const fallback = () => {
     const p = keywordMatch(requested);
     return p ? { product: p, source: "keyword" as const } : undefined;
@@ -33,18 +36,19 @@ export async function matchItem(requested: string): Promise<ItemMatch> {
       model: MODEL,
       max_tokens: 1024,
       system: SYSTEM,
-      messages: [{ role: "user", content: requested }],
+      messages: [{ role: "user", content: wrapUntrusted("member", requested) }],
       output_config: { effort: "low", format: zodOutputFormat(MatchSchema) },
     });
-    const out = response.parsed_output;
-    if (response.stop_reason === "refusal" || !out) return fallback();
+    const parsed = MatchSchema.safeParse(response.parsed_output);
+    const out = parsed.success ? parsed.data : undefined;
+    if (response.stop_reason !== "end_turn" || !out) return fallback();
 
     // Validate: the ID must exist in our catalog, and low-confidence matches are not trusted.
     const product = out.productId ? getProduct(out.productId) : undefined;
     if (!product || out.confidence === "low") return fallback();
     return { product, source: "ai" };
   } catch {
-    console.warn("AI match failed, using keyword match");
+    console.warn("AI match failed; using keyword match.");
     return fallback();
   }
 }

@@ -61,16 +61,18 @@ export async function suggestRestock(
       ],
       output_config: { effort: "low", format: zodOutputFormat(SuggestionSchema) },
     });
-    const out = response.parsed_output;
-    if (response.stop_reason === "refusal" || !out) return dueByInterval(history, inCart, now);
+    const parsed = SuggestionSchema.safeParse(response.parsed_output);
+    const out = parsed.success ? parsed.data : undefined;
+    if (response.stop_reason !== "end_turn" || !out) return dueByInterval(history, inCart, now);
 
     // Validate every suggestion against the catalog and the cart; cap at 3.
+    const grounded = new Map(dueByInterval(history, inCart, now).map((s) => [s.product.id, s]));
     return out.suggestions
-      .map((s) => ({ product: getProduct(s.productId), reason: s.reason }))
-      .filter((s): s is RestockSuggestion => !!s.product && !inCart.has(s.product.id))
+      .map((s) => grounded.get(s.productId))
+      .filter((s): s is RestockSuggestion => !!s)
       .slice(0, 3);
   } catch {
-    console.warn("AI restock suggestion failed, using interval rule");
+    console.warn("AI restock suggestion failed; using interval rule.");
     return dueByInterval(history, inCart, now);
   }
 }

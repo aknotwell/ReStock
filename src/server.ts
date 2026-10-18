@@ -1,8 +1,31 @@
 import express from "express";
+import { randomUUID } from "node:crypto";
+import { attachDemoCards } from "../scripts/demoCards.js";
+import { seedDemo } from "../scripts/seed.js";
 import { config } from "./config.js";
+import { openDatabase, saveNow, startAutosave } from "./core/persist.js";
 import { handleInbound } from "./messaging/inbound.js";
+import { rememberInbound, startPolling, type InboundMessage } from "./messaging/photon.js";
 import { stripeWebhook } from "./payments/webhook.js";
+import { agentApi, agentApiInfo } from "./web/agentApi.js";
 import { webRoutes } from "./web/routes.js";
+
+// Load saved data before anything else touches the store.
+const restored = config.databasePath ? openDatabase(config.databasePath) : false;
+if (config.databasePath) {
+  console.log(restored ? `Restored saved data from ${config.databasePath}` : `Saving data to ${config.databasePath}`);
+} else {
+  console.warn("DATABASE_PATH is not set: data lives in memory only and is lost on restart.");
+}
+
+// Don't overwrite a saved household with a fresh seed unless asked (DEMO_RESET=1).
+if (config.demoSeed && (!restored || config.demoReset)) {
+  const h = seedDemo();
+  console.log(`Seeded demo household ${h.id} (${h.members.map((m) => m.name).join(", ")})`);
+  await attachDemoCards(h); // real sandbox cards for Sam and Jake when a Stripe test key is set
+}
+saveNow();
+startAutosave();
 
 const app = express();
 
@@ -11,20 +34,39 @@ app.post("/webhooks/stripe", express.raw({ type: "application/json" }), stripeWe
 
 app.use(express.json());
 
-// TODO(P1): verify PHOTON_WEBHOOK_SECRET and map Photon's payload to InboundMessage.
-app.post("/webhooks/photon", async (req, res) => {
-  try {
-    await handleInbound(req.body);
+// Local simulator: pretend a text arrived, without Photon. Off unless DEV_INBOUND=1 — it is unauthenticated.
+if (config.devInbound) {
+  app.post("/dev/inbound", async (req, res) => {
+    const body = req.body as Partial<InboundMessage>;
+    if (!body.fromPhone || !body.text) {
+      res.status(400).json({ error: "fromPhone and text are required" });
+      return;
+    }
+    const msg: InboundMessage = {
+      messageId: body.messageId ?? randomUUID(),
+      spaceId: body.spaceId ?? "dev-group",
+      spaceKind: body.spaceKind ?? "group",
+      fromPhone: body.fromPhone,
+      text: body.text,
+      agentUserId: body.agentUserId ?? "dev-agent",
+    };
+    rememberInbound(msg);
+    await handleInbound(msg);
     res.sendStatus(200);
-  } catch (err) {
-    console.error("inbound failed:", err instanceof Error ? err.message : err);
-    res.sendStatus(500);
-  }
-});
+  });
+  console.warn("DEV_INBOUND=1: POST /dev/inbound is enabled. Never enable this on a public deploy.");
+}
+
+// The same audit pipeline at every path an audit tool might use (VEYZL only takes a base URL).
+for (const path of ["/api/agent", "/v1/chat/completions", "/chat/completions", "/v1/messages", "/"]) {
+  app.post(path, agentApi);
+}
+app.get(["/api/agent", "/v1/chat/completions"], agentApiInfo);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 app.use(webRoutes);
 
 app.listen(config.port, () => {
   console.log(`Restock listening on ${config.publicBaseUrl}`);
+  startPolling(handleInbound);
 });

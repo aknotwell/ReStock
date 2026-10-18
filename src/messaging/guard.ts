@@ -15,13 +15,25 @@ function luhnValid(digits: string): boolean {
   return sum % 10 === 0;
 }
 
+// Characters people put between card digit groups: any whitespace (incl. tabs/newlines),
+// dots, slashes, underscores, and ASCII/Unicode dashes. Up to 3 in a row between digits.
+const SEPARATOR = "[\\s./_\\-\\u2010-\\u2015\\u2212]{0,3}";
+const CANDIDATE = new RegExp(`\\d(?:${SEPARATOR}\\d){12,}`, "g");
+
 /** True if the text contains something that looks like a payment card number. */
 export function containsCardNumber(text: string): boolean {
-  // Allow pasted cards with repeated spaces or line breaks, but never match
-  // a shorter substring inside a longer run of digits.
-  const candidates = text.match(/(?<!\d)\d(?:[ \t\r\n-]{0,3}\d){12,18}(?!\d)/g) ?? [];
+  const candidates = text.match(CANDIDATE) ?? [];
   return candidates.some((c) => {
-    const digits = c.replace(/\D/g, "");
-    return digits.length >= 13 && digits.length <= 19 && luhnValid(digits);
+    // People write cards as digit groups ("4242 4242 4242 4242 12/29 123"). Try every run of
+    // whole consecutive groups, so a card followed by its expiry or CVC is still caught.
+    const groups = c.split(/\D+/);
+    for (let i = 0; i < groups.length; i++) {
+      let digits = "";
+      for (let j = i; j < groups.length && digits.length < 19; j++) {
+        digits += groups[j];
+        if (digits.length >= 13 && digits.length <= 19 && luhnValid(digits)) return true;
+      }
+    }
+    return false;
   });
 }

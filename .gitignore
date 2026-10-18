@@ -5,5 +5,11 @@ dist/
 !.env.example
 *.db
 *.sqlite
+*.db-wal
+*.db-shm
+.data/
 .DS_Store
 coverage/
+
+# Claude Code personal overrides
+.claude/settings.local.json

@@ -13,6 +13,9 @@ export const db = {
 
 export const newId = () => randomUUID();
 
+/** groupChatId placeholder until the household's real group chat is seen. */
+export const UNBOUND_GROUP = "unbound";
+
 export function getHousehold(id: string): Household {
   const h = db.households.get(id);
   if (!h) throw new Error(`Unknown household ${id}`);
@@ -34,6 +37,11 @@ export function findMember(memberId: string): { household: Household; member: Me
 
 export function findMemberByPhone(household: Household, phone: string): Member | undefined {
   return household.members.find((m) => m.phone === phone);
+}
+
+/** All households this phone/handle belongs to. */
+export function householdsForPhone(phone: string): Household[] {
+  return [...db.households.values()].filter((h) => h.members.some((m) => m.phone === phone));
 }
 
 export function pendingItems(householdId: string): Item[] {

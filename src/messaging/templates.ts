@@ -43,6 +43,20 @@ export function inviteToAddCard(cardLink: string): string {
   return `Add a card so your share is paid automatically: ${cardLink}`;
 }
 
-export function cardNumberWarning(cardLink: string): string {
-  return `Please don't send card numbers in chat — I've ignored that message. Add your card securely here instead: ${cardLink}`;
+// V-008: the refusal is fixed text. It never carries a link or token, so a reply to a message that
+// contained card data can't itself leak an identifier. The secure link is sent only on request ("add card").
+export const CARD_NUMBER_WARNING =
+  "I can't confirm, store, or repeat card numbers, so I've ignored that message. Please don't send card details in chat. To add a card safely, text \"add card\" and I'll send you a private, secure link.";
+
+export function cardAdded(last4: string): string {
+  return `Card added, ending ${last4}. From the next order on, your share is charged to it automatically.`;
+}
+
+export function balanceSummary(owes: { to: string; cents: Cents }[], owed: { from: string; cents: Cents }[]): string {
+  if (owes.length === 0 && owed.length === 0) return "You're all settled up. Nobody owes anything.";
+  const lines = [
+    ...owes.map((o) => `You owe ${o.to} ${fmt(o.cents)}.`),
+    ...owed.map((o) => `${o.from} owes you ${fmt(o.cents)}.`),
+  ];
+  return lines.join("\n");
 }

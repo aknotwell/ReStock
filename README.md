@@ -5,6 +5,10 @@ An AI agent in your household group chat that keeps shared supplies stocked and 
 - **What we're building and who owns what:** [PLAN.md](PLAN.md)
 - **Rules for humans and coding agents:** [AGENTS.md](AGENTS.md)
 - **How the AI works (system card):** [docs/ai-system.md](docs/ai-system.md)
+- **Photon 2.0 messaging setup:** [docs/photon.md](docs/photon.md)
+- **Run a VEYZL audit (step-by-step, anyone on the team):** [docs/veyzl-runbook.md](docs/veyzl-runbook.md)
+- **Hosting (Railway, stable URL for VEYZL/Photon/Stripe):** [docs/hosting.md](docs/hosting.md)
+- **Stripe setup and testing payments:** [docs/stripe.md](docs/stripe.md)
 
 ## Quick start
 
@@ -17,13 +21,15 @@ npm run typecheck
 npm run seed           # demo household (Sam, Jake, Priya)
 ```
 
+Open `http://localhost:3000/dashboard` for a read-only preview of the household chat, cart, split options, and monthly budget. Ordering still requires an explicit `order now` message in the group chat.
+
 ## Layout
 
 | Path | Owner | What |
 |---|---|---|
 | `src/types.ts` | Person 2 | Shared contracts. Everyone codes against these. |
 | `src/core/` | Person 2 | Store, split engine, `placeOrder`, ledger |
-| `src/messaging/` | Person 1 | Photon transport, inbound pipeline, card-number guard, templates, fallback parser |
+| `src/messaging/` | Person 1 | Photon 2.0 transport (polling + send), inbound pipeline, card-number guard, templates, fallback parser |
 | `src/ai/` | Person 1 | Claude: intent parsing, product matching, restock suggestions |
 | `data/catalog.json` | Person 2 | Product catalog dataset the AI matches against |
 | `src/payments/` | Person 3 | Stripe (test mode), charges, links, webhooks |

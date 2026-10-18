@@ -9,25 +9,28 @@
     "start": "tsx src/server.ts",
     "seed": "tsx scripts/seed.ts",
     "typecheck": "tsc --noEmit",
+    "veyzl:probes": "tsx scripts/veyzl-probes.ts",
     "veyzl:check": "scripts/check-veyzl-log.sh",
     "veyzl:log": "git log --grep \"^VEYZL: \" --format=\"%h %s  [%(trailers:key=VEYZL,valueonly,separator=%x2C )]\"",
     "test": "vitest run",
+    "test:probes": "RUN_MODEL_TESTS=1 vitest run test/veyzl-probes.test.ts",
     "test:watch": "vitest"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",
+    "@photon-ai/api": "^0.5.0",
     "dotenv": "^18.0.8",
     "express": "^5.3.0",
     "stripe": "^23.0.0",
+    "tsx": "^4.23.15",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.5",
-    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
   }

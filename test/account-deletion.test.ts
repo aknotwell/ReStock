@@ -65,6 +65,32 @@ describe("account deletion reaches Photon", () => {
     expect(photonLines.releaseLine).not.toHaveBeenCalledWith(`asg-${ALEX}`);
   });
 
+  it("confirms the deletion by text before releasing the line (a released line can't deliver it)", async () => {
+    await household();
+    const events: string[] = [];
+    photonLines.releaseLine.mockImplementationOnce(async () => {
+      events.push("release");
+      return true;
+    });
+    vi.mocked(console.log).mockImplementation((...a: unknown[]) => void events.push(a.join(" ")));
+    await dm(AMBER, "delete my data");
+    await dm(AMBER, "yes");
+    const confirmed = events.findIndex((e) => /Your Restock data is deleted/.test(e));
+    expect(confirmed).toBeGreaterThanOrEqual(0);
+    expect(confirmed).toBeLessThan(events.indexOf("release"));
+  });
+
+  it("still deletes in Photon if the confirmation text fails", async () => {
+    await household();
+    await dm(AMBER, "delete my data");
+    const photon = await import("../src/messaging/photon.js");
+    const spy = vi.spyOn(photon, "reply").mockRejectedValueOnce(new Error("send failed"));
+    await expect(dm(AMBER, "yes")).rejects.toThrow(/send failed/);
+    spy.mockRestore();
+    expect(householdsForPhone(AMBER)).toHaveLength(0);
+    expect(photonLines.releaseLine).toHaveBeenCalledWith(`asg-${AMBER}`);
+  });
+
   it("the owner deleting their household releases their own line", async () => {
     await startSignup({ name: "Alex", phone: ALEX });
     await dm(ALEX, "hi");

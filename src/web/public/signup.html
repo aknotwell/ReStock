@@ -2,68 +2,135 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Join Restock</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>Get started with Restock</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cpath d='M6 6a3 3 0 0 1 3-3H31a3 3 0 0 1 3 3V33L30.5 36.5L27 33L23.5 36.5L20 33L16.5 36.5L13 33L9.5 36.5L6 33Z' fill='%23161616'/%3E%3Cg fill='none' stroke='%23ffe866' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 13.5V28' stroke-width='4.5'/%3E%3Cpath d='M15 20C15 15.5 18 13 22.5 13H24' stroke-width='4.5'/%3E%3Cpath d='M21.8 8.8L26 13L21.8 17.2' stroke-width='4'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=DM+Mono:wght@400;500&display=swap">
 <style>
+  /* Same receipt look as the landing page and dashboard. */
   :root {
-    color-scheme: light;
-    --ink: #202a24; --muted: #6f786f; --line: #e3e8e0; --canvas: #f6f7f4; --surface: #ffffff;
-    --green: #28734e; --green-soft: #edf5ef; --alert: #a24a1f;
-    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --desk: #ecebe7; --paper: #ffffff; --header: #ffffff; --ink: #161616; --muted: #5f5f5a; --rule: #c9c8c2;
+    --selected: #f1f0ec; --red: #b3261e; --yellow: #ffe866;
+    --btn-bg: #161616; --btn-hover: #3a3a37; --btn-fg: #ffffff;
+    --logo-stub: #161616; --logo-mark: #ffe866; --shadow: rgba(22, 22, 22, 0.16);
+    --sans: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    --mono: "DM Mono", ui-monospace, "SF Mono", Menlo, monospace;
   }
   @media (prefers-color-scheme: dark) {
-    :root { color-scheme: dark; --ink: #e6ebe6; --muted: #98a299; --line: #2d342e; --canvas: #141815; --surface: #1c211d; --green: #5fb487; --green-soft: #213328; --alert: #e59a6f; }
+    :root:not([data-theme="light"]) {
+      --desk: #111110; --paper: #22221f; --header: #1d1d1b; --ink: #f1f0ea; --muted: #a5a49d; --rule: #3d3d39;
+      --selected: #2c2c29; --red: #ff7a6b; --btn-bg: #f1f0ea; --btn-hover: #d6d5ce; --btn-fg: #121211;
+      --logo-stub: #ffe866; --logo-mark: #161616; --shadow: rgba(0, 0, 0, 0.5);
+      color-scheme: dark;
+    }
   }
+  :root[data-theme="dark"] {
+    --desk: #111110; --paper: #22221f; --header: #1d1d1b; --ink: #f1f0ea; --muted: #a5a49d; --rule: #3d3d39;
+    --selected: #2c2c29; --red: #ff7a6b; --btn-bg: #f1f0ea; --btn-hover: #d6d5ce; --btn-fg: #121211;
+    --logo-stub: #ffe866; --logo-mark: #161616; --shadow: rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+
   * { box-sizing: border-box; }
-  body { margin: 0; min-height: 100vh; background: var(--canvas); color: var(--ink); display: grid; place-items: center; padding: 24px 16px; }
-  button, input { font: inherit; }
-  .card { width: 100%; max-width: 420px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 28px; }
-  h1 { font-size: 26px; margin: 0 0 6px; }
-  p { color: var(--muted); line-height: 1.5; margin: 0 0 18px; }
-  label { display: grid; gap: 6px; font-size: 14px; color: var(--muted); margin-bottom: 14px; }
-  input[type=text], input[type=tel] { padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--canvas); color: var(--ink); }
-  .check { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.4; }
-  .check input { margin-top: 2px; }
-  a { color: var(--green); }
-  .btn { display: block; width: 100%; text-align: center; padding: 13px; border: 0; border-radius: 10px; background: var(--green); color: #fff; font-weight: 600; cursor: pointer; text-decoration: none; }
-  .btn[disabled] { opacity: .6; cursor: default; }
-  .btn[hidden] { display: none; }
-  .btn.secondary { background: transparent; color: var(--green); border: 1.5px solid var(--green); margin-top: 10px; }
-  .error { color: var(--alert); font-size: 14px; margin: 10px 0 0; }
-  .number { font-size: 30px; font-weight: 700; letter-spacing: .5px; margin: 6px 0 18px; color: var(--ink); }
-  .note { background: var(--green-soft); border-radius: 10px; padding: 12px; font-size: 13px; color: var(--ink); margin-top: 16px; }
+  body { min-width: 320px; margin: 0; background: var(--desk); color: var(--ink); font-family: var(--sans); font-size: 16px; line-height: 1.5; caret-color: var(--ink); }
+  ::selection { background: var(--yellow); color: #161616; }
+  button, input { font: inherit; color: inherit; }
+  a { color: var(--ink); text-underline-offset: 3px; }
+  a:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
   [hidden] { display: none !important; }
+  .shell { width: 100%; max-width: 1220px; margin: 0 auto; padding-left: max(24px, env(safe-area-inset-left, 0px)); padding-right: max(24px, env(safe-area-inset-right, 0px)); }
+
+  header { background: var(--header); border-bottom: 2px solid var(--ink); }
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 76px; padding-block: 10px; }
+  .brand { display: flex; align-items: center; gap: 12px; color: inherit; font-size: 28px; font-weight: 900; font-stretch: 118%; letter-spacing: -0.02em; line-height: 1; text-decoration: none; }
+  .logo { width: 40px; height: 40px; flex: none; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; border: 1.5px solid var(--ink); border-radius: 6px; background: transparent; color: var(--ink); cursor: pointer; font-weight: 700; text-decoration: none; white-space: nowrap; }
+  .btn:hover { background: var(--selected); }
+  .btn.primary { width: 100%; min-height: 50px; border-color: var(--btn-bg); background: var(--btn-bg); color: var(--btn-fg); }
+  .btn.primary:hover { border-color: var(--btn-hover); background: var(--btn-hover); }
+  .btn.secondary { width: 100%; margin-top: 10px; }
+  .btn[disabled] { cursor: default; opacity: .5; }
+
+  main.shell { display: flex; justify-content: center; padding-block: 56px 72px; }
+  .torn { width: 100%; max-width: 440px; filter: drop-shadow(0 10px 12px var(--shadow)); }
+  .torn::after { content: ""; display: block; height: 9px; background: var(--paper);
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='9'%3E%3Cpath d='M0 0H16L8 9Z'/%3E%3C/svg%3E") 0 0 / 16px 9px repeat-x;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='9'%3E%3Cpath d='M0 0H16L8 9Z'/%3E%3C/svg%3E") 0 0 / 16px 9px repeat-x; }
+  .slip { padding: 28px; background: var(--paper); }
+  h1 { margin: 0 0 6px; font-size: 32px; font-weight: 900; font-stretch: 112%; letter-spacing: -0.01em; line-height: 1.05; text-wrap: balance; }
+  p { margin: 0 0 22px; color: var(--muted); }
+  label { display: block; margin-bottom: 14px; font-size: 15px; font-weight: 600; }
+  input[type=text], input[type=tel] { display: block; width: 100%; min-height: 48px; margin-top: 6px; padding: 0 14px; border: 1.5px solid var(--ink); border-radius: 4px; background: var(--paper); font-family: var(--mono); font-size: 17px; font-weight: 400; }
+  .check { display: flex; align-items: flex-start; gap: 10px; margin: 4px 0 20px; color: var(--muted); font-size: 14px; font-weight: 400; line-height: 1.45; }
+  .check input { flex: none; width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--ink); }
+  .error { margin: 12px 0 0; color: var(--red); font-weight: 600; }
+  .number { margin: 4px 0 22px; padding: 14px 0; border-block: 1px dashed var(--rule); font-family: var(--mono); font-size: 30px; font-weight: 500; font-variant-numeric: tabular-nums; text-align: center; }
+  .note { margin: 18px 0 0; color: var(--muted); font-size: 14px; }
+  .meta { margin: 0 0 6px; color: var(--muted); font-family: var(--mono); font-size: 14px; }
+
+  @media (max-width: 820px) {
+    .shell { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+    main.shell { padding-block: 32px 48px; }
+    .slip { padding: 22px; }
+    .brand { font-size: 24px; }
+  }
 </style>
 </head>
 <body>
-<main class="card">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="logo" viewBox="0 0 40 40">
+    <path d="M6 6a3 3 0 0 1 3-3H31a3 3 0 0 1 3 3V33L30.5 36.5L27 33L23.5 36.5L20 33L16.5 36.5L13 33L9.5 36.5L6 33Z" style="fill: var(--logo-stub)"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round" style="stroke: var(--logo-mark)">
+      <path d="M15 13.5V28" stroke-width="4.5"/>
+      <path d="M15 20C15 15.5 18 13 22.5 13H24" stroke-width="4.5"/>
+      <path d="M21.8 8.8L26 13L21.8 17.2" stroke-width="4"/>
+    </g>
+  </symbol>
+</svg>
+
+<header>
+  <div class="shell topbar">
+    <a class="brand" href="/"><svg class="logo" aria-hidden="true"><use href="#logo"/></svg>restock</a>
+    <a class="btn" href="/dashboard">Log in</a>
+  </div>
+</header>
+
+<main class="shell">
+  <div class="torn"><div class="slip">
   <section id="form-view">
-    <h1 id="title">Start your household</h1>
-    <p id="lead">Restock is an AI assistant you text to keep shared supplies stocked and split the bill. You'll be the budget owner, and you can invite roommates after.</p>
+    <h1 id="title">Get started</h1>
+    <p id="lead">Restock is an AI assistant you text. Enter your name and number, and we'll give you Restock's number to text.</p>
     <form id="form">
       <label>First name<input id="name" type="text" maxlength="30" autocomplete="given-name" required></label>
       <label>Mobile number (iMessage)<input id="phone" type="tel" autocomplete="tel" placeholder="(425) 555-0123" required></label>
       <label class="check"><input id="consent" type="checkbox" required>
         <span>I agree to the <a href="/privacy" target="_blank">terms and privacy notice</a>, and to get texts from Restock (an AI assistant). Reply STOP anytime to stop. This is a demo: orders are simulated and payments use Stripe test mode.</span></label>
-      <button class="btn" id="submit" type="submit">Get my Restock number</button>
+      <button class="btn primary" id="submit" type="submit">Get my Restock number</button>
       <p class="error" id="error" hidden></p>
     </form>
   </section>
 
   <section id="done-view" hidden>
-    <h1>Almost there!</h1>
-    <p>Text <b>hi</b> to your Restock number to activate<span id="done-house"></span>:</p>
+    <h1>Almost there</h1>
+    <p>Text <b>hi</b> to your Restock number to activate<span id="done-house"></span>.</p>
+    <p class="meta">Your Restock number</p>
     <div class="number" id="line"></div>
-    <a class="btn" id="sms" href="#">Open Messages</a>
-    <a class="btn secondary" id="contact" href="#" hidden>Save restock to contacts</a>
-    <div class="note">Text from the same phone number you entered. Restock can't text you first; your "hi" starts the conversation. This number is saved for 24 hours.</div>
-    <div class="note">Got a reply saying your number isn't connected? Your iPhone may be sending iMessages from your email address. Go to <b>Settings &rsaquo; Apps &rsaquo; Messages &rsaquo; Send &amp; Receive</b>, set <b>Start New Conversations From</b> to your phone number, and text <b>hi</b> again.</div>
+    <a class="btn primary" id="sms" href="#">Open Messages</a>
+    <a class="btn secondary" id="contact" href="#" hidden>Save Restock to contacts</a>
+    <p class="note">Text from the same phone you entered. Restock can't text you first, so your "hi" starts the conversation. This number is held for 24 hours.</p>
+    <p class="note">If your iPhone says this number isn't connected, check Settings &rsaquo; Apps &rsaquo; Messages &rsaquo; Send &amp; Receive and set <b>Start New Conversations From</b> to your phone number, then text <b>hi</b> again.</p>
   </section>
 
   <section id="bad-invite" hidden>
     <h1>Invite link expired</h1>
-    <p id="bad-invite-text">This invite link has expired or was reset. Ask whoever invited you for a new one, or <a href="/start">start your own household</a>.</p>
+    <p id="bad-invite-text">This invite link has expired or was reset. Ask whoever invited you for a new one, or <a href="/start">get started on your own</a>.</p>
   </section>
+  </div></div>
 </main>
 <script>
   const $ = (s) => document.querySelector(s);

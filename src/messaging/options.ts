@@ -1,6 +1,7 @@
 // Owner: Person 1. "Add TP" -> three catalog options to pick from, or the household's usual if asked.
 // Prices and names always come from the catalog. The member picks; the AI never chooses for them.
-import { alternativesFor, getProductByName, groupOf, type Product } from "../core/catalog.js";
+// Options are ranked by price per unit in code, and the cheapest is labelled "best value".
+import { alternativesFor, byUnitPrice, getProductByName, groupOf, unitCents, type Product } from "../core/catalog.js";
 import { registerState } from "../core/persist.js";
 import { db } from "../core/store.js";
 import { fmt } from "./templates.js";
@@ -8,7 +9,7 @@ import { fmt } from "./templates.js";
 const PICK_TTL_MS = 10 * 60 * 1000;
 
 /** One item someone asked for, waiting for them to choose an option. */
-export type Choice = { options: Product[]; shared: boolean | null; lastBoughtId?: string };
+export type Choice = { options: Product[]; shared: boolean | null; lastBoughtId?: string; bestValueId?: string };
 type Pending = { queue: Choice[]; expires: number };
 
 const pending = new Map<string, Pending>();
@@ -61,21 +62,37 @@ export function namedSpecifically(requested: string, product: Product): boolean 
   return q === product.name.toLowerCase() || product.aliases.some((a) => q.includes(a.toLowerCase()));
 }
 
-/** Up to three options, with the household's last purchase (if any) listed first. */
+/**
+ * Up to three options, best value (lowest price per unit) first, then the rest by price per unit.
+ * The household's last purchase (if any) still goes to the top, so "what we usually get" is easy to repeat.
+ */
 export function buildChoice(householdId: string, product: Product, shared: boolean | null): Choice {
-  const options = alternativesFor(product);
+  const alternatives = alternativesFor(product);
+  const ranked = byUnitPrice(alternatives);
+  // "Best value" only when the options were comparable and the cheapest strictly beats the runner-up.
+  const [best, next] = ranked;
+  let bestValueId: string | undefined;
+  if (ranked !== alternatives && best && next && best.cents * next.units! < next.cents * best.units!) bestValueId = best.id;
   const last = lastBought(householdId, product);
   if (last) {
-    const rest = options.filter((p) => p.id !== last.id);
-    return { options: [last, ...rest].slice(0, 3), shared, lastBoughtId: last.id };
+    const rest = ranked.filter((p) => p.id !== last.id);
+    return { options: [last, ...rest].slice(0, 3), shared, lastBoughtId: last.id, bestValueId };
   }
-  return { options, shared };
+  return { options: ranked, shared, bestValueId };
+}
+
+function optionLine(p: Product, i: number, choice: Choice): string {
+  const per = unitCents(p);
+  const notes = [
+    per !== undefined ? `${fmt(per)}/${p.unit}` : undefined,
+    p.id === choice.bestValueId ? "best value" : undefined,
+    p.id === choice.lastBoughtId ? "what you got last time" : undefined,
+  ].filter(Boolean);
+  return `${i + 1}. ${p.name}: ${fmt(p.cents)}${notes.length ? ` (${notes.join(", ")})` : ""}`;
 }
 
 export function choicePrompt(choice: Choice): string {
-  const lines = choice.options.map(
-    (p, i) => `${i + 1}. ${p.name}: ${fmt(p.cents)}${p.id === choice.lastBoughtId ? " (what you got last time)" : ""}`,
-  );
+  const lines = choice.options.map((p, i) => optionLine(p, i, choice));
   const n = choice.options.length;
   const replies = n === 1 ? "1" : `${Array.from({ length: n - 1 }, (_, i) => i + 1).join(", ")} or ${n}`;
   return `Which one?\n${lines.join("\n")}\nReply ${replies}, or "cancel".`;

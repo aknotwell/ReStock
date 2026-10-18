@@ -62,17 +62,48 @@ describe("catalog alternatives", () => {
   });
 });
 
+describe("ranking by price per unit", () => {
+  it("lists the cheapest per unit first in every comparable group", () => {
+    for (const p of catalog.filter((x) => !x.group)) {
+      const { options, bestValueId } = buildChoice(H, p, null);
+      if (!options.every((o) => o.units && o.unit === options[0]!.unit)) {
+        expect(options.map((o) => o.id)).toEqual(alternativesFor(p).map((o) => o.id)); // not comparable: catalog order
+        expect(bestValueId).toBeUndefined();
+        continue;
+      }
+      for (let i = 1; i < options.length; i++) {
+        const [a, b] = [options[i - 1]!, options[i]!];
+        expect(a.cents * b.units!).toBeLessThanOrEqual(b.cents * a.units!);
+      }
+      expect(bestValueId).toBe(options[0]!.id);
+    }
+  });
+
+  it("doesn't label a best value when items can't be compared", async () => {
+    await say(SAM, "add hand soap");
+    expect(out()).toMatch(/Which one\?/);
+    expect(out()).not.toMatch(/best value/);
+  });
+
+  it("labels the best value even when last time's pick is listed first", () => {
+    pastOrder(["tp-12"], "2026-10-01T12:00:00Z");
+    const choice = buildChoice(H, getProduct("tp-12")!, null);
+    expect(choice.options.map((o) => o.id)).toEqual(["tp-12", "tp-24", "tp-soft"]);
+    expect(choice.bestValueId).toBe("tp-24");
+  });
+});
+
 describe("choosing between three options", () => {
-  it("'add TP' lists three options and adds nothing until someone picks", async () => {
+  it("'add TP' lists three options, best value first, and adds nothing until someone picks", async () => {
     const before = pendingItems(H).length;
     await say(SAM, "add tp");
     expect(pendingItems(H)).toHaveLength(before);
-    expect(out()).toMatch(/Which one\?\n1\. Toilet paper, 12 rolls: \$11\.99\n2\. Toilet paper, 24 rolls \(bulk\): \$21\.99\n3\. Toilet paper, 12 rolls, ultra-soft: \$15\.49\nReply 1, 2 or 3/);
+    expect(out()).toMatch(/Which one\?\n1\. Toilet paper, 24 rolls \(bulk\): \$21\.99 \(\$0\.92\/roll, best value\)\n2\. Toilet paper, 12 rolls: \$11\.99 \(\$1\.00\/roll\)\n3\. Toilet paper, 12 rolls, ultra-soft: \$15\.49 \(\$1\.29\/roll\)\nReply 1, 2 or 3/);
   });
 
   it("the pick is added with the catalog price and the sender as the adder", async () => {
     await say(SAM, "add tp");
-    await say(SAM, "2");
+    await say(SAM, "1");
     expect(pendingItems(H).at(-1)).toMatchObject({ name: "Toilet paper, 24 rolls (bulk)", cents: 2199, addedBy: "sam", shared: true });
     expect(out()).toMatch(/Added Toilet paper, 24 rolls \(bulk\) \(shared, \$21\.99\)/);
   });
@@ -131,7 +162,7 @@ describe("choosing between three options", () => {
     const soap = buildChoice(H, getProduct("dish-3")!, null);
     expect(queueChoices(H, "sam", [tp, soap])).toMatch(/Toilet paper/);
     const first = resolvePick(H, "sam", 1);
-    expect(first).toMatchObject({ kind: "picked", product: { id: "tp-12" } });
+    expect(first).toMatchObject({ kind: "picked", product: { id: "tp-24" } });
     expect(first?.kind === "picked" && first.next).toMatch(/Dish soap/);
     expect(resolvePick(H, "sam", 3)).toMatchObject({ kind: "picked", product: { id: "dish-plant" } });
     expect(resolvePick(H, "sam", 1)).toBeUndefined();
@@ -171,7 +202,8 @@ describe("the usual", () => {
   it("when not asked for the usual, lists last time's pick first and labels it", async () => {
     pastOrder(["tp-soft"], "2026-10-01T12:00:00Z");
     await say(SAM, "add tp");
-    expect(out()).toMatch(/1\. Toilet paper, 12 rolls, ultra-soft: \$15\.49 \(what you got last time\)/);
+    expect(out()).toMatch(/1\. Toilet paper, 12 rolls, ultra-soft: \$15\.49 \(\$1\.29\/roll, what you got last time\)/);
+    expect(out()).toMatch(/2\. Toilet paper, 24 rolls \(bulk\): \$21\.99 \(\$0\.92\/roll, best value\)/);
   });
 
   it("another household's orders don't count", async () => {

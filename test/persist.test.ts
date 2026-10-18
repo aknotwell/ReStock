@@ -113,7 +113,7 @@ describe("SQLite persistence", () => {
 
     const b = await boot();
     b.persist.openDatabase(file);
-    expect(b.options.resolvePick("demo-house", "sam", 2)).toMatchObject({ kind: "picked", product: { id: "tp-24" } });
+    expect(b.options.resolvePick("demo-house", "sam", 2)).toMatchObject({ kind: "picked", product: { id: "tp-12" } });
   });
 
   it("resumes polling where it left off, but not after a long outage", async () => {

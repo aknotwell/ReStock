@@ -10,12 +10,13 @@ import { householdView, ownRecord, spacesView } from "./appState.js";
 import { rateLimiter } from "./rateLimit.js";
 import { householdForInvite, inviteCodeFor, joinWithInvite, lineFor, resetInvite, SignupError, startSignup, INVITE_TTL_MS } from "../core/signups.js";
 import { sendPrivate } from "../messaging/photon.js";
-import { findMember } from "../core/store.js";
+import { findMember, householdsForPhone } from "../core/store.js";
 import { cleanHouseholdName, createHousehold, householdName, knownName, MembershipError, normalizePhone } from "../core/households.js";
 import type { Household } from "../types.js";
 import { isRestockLine, LineUnavailableError } from "../messaging/photonLines.js";
 import { CONTACT_NAME, contactCard, contactLink } from "./contactCard.js";
-import { createPayBackCheckout, logout, myDebts, SESSION_TTL_MS, sessionMember, startLogin, verifyLogin } from "../payments/payback.js";
+import { createPayBackCheckout, logout, moveSessions, myDebts, SESSION_TTL_MS, sessionMember, startLogin, verifyLogin } from "../payments/payback.js";
+import { carryOutRemoval, planRemoval, type RemovalKind } from "../messaging/membership.js";
 
 const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "public");
 
@@ -333,6 +334,53 @@ webRoutes.post("/app/api/invite", (req, res) => {
   const reset = req.body?.reset === true;
   const code = reset ? resetInvite(found.household, found.member.id) : inviteCodeFor(found.household, found.member.id);
   res.json({ url: inviteUrl(code), expiresInDays: INVITE_TTL_MS / 86_400_000 });
+});
+
+// "Remove", "Remove everyone" and "Delete group" on the dashboard. Owner-only, same rules and texts as by chat
+// (src/messaging/membership.ts). Without `confirm: true` nothing changes: it returns the question and any open
+// debts, so the page can warn and recommend settling up first. Debts always stay on the ledger.
+const REMOVAL_KINDS = new Set<RemovalKind>(["member", "everyone", "household"]);
+webRoutes.post("/app/api/remove", async (req, res) => {
+  const kind = text(req.body?.kind, 20) as RemovalKind;
+  if (!REMOVAL_KINDS.has(kind)) {
+    res.status(400).json({ error: "Pick who to remove." });
+    return;
+  }
+  const found = ownerHousehold(req);
+  if (!found) {
+    res.status(403).json({ error: kind === "household" ? "Only the budget owner can delete the group." : "Only the budget owner can remove people." });
+    return;
+  }
+  const { household, member: owner } = found;
+  if (household.kind === "personal") {
+    res.status(400).json({ error: 'Your personal space can\'t be deleted here. Text "delete my data" to leave Restock.' });
+    return;
+  }
+  try {
+    const target = kind === "member" ? household.members.find((m) => m.id === text(req.body?.targetId, 80)) : undefined;
+    const plan = planRemoval(kind, household, owner, target);
+    if (req.body?.confirm !== true) {
+      const name = (id: string) => findMember(id)?.member.name ?? "Someone";
+      res.json({
+        confirmNeeded: true,
+        question: plan.question,
+        balances: plan.balances.map((d) => ({ from: name(d.debtorId), to: name(d.creditorId), cents: d.cents })),
+      });
+      return;
+    }
+    let message = "";
+    await carryOutRemoval(plan, async (done) => void (message = done));
+    // Deleted the household they were logged in with: stay logged in through another of theirs, if any.
+    const other = householdsForPhone(owner.phone)[0]?.members.find((m) => m.phone === owner.phone);
+    if (kind === "household" && other) moveSessions(owner.id, other.id);
+    res.json({ done: true, message });
+  } catch (err) {
+    if (err instanceof MembershipError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
 });
 
 // Landing pages after Stripe Checkout. TODO: branding and polish.

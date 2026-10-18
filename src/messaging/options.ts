@@ -1,11 +1,12 @@
 // Owner: Person 1. "Add TP" -> up to three options to pick from, or the household's usual if asked.
-// When SERPAPI_KEY is set, live store listings (src/deals/live.ts) compete with the catalog for the three slots.
+// Real prices first: when SERPAPI_KEY is set and the search finds store listings (src/deals/live.ts), the options
+// are those listings only. The demo catalog is the fallback, labelled as demo prices when live prices were expected.
 // Names and prices come from those listings or the catalog, never the model. The member picks; the AI never
 // chooses for them. Options are ranked by price per unit in code, and the cheapest is labelled "best value".
 import { alternativesFor, getProductByName, groupOf, unitCents, type Product } from "../core/catalog.js";
 import { registerState } from "../core/persist.js";
 import { db, getHousehold, pendingItems } from "../core/store.js";
-import { liveOptionsFor } from "../deals/live.js";
+import { liveDealsEnabled, liveOptionsFor, pickedByName, rememberPicked } from "../deals/live.js";
 import { applyFilters, bestValueId, describeFilters, hasFilters, optionCount, rankOptions, type DealOptions } from "../deals/rank.js";
 import { fmt } from "./templates.js";
 
@@ -26,6 +27,8 @@ export type Choice = {
   checkedAt?: string;
   /** Shown above the options, e.g. when nothing matched the member's filters. */
   note?: string;
+  /** Catalog options shown because store prices weren't available: labelled as demo prices. */
+  demoPrices?: boolean;
 };
 type Pending = { queue: Choice[]; expires: number };
 
@@ -62,7 +65,7 @@ export function lastBought(householdId: string, product: Product): Product | und
   for (const order of orders) {
     for (const id of order.itemIds) {
       const name = db.items.get(id)?.name;
-      const bought = name ? getProductByName(name) : undefined;
+      const bought = name ? getProductByName(name) ?? pickedByName(name) : undefined;
       if (bought && groupOf(bought) === group) return bought;
     }
   }
@@ -101,20 +104,27 @@ export function buildChoice(
   live: Product[] = [],
 ): Choice {
   const count = optionCount(opts.count);
-  const catalogOptions = alternativesFor(product);
-  // Without live listings, unsized catalog options (hand soap) keep their catalog order, as before.
-  const rank = (list: Product[]) => rankOptions(list, opts.sort, { restByPrice: live.length > 0 });
-  const all = [...live, ...catalogOptions];
-  let ranked = rank(hasFilters(opts) ? applyFilters(all, opts) : all);
+  // Real prices first: with store listings, the options are listings only. Without them, the demo catalog.
+  // Unsized catalog options (hand soap) keep their catalog order; unsized listings go by price.
+  const pool = live.length ? live : alternativesFor(product);
+  // Store titles often leave out the pack size. With fewer than two sized listings there's nothing to compare
+  // per unit, so listings go by price rather than letting one sized listing jump the queue.
+  const sort = live.length && live.filter((p) => p.units).length < 2 ? "cheapest" : opts.sort;
+  const rank = (list: Product[]) => rankOptions(list, sort, { restByPrice: live.length > 0 });
+  let ranked = rank(hasFilters(opts) ? applyFilters(pool, opts) : pool);
   let note: string | undefined;
   if (!ranked.length) {
-    note = `Nothing matched ${describeFilters(opts)}, so here are the usual options.`;
-    ranked = rank(all);
+    note = live.length
+      ? `No store listing matched ${describeFilters(opts)}, so here are the closest ones.`
+      : `Nothing matched ${describeFilters(opts)}, so here are the usual options.`;
+    ranked = rank(pool);
   }
 
-  // Pin last time's pick unless it fails a filter the member asked for.
+  // Pin last time's pick unless it fails a filter the member asked for. With store listings, only a listing
+  // that's in today's results counts (at today's price); a demo-catalog pick isn't mixed in with real prices.
   const found = lastBought(householdId, product);
-  const last = found && (note || !hasFilters(opts) || applyFilters([found], opts).length > 0) ? found : undefined;
+  const current = found && (live.length ? live.find((p) => p.id === found.id) : found.store ? undefined : found);
+  const last = current && (note || !hasFilters(opts) || applyFilters([current], opts).length > 0) ? current : undefined;
   const options = (last ? [last, ...ranked.filter((p) => p.id !== last.id)] : ranked).slice(0, count);
 
   const choice: Choice = { options, shared };
@@ -124,6 +134,7 @@ export function buildChoice(
   if (note) choice.note = note;
   const checked = options.find((p) => p.checkedAt)?.checkedAt;
   if (checked) choice.checkedAt = checked;
+  else if (liveDealsEnabled()) choice.demoPrices = true;
   if (opts.respectBudget !== false) {
     const left = budgetLeft(householdId);
     const over = options.filter((p) => p.cents > left).map((p) => p.id);
@@ -165,7 +176,11 @@ export function choicePrompt(choice: Choice): string {
   const n = choice.options.length;
   const replies = n === 1 ? "1" : `${Array.from({ length: n - 1 }, (_, i) => i + 1).join(", ")} or ${n}`;
   const head = choice.note ? `${choice.note}\n` : "";
-  const checked = choice.checkedAt ? `\nStore prices checked ${checkedAgo(choice.checkedAt)}.` : "";
+  const checked = choice.checkedAt
+    ? `\nStore prices checked ${checkedAgo(choice.checkedAt)}.`
+    : choice.demoPrices
+      ? "\nStore prices aren't available right now, so these are Restock demo prices."
+      : "";
   return `${head}Which one?\n${lines.join("\n")}${checked}\nReply ${replies}, or "cancel".`;
 }
 
@@ -222,6 +237,7 @@ export function resolvePick(householdId: string, memberId: string, reply: number
   if (!p.queue.length) pending.delete(k);
   if (reply === "cancel") return { kind: "cancelled", next };
   const product = choice.options[reply - 1]!;
+  rememberPicked(product); // a store listing, so "the usual" can find it after it's ordered
   const result: Extract<PickResult, { kind: "picked" }> = { kind: "picked", product, shared: choice.shared, next };
   if (choice.splitWith?.length) result.splitWith = choice.splitWith;
   if (choice.overBudgetIds?.includes(product.id)) result.overBudget = { ownerName: choice.ownerName ?? "the budget owner" };

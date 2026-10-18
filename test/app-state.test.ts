@@ -68,7 +68,13 @@ describe("GET /app/api/state", () => {
     expect(raw).not.toMatch(/\+1555|phone/i);
     const state = JSON.parse(raw);
     const sam = state.members.find((m: { name: string }) => m.name === "Sam");
-    expect(sam).toEqual({ id: "sam", name: "Sam", role: "owner", hasCard: true, isMe: false });
+    expect(sam).toEqual({ id: "sam", name: "Sam", role: "owner", hasCard: true, canApprove: true, isMe: false });
+  });
+
+  it("says whether the space is personal or a group", async () => {
+    const cookie = await login("+15550000002");
+    const state = await (await fetch(`${base}/app/api/state`, { headers: { cookie } })).json();
+    expect(state.household).toMatchObject({ kind: "group" });
   });
 
   it("shows only your own household", async () => {
@@ -82,9 +88,39 @@ describe("GET /app/api/state", () => {
     expect(JSON.stringify(state)).not.toMatch(/Sam|Jake|Priya/);
   });
 
-  it("is 401 again after logging out", async () => {
+  it("is 401 again after logging out (the dashboard's other APIs too)", async () => {
+    expect((await fetch(`${base}/app/api/spaces`)).status).toBe(401);
+    expect((await post("/app/api/card-link", {})).status).toBe(401);
     const cookie = await login("+15550000001");
     await post("/pay/api/logout", {}, cookie);
     expect((await fetch(`${base}/app/api/state`, { headers: { cookie } })).status).toBe(401);
+  });
+});
+
+describe("GET /app/api/spaces", () => {
+  it("lists the person's personal space and their group, each as their own record", async () => {
+    const ZOE = "+12065550190";
+    const group = createHousehold("Zoe", ZOE);
+    const personal = createHousehold("Zoe", "+12065550199");
+    personal.kind = "personal";
+    personal.members[0]!.phone = ZOE; // same person, a one-on-one space too
+    addItem({ householdId: personal.id, name: "Face wash", addedBy: personal.ownerId, cents: 899, shared: false });
+    const cookie = await login(ZOE);
+    const { spaces } = await (await fetch(`${base}/app/api/spaces`, { headers: { cookie } })).json();
+    expect(spaces.map((s: { household: { kind: string } }) => s.household.kind).sort()).toEqual(["group", "personal"]);
+    const mine = spaces.find((s: { household: { kind: string } }) => s.household.kind === "personal");
+    expect(mine.items.map((i: { name: string }) => i.name)).toEqual(["Face wash"]);
+    expect(JSON.stringify(spaces)).not.toMatch(/\+1206|Sam|Jake|Priya/);
+    expect(group.members).toHaveLength(1);
+  });
+});
+
+describe("POST /app/api/card-link", () => {
+  it("gives you your own add-card link, and never someone else's", async () => {
+    const cookie = await login("+15550000003"); // Priya
+    const mine = await post("/app/api/card-link", { memberId: "priya" }, cookie);
+    expect(mine.status).toBe(200);
+    expect((await mine.json()).url).toMatch(/\/c\/[A-Za-z0-9_-]{20,}$/);
+    expect((await post("/app/api/card-link", { memberId: "sam" }, cookie)).status).toBe(401);
   });
 });

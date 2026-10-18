@@ -3,7 +3,7 @@ import { answerQuestion, OFFLINE_REPLY } from "../ai/answerQuestion.js";
 import { matchItem } from "../ai/matchItem.js";
 import { parseMessage } from "../ai/parseMessage.js";
 import { addItem, db, findHouseholdByGroupChat, findMemberByPhone, householdsForPhone, pendingItems, UNBOUND_GROUP } from "../core/store.js";
-import { approvableBy, approverNames, needsApproval } from "../core/approvals.js";
+import { approvableBy, approverNames, approvers, needsApproval } from "../core/approvals.js";
 import { openDebtsFor, owedTo } from "../core/ledger.js";
 import { OrderError, placeOrder } from "../core/orders.js";
 import { createCardSetupLink } from "../payments/links.js";
@@ -213,6 +213,15 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       );
       if (msg.spaceKind === "direct" && household.groupChatId !== UNBOUND_GROUP) {
         await sendGroup(household.id, ask, `${msg.messageId}:ask:${item.id}`);
+      } else if (household.groupChatId === UNBOUND_GROUP) {
+        // No shared group chat: each approver gets the request in their own Restock thread.
+        const privateAsk = `${member.name} asked for ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}).${budgetNote} Reply "yes" to add it to the cart.`;
+        for (const approver of approvers(household)) {
+          if (approver.id === member.id) continue;
+          await sendPrivate(approver.id, privateAsk, `ask:${item.id}:${approver.id}`).catch((err) =>
+            console.warn("approval request failed:", err instanceof Error ? err.message : err),
+          );
+        }
       }
       return;
     }
@@ -347,6 +356,14 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
       } else {
         for (const i of mine) i.needsApproval = false;
         await respond(`Approved by ${member.name}: ${mine.map((i) => i.name).join(", ")}. They'll be in the next order.`);
+        // Tell each person who asked that their item was approved.
+        for (const requesterId of new Set(mine.map((i) => i.addedBy))) {
+          if (requesterId === member.id || !household.members.some((m) => m.id === requesterId)) continue;
+          const theirs = mine.filter((i) => i.addedBy === requesterId).map((i) => i.name).join(", ");
+          await sendPrivate(requesterId, `${member.name} approved ${theirs}. It'll be in the next order.`, `approved:${msg.messageId}:${requesterId}`).catch((err) =>
+            console.warn("approval notice failed:", err instanceof Error ? err.message : err),
+          );
+        }
       }
     } else if (intent.type === "add_card") {
       // The secure Stripe link goes only to the member, privately, and only when they ask for it.

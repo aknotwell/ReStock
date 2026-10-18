@@ -264,6 +264,59 @@ describe("SerpApi results", () => {
   });
 });
 
+describe("SerpApi request logs", () => {
+  const today = (n: number) => `today=${n}/${config.dealsDailyLimit}`;
+
+  it("logs each request with status, timing, counts and why listings were dropped", async () => {
+    stubSerpApi();
+    await liveOptionsFor(TP());
+    expect(out()).toMatch(new RegExp(`\\[serpapi\\] "Toilet paper 12 rolls" ok status=200 ms=\\d+ results=5 offers=5 ${today(1)}`));
+    // 5 listings: the holder isn't relevant; the other 4 are major retailers; 3 give a comparable pack size
+    expect(out()).toMatch(/\[serpapi\] "Toilet paper 12 rolls" listings kept=4 offers=5 relevant=4 sized=3/);
+    logs = [];
+    await liveOptionsFor(TP());
+    expect(out()).toMatch(/\[serpapi\] "Toilet paper 12 rolls" cache hit age=0m offers=5/);
+    expect(out()).not.toMatch(/ ok status=/);
+  });
+
+  it("logs failures with the reason and fallback, never the key", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("https://serpapi.com/search.json?api_key=test-key"); }));
+    await liveOptionsFor(TP());
+    expect(out()).toMatch(/WARN \[serpapi\] "Toilet paper 12 rolls" failed reason=Error ms=\d+ today=1\/\d+ fallback=catalog/);
+    expect(out()).not.toMatch(/test-key|api_key/);
+  });
+
+  it("logs SerpApi's own error message, from an HTTP error or a normal-looking response", async () => {
+    stubSerpApi();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "Invalid API key." }), { status: 401 })));
+    await searchOffers("Dish soap 3 pack");
+    expect(out()).toMatch(/WARN \[serpapi\] "Dish soap 3 pack" failed reason=HttpError status=401 ms=\d+ .*error="Invalid API key\."/);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "Google hasn't returned any results for this query." }), { status: 200 })));
+    await searchOffers("Eggs 18 ct");
+    expect(out()).toMatch(/WARN \[serpapi\] "Eggs 18 ct" ok, with SerpApi error status=200 ms=\d+ results=0 offers=0 .*error="Google hasn't returned any results for this query\."/);
+  });
+
+  it("logs when the daily cap stops a search", async () => {
+    stubSerpApi();
+    const limit = config.dealsDailyLimit;
+    config.dealsDailyLimit = 1;
+    try {
+      await searchOffers("Toilet paper 12 rolls");
+      await searchOffers("Dish soap 3 pack");
+      expect(out()).toMatch(/WARN \[serpapi\] "Dish soap 3 pack" skipped: daily cap reached today=1\/1 fallback=catalog/);
+    } finally {
+      config.dealsDailyLimit = limit;
+    }
+  });
+
+  it("says once when the key isn't set", async () => {
+    config.serpapiKey = undefined;
+    await searchOffers("Toilet paper 12 rolls");
+    await searchOffers("Dish soap 3 pack");
+    expect(out().match(/\[serpapi\] off: SERPAPI_KEY is not set/g)).toHaveLength(1);
+  });
+});
+
 describe("options with live listings", () => {
   it("with store listings, the options are listings only, best value first", async () => {
     stubSerpApi();

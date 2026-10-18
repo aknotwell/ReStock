@@ -15,8 +15,9 @@ import { parseCommand } from "./commands.js";
 import { balanceSummary, CARD_NUMBER_WARNING, fmt, groupSummary, helpMessage, inviteToAddCard } from "./templates.js";
 import { sendOrderTexts } from "./afterOrder.js";
 import { handleMembershipCommand, parseMembershipCommand } from "./membership.js";
+import { parseDealRequest, stripDealWords } from "../deals/request.js";
 import {
-  buildChoice, hasPendingChoice, isCancel, lastBought, namedSpecifically, parsePick, queueChoices, resolvePick, stripUsual, wantsUsual,
+  buildDealChoice, hasPendingChoice, isCancel, lastBought, namedSpecifically, parsePick, queueChoices, resolvePick, stripUsual, wantsUsual,
   type Choice,
 } from "./options.js";
 import type { Product } from "../core/catalog.js";
@@ -83,16 +84,25 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   const announce = (text: string) =>
     household.groupChatId === UNBOUND_GROUP ? respond(text) : sendGroup(household.id, text, `${msg.messageId}:${part++}`);
 
-  const addToCart = async (product: Product, shared: boolean | null, prefix = "Added") => {
+  // `overBudget`: the member picked an option past this month's budget. It waits for the owner's "yes",
+  // using the same approval flow as expensive personal items (placeOrder skips it until then).
+  const addToCart = async (product: Product, shared: boolean | null, prefix = "Added", overBudget?: { ownerName: string }) => {
+    const needsOk = !!overBudget && member.id !== household.ownerId;
     const item = addItem({
       householdId: household.id,
       name: product.name,
       addedBy: member.id,
       cents: product.cents,
       shared: shared ?? product.defaultShared,
+      ...(needsOk ? { needsApproval: true } : {}),
     });
+    const budget = !overBudget
+      ? ""
+      : needsOk
+        ? ` It's over this month's budget, so it waits for ${overBudget.ownerName}'s OK (${overBudget.ownerName}: reply "yes").`
+        : " Heads-up: this puts the household over this month's budget.";
     await respond(
-      `${prefix} ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}). Reply "${item.shared ? "personal" : "shared"}" to change.`,
+      `${prefix} ${item.name} (${item.shared ? "shared" : "personal"}, ${fmt(item.cents)}). Reply "${item.shared ? "personal" : "shared"}" to change.${budget}`,
     );
   };
 
@@ -103,7 +113,7 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     if (pick !== undefined || cancel) {
       const result = resolvePick(household.id, member.id, cancel ? "cancel" : pick!);
       if (result?.kind === "invalid") await respond(result.prompt);
-      else if (result?.kind === "picked") await addToCart(result.product, result.shared);
+      else if (result?.kind === "picked") await addToCart(result.product, result.shared, "Added", result.overBudget);
       else if (result?.kind === "cancelled") await respond("OK, I didn't add that one.");
       if (result && result.kind !== "invalid" && result.next) await respond(result.next);
       return;
@@ -113,6 +123,8 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
   // 2. Understand the message.
   const intents = await parseMessage(msg.text, member.name);
   const choices: Choice[] = [];
+  // "cheapest TP under $15 from Costco": deal preferences come from the member's own words, read by code.
+  const dealOptions = parseDealRequest(msg.text);
 
   // In a DM, never leave someone without an answer; in the group, casual chat is ignored.
   if (msg.spaceKind === "direct" && intents.every((i) => i.type === "unknown")) {
@@ -128,7 +140,7 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
     }
     if (intent.type === "add_item" && intent.itemName) {
       const usual = wantsUsual(intent.itemName) || wantsUsual(msg.text);
-      const requested = stripUsual(intent.itemName) || intent.itemName;
+      const requested = stripDealWords(stripUsual(intent.itemName) || intent.itemName);
       const match = await matchItem(requested);
       if (!match) {
         await respond("I couldn’t find that in the demo catalog. Try another household item name?");
@@ -141,7 +153,7 @@ export async function handleInbound(msg: InboundMessage): Promise<void> {
         await addToCart(match.product, intent.shared);
       } else {
         if (usual) await respond(`I don't see an earlier order for ${requested}, so here are the options.`);
-        choices.push(buildChoice(household.id, match.product, intent.shared));
+        choices.push(await buildDealChoice(household.id, match.product, intent.shared, dealOptions));
       }
     } else if (intent.type === "question") {
       await respond(await answerQuestion(msg.text, member.name));

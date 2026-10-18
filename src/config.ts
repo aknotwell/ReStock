@@ -27,6 +27,14 @@ export const config = {
   agentApiToken: optional("AGENT_API_TOKEN"),
   stripeSecretKey: optional("STRIPE_SECRET_KEY"),
   stripeWebhookSecret: optional("STRIPE_WEBHOOK_SECRET"),
+  // Live store prices for "Which one?" options (src/deals/live.ts). Unset = catalog prices only.
+  serpapiKey: optional("SERPAPI_KEY"),
+  /** SerpApi location for local prices, e.g. "Seattle, Washington, United States". */
+  dealsLocation: optional("DEALS_LOCATION"),
+  /** Most live searches per day, so a loop can't spend the free monthly quota (250 searches). */
+  dealsDailyLimit: Number(process.env.DEALS_DAILY_LIMIT ?? 25),
+  /** 1 = show listings from any seller, not just the major retailers we recognize. */
+  dealsAnyStore: process.env.DEALS_ANY_STORE === "1",
 };
 
 // Hard guard: we only ever run Stripe in test mode (AGENTS.md).

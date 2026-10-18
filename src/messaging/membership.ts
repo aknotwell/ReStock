@@ -5,7 +5,7 @@ import {
   MembershipError, normalizePhone, removeEveryone, removeMember, setActiveHousehold,
 } from "../core/households.js";
 import { db, householdsForPhone } from "../core/store.js";
-import type { Household, Member } from "../types.js";
+import type { Debt, Household, Member } from "../types.js";
 import { cancelInvite, invitedTo, inviteCodeFor, inviteToHousehold, releaseLineFor, resetInvite } from "../core/signups.js";
 import { LineUnavailableError } from "./photonLines.js";
 import { deleteHousehold } from "../core/households.js";
@@ -313,86 +313,100 @@ export async function handleMembershipCommand({ command, fromPhone, spaceKind, h
 }
 
 type Removal = Extract<MembershipCommand, { type: "remove_member" | "remove_everyone" | "delete_household" }>;
+export type RemovalKind = "member" | "everyone" | "household";
+
+/** Who would leave, the open debts involved, and the question to ask the owner. Shared by chat and the dashboard. */
+export type RemovalPlan = { kind: RemovalKind; household: Household; owner: Member; leaving: Member[]; balances: Debt[]; question: string; warning: string };
 
 /**
- * The owner removing one person, everyone, or deleting the whole household. Removing everyone and deleting
- * always ask first. Open debts never block it silently: the owner sees who owes whom, is told to settle up
- * first, and has to say "yes" to go ahead anyway. The debts stay on the ledger and can still be paid back.
+ * Work out a removal without doing it. Throws MembershipError if there's nobody to remove. Open debts never block
+ * it: `warning` says who owes whom and recommends settling up first; the owner can still go ahead.
+ */
+export function planRemoval(kind: RemovalKind, household: Household, owner: Member, target?: Member): RemovalPlan {
+  const title = householdName(household);
+  if (kind === "member" && (!target || !household.members.includes(target))) throw new MembershipError(`I couldn't find that person in ${title}.`);
+  if (kind === "member" && target!.id === owner.id) throw new MembershipError("The budget owner can't be removed.");
+  const leaving = kind === "member" ? [target!] : household.members.filter((m) => m.id !== owner.id);
+  if (kind === "everyone" && !leaving.length) throw new MembershipError(`There's nobody else in ${title} to remove.`);
+  const affected = kind === "household" ? household.members : leaving;
+  const balances = openBalancesOf(affected.map((m) => m.id));
+  const names = leaving.map((m) => m.name).join(", ");
+  const question =
+    kind === "household"
+      ? `Delete ${title}? This removes everyone${names ? ` (${names})` : ""}, clears the cart and can't be undone.`
+      : kind === "everyone"
+        ? `Remove everyone else from ${title} (${names})? You'll stay as the budget owner.`
+        : `Remove ${names} from ${title}?`;
+  const warning = balances.length
+    ? `Heads up, there are open balances:\n${describeBalances(balances)}\n` +
+      `I recommend settling up first (text "what do I owe?"). If you go ahead, these stay on the ledger and can still be paid back at ${config.publicBaseUrl}/pay.`
+    : "";
+  return { kind, household, owner, leaving, balances, question, warning };
+}
+
+/**
+ * Do a planned removal: text each person who's leaving, take them out (debts stay on the ledger), cancel open
+ * invites when removing everyone, and release what Restock holds for them. Returns the owner's confirmation.
+ * `beforeForget` runs after the household change but before the owner's own records are released.
+ */
+export async function carryOutRemoval(plan: RemovalPlan, beforeForget: (done: string) => Promise<void>): Promise<void> {
+  const { kind, household, owner, leaving } = plan;
+  const title = householdName(household);
+  // Tell each person first: once they're out of the household, Restock can't look up where to text them.
+  for (const m of leaving) {
+    const owes = openDebtsFor(m.id).reduce((sum, d) => sum + d.cents, 0);
+    await sendPrivate(m.id, removedFromHousehold(owner.name, title, kind === "household", owes, `${config.publicBaseUrl}/pay`), `removed:${household.id}:${m.id}`).catch(
+      (err) => console.warn("removal notice failed:", err instanceof Error ? err.message : err),
+    );
+  }
+  if (kind !== "member") for (const p of invitedTo(household.id)) await cancelInvite(household.id, p.name);
+
+  let done: string;
+  if (kind === "member") {
+    removeMember(household, leaving[0]!.name, { keepBalances: true });
+    done = `Removed ${leaving[0]!.name} from ${title}.`;
+  } else if (kind === "everyone") {
+    removeEveryone(household);
+    done = `Done. Removed ${leaving.map((m) => m.name).join(", ")} from ${title}. You're still its budget owner.`;
+  } else {
+    deleteHousehold(household);
+    const next = activeHousehold(owner.phone);
+    done = `Done. ${title} is deleted and its cart is cleared.` + (next ? ` Texts to me now go to ${householdName(next)}.` : ` To start a new one, sign up again at ${config.publicBaseUrl}/start.`);
+  }
+  try {
+    await beforeForget(done);
+  } finally {
+    for (const m of kind === "household" ? [...leaving, owner] : leaving) await forgetPerson(m);
+  }
+}
+
+/**
+ * The owner removing one person, everyone, or deleting the whole household by text. Removing everyone and
+ * deleting always ask first; removing one person asks first when money is still owed. The owner has to say
+ * "yes" to go ahead. The debts stay on the ledger and can still be paid back.
  */
 async function handleRemoval(command: Removal, household: Household, owner: Member, fromPhone: string, respond: (text: string) => Promise<void>): Promise<boolean> {
-  const title = householdName(household);
-  let leaving = household.members.filter((m) => m.id !== owner.id);
-
+  let target: Member | undefined;
   if (command.type === "remove_member") {
-    const name = command.name.trim().toLowerCase();
-    const found = household.members.find((m) => m.name.toLowerCase() === name);
+    target = household.members.find((m) => m.name.toLowerCase() === command.name.trim().toLowerCase());
     // Not a member yet, but invited: take the invite back.
-    if (!found) {
+    if (!target) {
       const cancelled = await cancelInvite(household.id, command.name);
       await respond(cancelled ? `Cancelled ${cancelled}'s invite.` : `I couldn't find ${command.name.trim()} in your household.`);
       return true;
     }
-    if (found.id === owner.id) throw new MembershipError("The budget owner can't be removed.");
-    leaving = [found];
-  } else if (command.type === "remove_everyone" && !leaving.length) {
-    await respond(`There's nobody else in ${title} to remove.`);
-    return true;
   }
-
-  const affected = command.type === "delete_household" ? household.members : leaving;
-  const balances = openBalancesOf(affected.map((m) => m.id));
-  const asksFirst = command.type !== "remove_member" || balances.length > 0;
-  if (asksFirst && !command.confirmed) {
+  const kind: RemovalKind = command.type === "remove_member" ? "member" : command.type === "remove_everyone" ? "everyone" : "household";
+  const plan = planRemoval(kind, household, owner, target);
+  if ((kind !== "member" || plan.balances.length) && !command.confirmed) {
     proposeAction(fromPhone, { kind: "membership", command: { ...command, confirmed: true, householdId: household.id } });
-    const names = leaving.map((m) => m.name).join(", ");
-    const question =
-      command.type === "delete_household"
-        ? `Delete ${title}? This removes everyone${names ? ` (${names})` : ""}, clears the cart and can't be undone.`
-        : command.type === "remove_everyone"
-          ? `Remove everyone else from ${title} (${names})? You'll stay as the budget owner.`
-          : `Remove ${names} from ${title}?`;
-    const warning = balances.length
-      ? `\nHeads up, there are open balances:\n${describeBalances(balances)}\n` +
-        `I recommend settling up first (text "what do I owe?"). If you go ahead, these stay on the ledger and can still be paid back at ${config.publicBaseUrl}/pay.`
-      : "";
-    const verb = command.type === "delete_household" ? "delete it" : "remove";
-    await respond(`${question}${warning}\nReply "yes" to ${balances.length ? `${verb} anyway` : "confirm"} or "no" to cancel.`);
-    return true;
-  }
-
-  // Tell each person first: once they're out of the household, Restock can't look up where to text them.
-  const deleted = command.type === "delete_household";
-  for (const m of leaving) {
-    const owes = openDebtsFor(m.id).reduce((sum, d) => sum + d.cents, 0);
-    await sendPrivate(m.id, removedFromHousehold(owner.name, title, deleted, owes, `${config.publicBaseUrl}/pay`), `removed:${household.id}:${m.id}`).catch((err) =>
-      console.warn("removal notice failed:", err instanceof Error ? err.message : err),
-    );
-  }
-
-  if (command.type === "remove_member") {
-    removeMember(household, leaving[0]!.name, { keepBalances: true });
-    await forgetPerson(leaving[0]!);
-    await respond(`Removed ${leaving[0]!.name} from ${title}.`);
-    return true;
-  }
-  for (const p of invitedTo(household.id)) await cancelInvite(household.id, p.name);
-  if (command.type === "remove_everyone") {
-    removeEveryone(household);
-    for (const m of leaving) await forgetPerson(m);
-    await respond(`Done. Removed ${leaving.map((m) => m.name).join(", ")} from ${title}. You're still its budget owner.`);
-    return true;
-  }
-
-  deleteHousehold(household);
-  const next = activeHousehold(fromPhone);
-  try {
+    const verb = kind === "household" ? "delete it" : "remove";
     await respond(
-      `Done. ${title} is deleted and its cart is cleared.` +
-        (next ? ` Texts to me now go to ${householdName(next)}.` : ` To start a new one, sign up again at ${config.publicBaseUrl}/start.`),
+      `${plan.question}${plan.warning ? `\n${plan.warning}` : ""}\nReply "yes" to ${plan.balances.length ? `${verb} anyway` : "confirm"} or "no" to cancel.`,
     );
-  } finally {
-    for (const m of [...leaving, owner]) await forgetPerson(m);
+    return true;
   }
+  await carryOutRemoval(plan, respond);
   return true;
 }
 

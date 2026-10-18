@@ -124,3 +124,54 @@ describe("POST /app/api/card-link", () => {
     expect((await post("/app/api/card-link", { memberId: "sam" }, cookie)).status).toBe(401);
   });
 });
+
+describe("POST /app/api/remove (dashboard Manage group)", () => {
+  const SAM = "+15550000001", JAKE = "+15550000002";
+  const priyaOwesSam = async () => {
+    const { db } = await import("../src/core/store.js");
+    const h = [...db.households.values()].find((x) => x.ownerId === "sam")!;
+    db.orders.set("o-rm", { id: "o-rm", householdId: h.id, itemIds: [], totalCents: 7275, rule: "smart", createdAt: "2026-10-17T20:00:00Z" });
+    db.debts.set("d-rm", { id: "d-rm", orderId: "o-rm", debtorId: "priya", creditorId: "sam", cents: 1015, status: "open" });
+    return { db, h };
+  };
+
+  it("is owner-only", async () => {
+    const cookie = await login(JAKE);
+    for (const kind of ["member", "everyone", "household"]) {
+      const res = await post("/app/api/remove", { kind, targetId: "priya" }, cookie);
+      expect(res.status).toBe(403);
+    }
+    expect((await post("/app/api/remove", { kind: "everyone" })).status).toBe(403);
+  });
+
+  it("asks first and lists open debts, then deletes the group on confirm; the debt survives", async () => {
+    const { db, h } = await priyaOwesSam();
+    const cookie = await login(SAM);
+    const preview = await (await post("/app/api/remove", { kind: "household" }, cookie)).json();
+    expect(preview).toMatchObject({ confirmNeeded: true, balances: [{ from: "Priya", to: "Sam", cents: 1015 }] });
+    expect(preview.question).toMatch(/^Delete Sam's household\?/);
+    expect(db.households.has(h.id)).toBe(true); // nothing happens without confirm
+
+    const done = await (await post("/app/api/remove", { kind: "household", confirm: true }, cookie)).json();
+    expect(done).toMatchObject({ done: true });
+    expect(db.households.has(h.id)).toBe(false);
+    expect(db.debts.get("d-rm")?.status).toBe("open");
+    expect(logs.join("\n")).toMatch(/Sam deleted Sam's household.*You still owe \$10\.15/);
+  });
+
+  it("removes one member or everyone, with no warning when nobody owes", async () => {
+    const { db } = await import("../src/core/store.js");
+    for (const d of db.debts.values()) d.status = "paid";
+    const cookie = await login(SAM);
+    const preview = await (await post("/app/api/remove", { kind: "member", targetId: "jake" }, cookie)).json();
+    expect(preview).toMatchObject({ confirmNeeded: true, question: "Remove Jake from Sam's household?", balances: [] });
+    await post("/app/api/remove", { kind: "member", targetId: "jake", confirm: true }, cookie);
+    let state = await (await fetch(`${base}/app/api/state`, { headers: { cookie } })).json();
+    expect(state.members.map((m: { name: string }) => m.name)).toEqual(["Sam", "Priya"]);
+
+    expect((await post("/app/api/remove", { kind: "member", targetId: "sam", confirm: true }, cookie)).status).toBe(400);
+    await post("/app/api/remove", { kind: "everyone", confirm: true }, cookie);
+    state = await (await fetch(`${base}/app/api/state`, { headers: { cookie } })).json();
+    expect(state.members.map((m: { name: string }) => m.name)).toEqual(["Sam"]);
+  });
+});

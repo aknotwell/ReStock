@@ -34,12 +34,14 @@ There's no sign-up page: people sign up by texting Restock (`start household as 
    | `DEMO_MEMBERS` | *(optional)* the real demo household as JSON, replacing Sam/Jake/Priya. See [photon.md](photon.md#demo-household). | Live demo with your own phones |
    | `AGENT_API_TOKEN` | *(optional)* a long random string | Locks `/api/agent`. Only set this if VEYZL can send `Authorization: Bearer …`. |
    | `PHOTON_API_KEY`, `PHOTON_PROJECT_ID` | *(see warning below)* | Real iMessage |
+   | `SERPAPI_KEY` | *(optional)* your [SerpApi](https://serpapi.com) key (free plan: 250 searches/month). Spell the name exactly; the app ignores anything else. | Live store prices in the "Which one?" options. Without it, options come from the catalog. |
+   | `DEALS_LOCATION`, `DEALS_DAILY_LIMIT`, `DEALS_ANY_STORE` | *(optional)* e.g. `Seattle, Washington, United States` / `25` / `1` | Local prices, the daily search cap (default 25), and including small sellers (default: major retailers only). See [.env.example](../.env.example). |
    | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | `sk_test_…` / `whsec_…` only. The app refuses live keys. The `whsec_` here comes from a **dashboard webhook endpoint for this domain**, not from `stripe listen`. See [Webhooks on Railway](stripe.md#webhooks-on-railway-the-deployed-demo). | Payments: charging, add-card and pay-back links |
 
    Don't set `PORT`, because Railway provides it. `PUBLIC_BASE_URL` is optional: the app uses Railway's domain automatically. **Never set `DEV_INBOUND`**, because that route has no authentication.
 4. **Get a public URL:** service → **Settings** → **Networking** → **Generate Domain**. You'll get something like `restock-production.up.railway.app`.
 5. **Add a volume so data survives deploys:** service → **Settings** → **Volumes** (or right-click the service → **Attach Volume**) → mount path `/data`. Railway then sets `RAILWAY_VOLUME_MOUNT_PATH`, and the app saves to `/data/restock.db` automatically. To use a different file, set `DATABASE_PATH`. On the next deploy the log should say `Saving data to /data/restock.db`, and after that `Restored saved data from …`. Keep the service at **one replica**: two copies would each keep their own cart.
-6. **Check it:** open `https://<domain>/health`, which should return `{"ok":true}`.
+6. **Check it:** open `https://<domain>/health`, which should return `{"ok":true}`. If you set `SERPAPI_KEY`, also send `curl -X POST https://<domain>/api/agent -H 'content-type: application/json' -d '{"prompt":"add tp from Target"}'`: a working key shows a Target listing and "Store prices checked just now". Catalog-only options with "Nothing matched from Target" mean the app doesn't have the key (check the variable's spelling, and that you're in the project that owns this domain), then send `cancel`.
 7. **Point VEYZL at it:** set the **Backend URL** to `https://<domain>` (endpoint `POST /api/agent`), then re-run an audit.
 8. **Branch settings:** in Railway, keep auto-deploy on for `main` only.
 

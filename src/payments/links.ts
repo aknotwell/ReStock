@@ -1,8 +1,8 @@
 // Secure links texted to members. Card data only ever touches Stripe's pages.
-import { randomInt } from "node:crypto";
+import { randomBytes, randomInt } from "node:crypto";
 import { config } from "../config.js";
 import { registerState } from "../core/persist.js";
-import { db, findMember } from "../core/store.js";
+import { db, findMember, formerMembers } from "../core/store.js";
 import type { Debt, Member } from "../types.js";
 import { STRIPE_MIN_CHARGE_CENTS } from "./limits.js";
 import { requireStripe } from "./stripe.js";
@@ -38,35 +38,79 @@ export async function openCardSetupLink(token: string, now = Date.now()): Promis
   if (!found) return undefined;
 
   const { member } = found;
-  const customerId = await ensureStripeCustomer(member);
-  const session = await requireStripe().checkout.sessions.create({
-    mode: "setup",
-    currency: "usd",
-    allowed_payment_method_types: ["card"], // cards, plus Apple Pay / Google Pay wallets
-    customer: customerId,
-    client_reference_id: member.id,
-    metadata: { memberId: member.id },
-    setup_intent_data: { metadata: { memberId: member.id } },
-    // Stripe fills in {CHECKOUT_SESSION_ID}; the success page uses it to save the card right away (confirmCardSetup).
-    success_url: `${config.publicBaseUrl}/card/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${config.publicBaseUrl}/cancel`,
-  });
+  const session = await withLiveCustomer(member, (customer) =>
+    requireStripe().checkout.sessions.create({
+      mode: "setup",
+      currency: "usd",
+      allowed_payment_method_types: ["card"], // cards, plus Apple Pay / Google Pay wallets
+      customer,
+      client_reference_id: member.id,
+      metadata: { memberId: member.id },
+      setup_intent_data: { metadata: { memberId: member.id } },
+      // Stripe fills in {CHECKOUT_SESSION_ID}; the success page uses it to save the card right away (confirmCardSetup).
+      success_url: `${config.publicBaseUrl}/card/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${config.publicBaseUrl}/cancel`,
+    }),
+  );
   if (!session.url) throw new Error("Stripe returned a Checkout session without a URL");
   return session.url;
 }
 
-/** Create the member's Stripe Customer the first time we need it. We send Stripe only their name. */
-export async function ensureStripeCustomer(member: Member): Promise<string> {
-  if (member.stripeCustomerId) return member.stripeCustomerId;
+/**
+ * Create the member's Stripe Customer the first time we need it. We send Stripe only their name.
+ * `fresh`: the saved one is gone, so make a new one under a new idempotency key (the usual key would make Stripe
+ * replay the deleted customer for 24 hours).
+ */
+export async function ensureStripeCustomer(member: Member, { fresh = false } = {}): Promise<string> {
+  if (member.stripeCustomerId && !fresh) return member.stripeCustomerId;
   const customer = await requireStripe().customers.create(
     { name: member.name, metadata: { memberId: member.id } },
     // Two quick taps on the link must not create two customers.
-    { idempotencyKey: `restock-customer-${member.id}` },
+    { idempotencyKey: fresh ? `restock-customer-${member.id}-${randomBytes(6).toString("hex")}` : `restock-customer-${member.id}` },
   );
   // TODO: replace with an updateMember() in store.ts once there is one. Members are live objects
   // in the in-memory store, so setting the field saves it.
   member.stripeCustomerId = customer.id;
   return customer.id;
+}
+
+/**
+ * Stripe says a saved customer or card doesn't exist anymore: deleted (someone left a household or deleted their
+ * data), or made with a different Stripe key. Retrying the same request can't succeed.
+ */
+export function isMissingCustomer(err: unknown): boolean {
+  const e = err as { code?: unknown; param?: unknown } | null;
+  return typeof e === "object" && e !== null && e.code === "resource_missing" && (e.param === "customer" || e.param === "payment_method");
+}
+
+/**
+ * Forget a Stripe customer that no longer exists, and the card saved on it, on every member record that uses it
+ * (a card is shared across a person's households). They'll be asked to add a card again.
+ */
+export function forgetMissingCustomer(customerId: string, also?: Member): void {
+  const records = [...db.households.values()].flatMap((h) => h.members).concat([...formerMembers.values()].map((f) => f.member), also ? [also] : []);
+  for (const m of records) {
+    if (m.stripeCustomerId !== customerId) continue;
+    delete m.stripeCustomerId;
+    delete m.paymentMethodId;
+    delete m.cardLast4;
+  }
+}
+
+/**
+ * Run a Stripe call that needs this member's customer. If Stripe says that customer is gone, forget it, make a new
+ * one and try once more, so a deleted customer never leaves someone unable to add a card or pay.
+ */
+export async function withLiveCustomer<T>(member: Member, run: (customerId: string) => Promise<T>): Promise<T> {
+  const customerId = await ensureStripeCustomer(member);
+  try {
+    return await run(customerId);
+  } catch (err) {
+    if (!isMissingCustomer(err)) throw err;
+    console.warn("The saved Stripe customer no longer exists; making a new one.");
+    forgetMissingCustomer(customerId, member);
+    return run(await ensureStripeCustomer(member, { fresh: true }));
+  }
 }
 
 const TOKEN_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -249,10 +293,10 @@ export async function openPayBackLink(token: string, now = Date.now()): Promise<
 
   const debtIds = open.map((d) => d.id);
   const idList = debtIds.join(",");
-  const session = await stripe.checkout.sessions.create({
+  const createPage = (customer: string | undefined) => stripe.checkout.sessions.create({
     mode: "payment",
     allowed_payment_method_types: ["card"], // cards, plus Apple Pay / Google Pay wallets
-    customer: debtor.stripeCustomerId, // prefills their details if they have one; optional
+    customer, // prefills their details if they have one; optional
     // One line per order, so the total on Stripe's page is easy to check against the texts.
     line_items: open.map((d) => {
       const placed = db.orders.get(d.orderId)?.createdAt;
@@ -273,6 +317,15 @@ export async function openPayBackLink(token: string, now = Date.now()): Promise<
     success_url: `${config.publicBaseUrl}/pay/success`,
     cancel_url: `${config.publicBaseUrl}/cancel`,
   });
+  let session: Awaited<ReturnType<typeof createPage>>;
+  try {
+    session = await createPage(debtor.stripeCustomerId);
+  } catch (err) {
+    // Their saved customer is gone: forget it and make the page without the prefill.
+    if (!debtor.stripeCustomerId || !isMissingCustomer(err)) throw err;
+    forgetMissingCustomer(debtor.stripeCustomerId, debtor);
+    session = await createPage(undefined);
+  }
   if (!session.url) throw new Error("Stripe returned a Checkout session without a URL");
   payBackSessions.set(key, { sessionId: session.id, debtIds });
   registerPayBackPage(session.id, debtIds);

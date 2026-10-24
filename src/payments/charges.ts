@@ -8,6 +8,7 @@ import { newId } from "../core/store.js";
 import type { Charge, ChargeResult, Debt, Household, Member, Order, Shares } from "../types.js";
 import { assertOwnerCard, findOwner } from "./ownerGate.js";
 import { STRIPE_MIN_CHARGE_CENTS } from "./limits.js";
+import { forgetMissingCustomer, isMissingCustomer } from "./links.js";
 import { requireStripe } from "./stripe.js";
 
 // Shares under Stripe's minimum go on the owner's charge, with a Debt.
@@ -131,6 +132,12 @@ async function holdShare(stripe: Stripe, order: Order, member: Member, cents: nu
     return { ok: false, intentId: intent.id };
   } catch (err) {
     if (isCardError(err)) return { ok: false, intentId: err.payment_intent?.id };
+    if (isMissingCustomer(err)) {
+      // Their saved customer or card no longer exists in Stripe: treat it like a declined card (a member falls back to
+      // the owner's card), and forget it so they're asked to add a card again.
+      if (member.stripeCustomerId) forgetMissingCustomer(member.stripeCustomerId, member);
+      return { ok: false };
+    }
     throw err;
   }
 }
